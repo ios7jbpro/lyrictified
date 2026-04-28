@@ -1,0 +1,585 @@
+using Microsoft.Win32;
+using System.Runtime.InteropServices;
+using System.ComponentModel;
+using System.IO;
+using System.Windows;
+using System.Windows.Input;
+using System.Windows.Interop;
+using System.Windows.Media;
+using System.Windows.Media.Animation;
+using System.Windows.Media.Imaging;
+using System.Windows.Threading;
+using Lyrictified.DisplayModes;
+using Lyrictified.Interop;
+using Lyrictified.Settings;
+using Lyrictified.ViewModels;
+
+namespace Lyrictified;
+
+public partial class TaskbarWindow : Window
+{
+    private static readonly TimeSpan MonitorWarningDuration = TimeSpan.FromSeconds(4);
+    private static readonly Brush LoadingTextBrush = new SolidColorBrush(Color.FromRgb(150, 156, 164));
+    private const uint EVENT_SYSTEM_FOREGROUND = 0x0003;
+    private const uint WINEVENT_OUTOFCONTEXT = 0x0000;
+
+    private readonly MainViewModel _viewModel;
+    private readonly DispatcherTimer _monitorWarningTimer;
+    private readonly AppSettingsService _appSettingsService;
+    private AppBarManager? _appBarManager;
+    private HwndSource? _hwndSource;
+    private IntPtr _foregroundHook;
+    private WinEventDelegate? _foregroundHookDelegate;
+    private AppSettings _settings;
+    private string _displayedLyricText = string.Empty;
+    private string? _lastMonitorWarningKey;
+    private SettingsWindow? _settingsWindow;
+
+    public TaskbarWindow()
+    {
+        InitializeComponent();
+        _appSettingsService = new AppSettingsService();
+        _settings = _appSettingsService.Load();
+
+        _viewModel = new MainViewModel();
+        _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+        DataContext = _viewModel;
+
+        LoadingSpinnerImage.Source = new BitmapImage(new Uri(Path.Combine(AppContext.BaseDirectory, "Assets", "loading.png"), UriKind.Absolute));
+
+        _monitorWarningTimer = new DispatcherTimer { Interval = MonitorWarningDuration };
+        _monitorWarningTimer.Tick += MonitorWarningTimer_OnTick;
+
+        SourceInitialized += OnSourceInitialized;
+        Loaded += OnLoaded;
+        Closing += OnClosing;
+        Activated += OnWindowActivated;
+        Deactivated += OnWindowDeactivated;
+    }
+
+    private void OnSourceInitialized(object? sender, EventArgs e)
+    {
+        _hwndSource = PresentationSource.FromVisual(this) as HwndSource;
+        _foregroundHookDelegate = OnForegroundWindowChanged;
+        _foregroundHook = SetWinEventHook(
+            EVENT_SYSTEM_FOREGROUND,
+            EVENT_SYSTEM_FOREGROUND,
+            IntPtr.Zero,
+            _foregroundHookDelegate,
+            0,
+            0,
+            WINEVENT_OUTOFCONTEXT);
+        _appBarManager = new AppBarManager(this, TaskbarDisplayMode.WindowHeight);
+        ApplyMonitorSetting();
+        PositionWindow();
+        ApplyAppearance();
+        EnsureTopmostOrder();
+
+        SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
+        SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
+    }
+
+    private async void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        IncomingLyricTextBlock.Text = _viewModel.CurrentLine;
+        _displayedLyricText = _viewModel.CurrentLine;
+        ApplyLoadingState(immediate: true);
+        EnsureTopmostOrder();
+        await _viewModel.InitializeAsync();
+    }
+
+    private void OnClosing(object? sender, CancelEventArgs e)
+    {
+        _monitorWarningTimer.Stop();
+        _monitorWarningTimer.Tick -= MonitorWarningTimer_OnTick;
+        _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
+        SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
+        if (_foregroundHook != IntPtr.Zero)
+        {
+            UnhookWinEvent(_foregroundHook);
+            _foregroundHook = IntPtr.Zero;
+        }
+        _foregroundHookDelegate = null;
+        _settingsWindow?.Close();
+        _appBarManager?.Dispose();
+        _viewModel.Dispose();
+    }
+
+    private void OnDisplaySettingsChanged(object? sender, EventArgs e)
+    {
+        _appBarManager?.RefreshMonitors();
+        ApplyMonitorSetting();
+        PositionWindow();
+        EnsureTopmostOrder();
+        RefreshSettingsWindowOptions();
+    }
+
+    private void OnUserPreferenceChanged(object sender, UserPreferenceChangedEventArgs e)
+    {
+        ApplyAppearance();
+        EnsureTopmostOrder();
+    }
+
+    private void OnWindowActivated(object? sender, EventArgs e)
+    {
+        ScheduleTopmostRefreshBurst();
+    }
+
+    private void OnWindowDeactivated(object? sender, EventArgs e)
+    {
+        ScheduleTopmostRefreshBurst();
+    }
+
+    private void OnForegroundWindowChanged(
+        IntPtr hWinEventHook,
+        uint eventType,
+        IntPtr hwnd,
+        int idObject,
+        int idChild,
+        uint dwEventThread,
+        uint dwmsEventTime)
+    {
+        if (eventType != EVENT_SYSTEM_FOREGROUND || hwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        if (hwnd == (_hwndSource?.Handle ?? IntPtr.Zero))
+        {
+            return;
+        }
+
+        _ = Dispatcher.BeginInvoke(ScheduleTopmostRefreshBurst, DispatcherPriority.Background);
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(MainViewModel.CurrentLine))
+        {
+            if (Dispatcher.CheckAccess())
+            {
+                HandleCurrentLineChanged(_viewModel.CurrentLine);
+            }
+            else
+            {
+                _ = Dispatcher.InvokeAsync(() => HandleCurrentLineChanged(_viewModel.CurrentLine));
+            }
+        }
+
+        if (e.PropertyName == nameof(MainViewModel.IsLoadingLyrics))
+        {
+            if (Dispatcher.CheckAccess())
+            {
+                ApplyLoadingState();
+            }
+            else
+            {
+                _ = Dispatcher.InvokeAsync(() => ApplyLoadingState());
+            }
+        }
+    }
+
+    private void ApplyAppearance()
+    {
+        Background = Brushes.Transparent;
+        RootGrid.Background = IsSettingsWindowVisible()
+            ? new SolidColorBrush(Color.FromArgb(180, 10, 14, 20))
+            : new SolidColorBrush(Color.FromArgb(0, 0, 0, 0));
+        if (!_viewModel.IsLoadingLyrics)
+        {
+            IncomingLyricTextBlock.Foreground = new SolidColorBrush(Color.FromRgb(245, 247, 250));
+            OutgoingLyricTextBlock.Foreground = new SolidColorBrush(Color.FromRgb(245, 247, 250));
+        }
+    }
+
+    private void ApplyMonitorSetting()
+    {
+        if (_appBarManager is null)
+        {
+            return;
+        }
+
+        var preferredMonitorDeviceName = _settings.TaskbarPreferredMonitorDeviceName ?? _settings.PreferredMonitorDeviceName;
+
+        if (string.IsNullOrWhiteSpace(preferredMonitorDeviceName))
+        {
+            if (_appBarManager.CurrentMonitorDeviceName is not null)
+            {
+                _settings.TaskbarPreferredMonitorDeviceName = _appBarManager.CurrentMonitorDeviceName;
+                _appSettingsService.Save(_settings);
+            }
+
+            _lastMonitorWarningKey = null;
+            return;
+        }
+
+        if (_appBarManager.SetCurrentMonitor(preferredMonitorDeviceName))
+        {
+            _lastMonitorWarningKey = null;
+            return;
+        }
+
+        if (_appBarManager.SetCurrentMonitorToPrimary())
+        {
+            var currentDeviceName = _appBarManager.CurrentMonitorDeviceName ?? "primary display";
+            var warningKey = $"{preferredMonitorDeviceName}|{currentDeviceName}";
+            if (!string.Equals(_lastMonitorWarningKey, warningKey, StringComparison.Ordinal))
+            {
+                ShowMonitorWarning($"Saved display not detected. Falling back to primary display ({currentDeviceName}).");
+                _lastMonitorWarningKey = warningKey;
+            }
+        }
+    }
+
+    private void PositionWindow()
+    {
+        if (_appBarManager is null || _appBarManager.Monitors.Count == 0)
+        {
+            return;
+        }
+
+        var monitor = _appBarManager.Monitors[Math.Clamp(_appBarManager.CurrentMonitorIndex, 0, _appBarManager.Monitors.Count - 1)];
+        var bounds = TaskbarDisplayMode.GetWindowBounds(monitor, _settings.TaskbarMaximumWidth);
+        Left = bounds.Left;
+        Top = bounds.Top;
+        Width = bounds.Width;
+        Height = bounds.Height;
+        EnsureTopmostOrder();
+    }
+
+    private void HandleCurrentLineChanged(string newCurrentLine)
+    {
+        if (string.Equals(_displayedLyricText, newCurrentLine, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        OutgoingLyricTextBlock.BeginAnimation(OpacityProperty, null);
+        IncomingLyricTextBlock.BeginAnimation(OpacityProperty, null);
+        OutgoingLyricTranslateTransform.BeginAnimation(TranslateTransform.YProperty, null);
+        IncomingLyricTranslateTransform.BeginAnimation(TranslateTransform.YProperty, null);
+
+        OutgoingLyricTextBlock.Text = _displayedLyricText;
+        OutgoingLyricTextBlock.Opacity = string.IsNullOrWhiteSpace(_displayedLyricText) ? 0 : 1;
+        OutgoingLyricTranslateTransform.Y = 0;
+
+        IncomingLyricTextBlock.Text = newCurrentLine;
+        IncomingLyricTextBlock.Opacity = 0;
+        IncomingLyricTranslateTransform.Y = TaskbarDisplayMode.GetSingleLineStartY();
+
+        var fadeOut = new DoubleAnimation
+        {
+            To = 0,
+            Duration = TimeSpan.FromMilliseconds(120),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
+        };
+
+        var slideOut = new DoubleAnimation
+        {
+            To = -6,
+            Duration = TimeSpan.FromMilliseconds(120),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
+        };
+
+        var fadeIn = new DoubleAnimation
+        {
+            From = 0,
+            To = 1,
+            BeginTime = TimeSpan.FromMilliseconds(40),
+            Duration = TimeSpan.FromMilliseconds(180),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+        };
+
+        var slideIn = new DoubleAnimation
+        {
+            From = TaskbarDisplayMode.GetSingleLineStartY(),
+            To = 0,
+            BeginTime = TimeSpan.FromMilliseconds(40),
+            Duration = TimeSpan.FromMilliseconds(190),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+
+        OutgoingLyricTextBlock.BeginAnimation(OpacityProperty, fadeOut);
+        OutgoingLyricTranslateTransform.BeginAnimation(TranslateTransform.YProperty, slideOut);
+        IncomingLyricTextBlock.BeginAnimation(OpacityProperty, fadeIn);
+        IncomingLyricTranslateTransform.BeginAnimation(TranslateTransform.YProperty, slideIn);
+
+        _displayedLyricText = newCurrentLine;
+    }
+
+    private void ApplyLoadingState(bool immediate = false)
+    {
+        var isLoading = _viewModel.IsLoadingLyrics;
+
+        LoadingSpinnerImage.BeginAnimation(OpacityProperty, null);
+        LoadingSpinnerRotateTransform.BeginAnimation(RotateTransform.AngleProperty, null);
+
+        if (isLoading)
+        {
+            IncomingLyricTextBlock.Foreground = LoadingTextBrush;
+            OutgoingLyricTextBlock.Foreground = LoadingTextBrush;
+            LyricStage.Opacity = 0.58;
+            LoadingOverlay.Visibility = Visibility.Visible;
+
+            var spinnerFade = new DoubleAnimation
+            {
+                To = 1,
+                Duration = TimeSpan.FromMilliseconds(immediate ? 1 : 150),
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+            };
+
+            var spinnerRotation = new DoubleAnimation
+            {
+                From = 0,
+                To = 360,
+                Duration = TimeSpan.FromMilliseconds(850),
+                RepeatBehavior = RepeatBehavior.Forever
+            };
+
+            LoadingSpinnerImage.BeginAnimation(OpacityProperty, spinnerFade);
+            LoadingSpinnerRotateTransform.BeginAnimation(RotateTransform.AngleProperty, spinnerRotation);
+            return;
+        }
+
+        LyricStage.Opacity = 1;
+        ApplyAppearance();
+
+        var fadeOut = new DoubleAnimation
+        {
+            To = 0,
+            Duration = TimeSpan.FromMilliseconds(immediate ? 1 : 180),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
+        };
+        fadeOut.Completed += (_, _) =>
+        {
+            LoadingOverlay.Visibility = Visibility.Collapsed;
+            LoadingSpinnerRotateTransform.Angle = 0;
+        };
+
+        LoadingSpinnerImage.BeginAnimation(OpacityProperty, fadeOut);
+    }
+
+    private void MonitorWarningTimer_OnTick(object? sender, EventArgs e)
+    {
+        _monitorWarningTimer.Stop();
+        HideMonitorWarning();
+    }
+
+    private void ShowMonitorWarning(string message)
+    {
+        MonitorWarningTextBlock.Text = message;
+        MonitorWarningBanner.Visibility = Visibility.Visible;
+        MonitorWarningBanner.BeginAnimation(OpacityProperty, null);
+
+        var fadeIn = new DoubleAnimation
+        {
+            From = MonitorWarningBanner.Opacity,
+            To = 1,
+            Duration = TimeSpan.FromMilliseconds(180),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+        };
+
+        MonitorWarningBanner.BeginAnimation(OpacityProperty, fadeIn);
+        _monitorWarningTimer.Stop();
+        _monitorWarningTimer.Start();
+    }
+
+    private void HideMonitorWarning()
+    {
+        MonitorWarningBanner.BeginAnimation(OpacityProperty, null);
+        var fadeOut = new DoubleAnimation
+        {
+            From = MonitorWarningBanner.Opacity,
+            To = 0,
+            Duration = TimeSpan.FromMilliseconds(220),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
+        };
+        fadeOut.Completed += (_, _) => MonitorWarningBanner.Visibility = Visibility.Collapsed;
+        MonitorWarningBanner.BeginAnimation(OpacityProperty, fadeOut);
+    }
+
+    private void OpenSettingsWindow()
+    {
+        if (_settingsWindow is null || !_settingsWindow.IsLoaded)
+        {
+            _settingsWindow = new SettingsWindow { Owner = this };
+            _settingsWindow.SettingsChanged += SettingsWindow_OnSettingsChanged;
+            _settingsWindow.Closed += (_, _) =>
+            {
+                _settingsWindow = null;
+                ApplyAppearance();
+            };
+            RefreshSettingsWindowOptions();
+            _settingsWindow.Show();
+            ApplyAppearance();
+            return;
+        }
+
+        RefreshSettingsWindowOptions();
+        if (_settingsWindow.WindowState == WindowState.Minimized)
+        {
+            _settingsWindow.WindowState = WindowState.Normal;
+        }
+
+        _settingsWindow.Activate();
+        ApplyAppearance();
+    }
+
+    private void Window_OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ClickCount >= 2)
+        {
+            OpenSettingsWindow();
+            e.Handled = true;
+        }
+    }
+
+    private void Window_OnMouseRightButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        Application.Current.Shutdown();
+        e.Handled = true;
+    }
+
+    private void RefreshSettingsWindowOptions()
+    {
+        if (_settingsWindow is null || _appBarManager is null)
+        {
+            return;
+        }
+
+        var monitors = _appBarManager.Monitors
+            .Select((monitor, index) => new MonitorOption(
+                monitor.DeviceName,
+                monitor.IsPrimary
+                    ? $"Monitor {index + 1} ({monitor.DeviceName}, Primary)"
+                    : $"Monitor {index + 1} ({monitor.DeviceName})"))
+            .ToList();
+
+        _settingsWindow.LoadSettings(_settings, monitors);
+    }
+
+    private void SettingsWindow_OnSettingsChanged(object? sender, AppSettings settings)
+    {
+        _settings.DisplayMode = settings.DisplayMode;
+        _settings.HideMode = settings.HideMode;
+        _settings.ShowNextLine = settings.ShowNextLine;
+        _settings.AppBarPreferredMonitorDeviceName = settings.AppBarPreferredMonitorDeviceName;
+        _settings.TaskbarPreferredMonitorDeviceName = settings.TaskbarPreferredMonitorDeviceName;
+        _settings.CustomBarHeight = settings.CustomBarHeight;
+        _settings.TaskbarMaximumWidth = settings.TaskbarMaximumWidth;
+        _settings.PreferredMonitorDeviceName = null;
+        _appSettingsService.Save(_settings);
+
+        if (_settings.DisplayMode != DisplayMode.Taskbar)
+        {
+            ((App)Application.Current).RestartDisplayWindow();
+            return;
+        }
+
+        if (_appBarManager is not null && !string.IsNullOrWhiteSpace(_settings.TaskbarPreferredMonitorDeviceName))
+        {
+            if (_appBarManager.SetCurrentMonitor(_settings.TaskbarPreferredMonitorDeviceName))
+            {
+                _lastMonitorWarningKey = null;
+            }
+            else
+            {
+                ApplyMonitorSetting();
+            }
+        }
+
+        PositionWindow();
+        RefreshSettingsWindowOptions();
+        ApplyAppearance();
+    }
+
+    private bool IsSettingsWindowVisible()
+    {
+        return _settingsWindow is not null && _settingsWindow.IsLoaded && _settingsWindow.IsVisible;
+    }
+
+    private void EnsureTopmostOrder()
+    {
+        var hwnd = _hwndSource?.Handle ?? new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        SetWindowPos(
+            hwnd,
+            HWND_TOPMOST,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW);
+    }
+
+    private void ScheduleTopmostRefreshBurst()
+    {
+        EnsureTopmostOrder();
+
+        var retryShort = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(90)
+        };
+        retryShort.Tick += (_, _) =>
+        {
+            retryShort.Stop();
+            EnsureTopmostOrder();
+        };
+        retryShort.Start();
+
+        var retryLong = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(240)
+        };
+        retryLong.Tick += (_, _) =>
+        {
+            retryLong.Stop();
+            EnsureTopmostOrder();
+        };
+        retryLong.Start();
+    }
+
+    private static readonly IntPtr HWND_TOPMOST = new(-1);
+    private const uint SWP_NOSIZE = 0x0001;
+    private const uint SWP_NOMOVE = 0x0002;
+    private const uint SWP_NOACTIVATE = 0x0010;
+    private const uint SWP_SHOWWINDOW = 0x0040;
+    private const uint SWP_NOOWNERZORDER = 0x0200;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPos(
+        IntPtr hWnd,
+        IntPtr hWndInsertAfter,
+        int X,
+        int Y,
+        int cx,
+        int cy,
+        uint uFlags);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr SetWinEventHook(
+        uint eventMin,
+        uint eventMax,
+        IntPtr hmodWinEventProc,
+        WinEventDelegate lpfnWinEventProc,
+        uint idProcess,
+        uint idThread,
+        uint dwFlags);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool UnhookWinEvent(IntPtr hWinEventHook);
+
+    private delegate void WinEventDelegate(
+        IntPtr hWinEventHook,
+        uint eventType,
+        IntPtr hwnd,
+        int idObject,
+        int idChild,
+        uint dwEventThread,
+        uint dwmsEventTime);
+}

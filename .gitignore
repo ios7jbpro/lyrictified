@@ -1,0 +1,23 @@
+# Build output
+**/bin/
+**/obj/
+
+# Visual Studio / Rider
+.vs/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Test and coverage artifacts
+TestResults/
+*.coverage
+*.coveragexml
+
+# Logs
+*.log
+
+# OS files
+Thumbs.db
+Desktop.ini

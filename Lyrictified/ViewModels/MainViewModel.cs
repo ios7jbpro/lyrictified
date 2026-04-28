@@ -1,0 +1,506 @@
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
+using System.Windows.Threading;
+using Lyrictified.Models;
+using Lyrictified.Services;
+
+namespace Lyrictified.ViewModels;
+
+public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
+{
+    private static readonly TimeSpan IdleRefreshInterval = TimeSpan.FromMilliseconds(400);
+    private static readonly TimeSpan MinRefreshInterval = TimeSpan.FromMilliseconds(15);
+    private static readonly TimeSpan MaxRefreshInterval = TimeSpan.FromMilliseconds(750);
+
+    private readonly Dispatcher _dispatcher;
+    private readonly MediaSessionWatcher _mediaSessionWatcher;
+    private readonly CompositeLyricsService _lyricsService;
+    private readonly DispatcherTimer _timer;
+    private readonly Stopwatch _playbackClock = new();
+    private readonly SemaphoreSlim _refreshGate = new(1, 1);
+
+    private IReadOnlyList<LyricLine> _lyrics = Array.Empty<LyricLine>();
+    private CancellationTokenSource? _lyricsLoadCts;
+    private SongInfo? _currentSong;
+    private TimeSpan? _anchoredPlaybackPosition;
+    private bool _wasPlaying;
+    private bool _isLoadingLyrics;
+    private bool _noTimedLyricsFound;
+    private bool _isPlaybackPaused;
+    private string _windowTitle = "Lyrictified";
+    private string _statusText = "Waiting for a song...";
+    private string _helperStatusHint = string.Empty;
+    private string _currentLine = "Play something to show lyrics here.";
+    private string _nextLine = string.Empty;
+
+    public MainViewModel()
+    {
+        _dispatcher = Dispatcher.CurrentDispatcher;
+        _mediaSessionWatcher = new MediaSessionWatcher();
+        _lyricsService = new CompositeLyricsService();
+        _helperStatusHint = _lyricsService.HelperStatusHint;
+        _timer = new DispatcherTimer(DispatcherPriority.Normal, _dispatcher)
+        {
+            Interval = IdleRefreshInterval
+        };
+        _timer.Tick += OnTimerTick;
+        _mediaSessionWatcher.SongChanged += OnSongChanged;
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    public string WindowTitle
+    {
+        get => _windowTitle;
+        private set => SetField(ref _windowTitle, value);
+    }
+
+    public string StatusText
+    {
+        get => _statusText;
+        private set => SetField(ref _statusText, value);
+    }
+
+    public string HelperStatusHint
+    {
+        get => _helperStatusHint;
+        private set => SetField(ref _helperStatusHint, value);
+    }
+
+    public string CurrentLine
+    {
+        get => _currentLine;
+        private set => SetField(ref _currentLine, value);
+    }
+
+    public string NextLine
+    {
+        get => _nextLine;
+        private set => SetField(ref _nextLine, value);
+    }
+
+    public bool IsLoadingLyrics
+    {
+        get => _isLoadingLyrics;
+        private set => SetField(ref _isLoadingLyrics, value);
+    }
+
+    public bool NoTimedLyricsFound
+    {
+        get => _noTimedLyricsFound;
+        private set => SetField(ref _noTimedLyricsFound, value);
+    }
+
+    public bool IsPlaybackPaused
+    {
+        get => _isPlaybackPaused;
+        private set => SetField(ref _isPlaybackPaused, value);
+    }
+
+    public async Task InitializeAsync()
+    {
+        try
+        {
+            await _mediaSessionWatcher.InitializeAsync();
+            _timer.Start();
+
+            var song = await _mediaSessionWatcher.GetCurrentSongAsync();
+            await HandleSongAsync(song);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"MainViewModel.InitializeAsync failed: {ex}");
+            ApplyFatalFallbackState("Unable to initialize media session.");
+        }
+    }
+
+    private async void OnSongChanged(object? sender, SongInfo? song)
+    {
+        try
+        {
+            if (_dispatcher.CheckAccess())
+            {
+                await HandleSongAsync(song);
+                return;
+            }
+
+            await _dispatcher.InvokeAsync(() => HandleSongAsync(song), DispatcherPriority.Normal).Task.Unwrap();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"MainViewModel.OnSongChanged failed: {ex}");
+            ApplySongFallbackState(song, "Unable to refresh current song.");
+        }
+    }
+
+    private async Task HandleSongAsync(SongInfo? song)
+    {
+        try
+        {
+            var sameSong = IsSameSong(_currentSong, song);
+            _currentSong = song;
+
+            if (song is null)
+            {
+                CancelLyricsLoad();
+                ResetPlaybackClock();
+                IsLoadingLyrics = false;
+                NoTimedLyricsFound = false;
+                IsPlaybackPaused = false;
+                WindowTitle = "Lyrictified";
+                StatusText = "Waiting for a song...";
+                CurrentLine = "Play something to show lyrics here.";
+                NextLine = string.Empty;
+                _lyrics = Array.Empty<LyricLine>();
+                SetNextRefreshInterval(IdleRefreshInterval);
+                return;
+            }
+
+            if (sameSong)
+            {
+                WindowTitle = song.DisplayTitle;
+                IsPlaybackPaused = !song.IsPlaying;
+                await ReanchorPlaybackAsync(song.IsPlaying);
+                await UpdateCurrentLineAsync();
+                return;
+            }
+
+            CancelLyricsLoad();
+            ResetPlaybackClock();
+            _lyricsLoadCts = new CancellationTokenSource();
+            var cancellationToken = _lyricsLoadCts.Token;
+
+            WindowTitle = song.DisplayTitle;
+            StatusText = song.IsPlaying ? $"{song.Artist} is playing" : $"{song.Artist} is paused";
+            IsPlaybackPaused = !song.IsPlaying;
+            CurrentLine = "Loading synced lyrics...";
+            NextLine = string.Empty;
+            IsLoadingLyrics = true;
+            NoTimedLyricsFound = false;
+            _lyrics = Array.Empty<LyricLine>();
+
+            try
+            {
+                var lyrics = await _lyricsService.GetTimedLyricsAsync(song, cancellationToken);
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                _lyrics = lyrics;
+                IsLoadingLyrics = false;
+                if (_lyrics.Count == 0)
+                {
+                    NoTimedLyricsFound = true;
+                    CurrentLine = song.Title;
+                    NextLine = string.Empty;
+                    StatusText = $"No synced lyrics found for {song.Artist}";
+                    SetNextRefreshInterval(IdleRefreshInterval);
+                    return;
+                }
+
+                NoTimedLyricsFound = false;
+                await ReanchorPlaybackAsync(song.IsPlaying);
+                await UpdateCurrentLineAsync();
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"MainViewModel.HandleSongAsync lyrics fetch failed: {ex}");
+                ApplySongFallbackState(song, "Unable to load synced lyrics.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"MainViewModel.HandleSongAsync failed: {ex}");
+            ApplySongFallbackState(song, "Unable to switch songs.");
+        }
+    }
+
+    private async Task ReanchorPlaybackAsync(bool shouldPlay)
+    {
+        try
+        {
+            var position = await _mediaSessionWatcher.GetPlaybackPositionAsync();
+            if (position is not null)
+            {
+                _anchoredPlaybackPosition = position.Value;
+            }
+
+            _playbackClock.Reset();
+            if (shouldPlay)
+            {
+                _playbackClock.Start();
+            }
+
+            _wasPlaying = shouldPlay;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"MainViewModel.ReanchorPlaybackAsync failed: {ex}");
+            _playbackClock.Reset();
+            _wasPlaying = shouldPlay;
+        }
+    }
+
+    private void ResetPlaybackClock()
+    {
+        _anchoredPlaybackPosition = null;
+        _playbackClock.Reset();
+        _wasPlaying = false;
+    }
+
+    private void CancelLyricsLoad()
+    {
+        try
+        {
+            _lyricsLoadCts?.Cancel();
+            _lyricsLoadCts?.Dispose();
+            _lyricsLoadCts = null;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"MainViewModel.CancelLyricsLoad failed: {ex}");
+        }
+    }
+
+    private async void OnTimerTick(object? sender, EventArgs e)
+    {
+        try
+        {
+            await UpdateCurrentLineAsync();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"MainViewModel.OnTimerTick failed: {ex}");
+            SetNextRefreshInterval(IdleRefreshInterval);
+        }
+    }
+
+    private async Task UpdateCurrentLineAsync()
+    {
+        try
+        {
+            if (_currentSong is null)
+            {
+                SetNextRefreshInterval(IdleRefreshInterval);
+                return;
+            }
+
+            if (_lyrics.Count == 0)
+            {
+                CurrentLine = _currentSong.Title;
+                NextLine = string.Empty;
+                StatusText = _currentSong.IsPlaying
+                    ? $"No synced lyrics found for {_currentSong.Artist}"
+                    : $"No synced lyrics found for {_currentSong.Artist} (paused)";
+                SetNextRefreshInterval(IdleRefreshInterval);
+                return;
+            }
+
+            if (!await _refreshGate.WaitAsync(0))
+            {
+                return;
+            }
+
+            try
+            {
+                if (_currentSong.IsPlaying != _wasPlaying)
+                {
+                    await ReanchorPlaybackAsync(_currentSong.IsPlaying);
+                }
+
+                var position = GetEstimatedPlaybackPosition();
+                if (position is null)
+                {
+                    SetNextRefreshInterval(IdleRefreshInterval);
+                    return;
+                }
+
+                var currentIndex = FindCurrentLyricIndex(position.Value);
+                var currentLyric = currentIndex >= 0 ? _lyrics[currentIndex] : null;
+
+                if (currentLyric is not null)
+                {
+                    CurrentLine = currentLyric.Text;
+                }
+                else if (_lyrics.Count > 0 && position.Value < _lyrics[0].Timestamp)
+                {
+                    CurrentLine = _lyrics[0].Text;
+                }
+
+                var nextIndex = currentIndex >= 0 ? currentIndex + 1 : 1;
+                if (nextIndex >= 0 && nextIndex < _lyrics.Count)
+                {
+                    NextLine = _lyrics[nextIndex].Text;
+                }
+                else
+                {
+                    NextLine = string.Empty;
+                }
+
+                StatusText = _currentSong.IsPlaying
+                    ? $"{_currentSong.Artist} - {position.Value:mm\\:ss}"
+                    : $"{_currentSong.Artist} - {position.Value:mm\\:ss} paused";
+
+                SetNextRefreshInterval(_currentSong.IsPlaying
+                    ? GetNextRefreshInterval(position.Value, currentIndex)
+                    : IdleRefreshInterval);
+            }
+            finally
+            {
+                _refreshGate.Release();
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"MainViewModel.UpdateCurrentLineAsync failed: {ex}");
+            SetNextRefreshInterval(IdleRefreshInterval);
+        }
+    }
+
+    private TimeSpan? GetEstimatedPlaybackPosition()
+    {
+        try
+        {
+            if (_anchoredPlaybackPosition is null)
+            {
+                return null;
+            }
+
+            if (_currentSong is null || !_currentSong.IsPlaying)
+            {
+                return _anchoredPlaybackPosition.Value;
+            }
+
+            return _anchoredPlaybackPosition.Value + _playbackClock.Elapsed;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"MainViewModel.GetEstimatedPlaybackPosition failed: {ex}");
+            return _anchoredPlaybackPosition;
+        }
+    }
+
+    private int FindCurrentLyricIndex(TimeSpan position)
+    {
+        var low = 0;
+        var high = _lyrics.Count - 1;
+        var result = -1;
+
+        while (low <= high)
+        {
+            var mid = low + ((high - low) / 2);
+            if (_lyrics[mid].Timestamp <= position)
+            {
+                result = mid;
+                low = mid + 1;
+            }
+            else
+            {
+                high = mid - 1;
+            }
+        }
+
+        return result;
+    }
+
+    private TimeSpan GetNextRefreshInterval(TimeSpan position, int currentIndex)
+    {
+        var nextIndex = currentIndex + 1;
+        if (nextIndex < 0 || nextIndex >= _lyrics.Count)
+        {
+            return IdleRefreshInterval;
+        }
+
+        var remaining = _lyrics[nextIndex].Timestamp - position;
+        if (remaining <= TimeSpan.Zero)
+        {
+            return MinRefreshInterval;
+        }
+
+        if (remaining < MinRefreshInterval)
+        {
+            return MinRefreshInterval;
+        }
+
+        if (remaining > MaxRefreshInterval)
+        {
+            return MaxRefreshInterval;
+        }
+
+        return remaining;
+    }
+
+    private void SetNextRefreshInterval(TimeSpan interval)
+    {
+        _timer.Interval = interval;
+    }
+
+    private void ApplyFatalFallbackState(string statusText)
+    {
+        CancelLyricsLoad();
+        ResetPlaybackClock();
+        _lyrics = Array.Empty<LyricLine>();
+        _currentSong = null;
+        IsLoadingLyrics = false;
+        NoTimedLyricsFound = false;
+        IsPlaybackPaused = false;
+        WindowTitle = "Lyrictified";
+        StatusText = statusText;
+        CurrentLine = "Play something to show lyrics here.";
+        NextLine = string.Empty;
+        SetNextRefreshInterval(IdleRefreshInterval);
+    }
+
+    private void ApplySongFallbackState(SongInfo? song, string statusText)
+    {
+        ResetPlaybackClock();
+        _lyrics = Array.Empty<LyricLine>();
+        IsLoadingLyrics = false;
+        NoTimedLyricsFound = song is not null;
+        IsPlaybackPaused = song is not null && !song.IsPlaying;
+        WindowTitle = song?.DisplayTitle ?? "Lyrictified";
+        StatusText = statusText;
+        CurrentLine = song?.Title ?? "Play something to show lyrics here.";
+        NextLine = string.Empty;
+        SetNextRefreshInterval(IdleRefreshInterval);
+    }
+
+    private static bool IsSameSong(SongInfo? left, SongInfo? right)
+    {
+        if (left is null || right is null)
+        {
+            return left is null && right is null;
+        }
+
+        return string.Equals(left.Title, right.Title, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(left.Artist, right.Artist, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(left.Album, right.Album, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
+    {
+        if (EqualityComparer<T>.Default.Equals(field, value))
+        {
+            return;
+        }
+
+        field = value;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
+    public void Dispose()
+    {
+        _timer.Stop();
+        _timer.Tick -= OnTimerTick;
+        _mediaSessionWatcher.SongChanged -= OnSongChanged;
+        CancelLyricsLoad();
+        _refreshGate.Dispose();
+        _mediaSessionWatcher.Dispose();
+        _lyricsService.Dispose();
+    }
+}
