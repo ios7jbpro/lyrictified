@@ -1,5 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
 using Lyrictified.DisplayModes;
 using Lyrictified.Settings;
 
@@ -7,11 +9,13 @@ namespace Lyrictified;
 
 public partial class SettingsWindow : Window
 {
+    private readonly ObservableCollection<DetectedAppRuleItem> _detectedApps = new();
     private bool _isInitializing;
 
     public SettingsWindow()
     {
         InitializeComponent();
+        DetectedAppsListBox.ItemsSource = _detectedApps;
     }
 
     public event EventHandler<AppSettings>? SettingsChanged;
@@ -35,6 +39,7 @@ public partial class SettingsWindow : Window
             ShowNextLineComboBox.SelectedIndex = settings.ShowNextLine ? 1 : 0;
             CustomHeightTextBox.Text = settings.CustomBarHeight?.ToString() ?? string.Empty;
             TaskbarMaximumWidthTextBox.Text = settings.TaskbarMaximumWidth?.ToString() ?? string.Empty;
+            LoadDetectedApps(settings);
 
             AppBarMonitorComboBox.ItemsSource = monitors;
             AppBarMonitorComboBox.SelectedValue = appBarMonitor;
@@ -123,7 +128,14 @@ public partial class SettingsWindow : Window
             AppBarPreferredMonitorDeviceName = AppBarMonitorComboBox.SelectedValue as string,
             TaskbarPreferredMonitorDeviceName = TaskbarMonitorComboBox.SelectedValue as string,
             CustomBarHeight = ParseCustomHeight(),
-            TaskbarMaximumWidth = ParseTaskbarMaximumWidth()
+            TaskbarMaximumWidth = ParseTaskbarMaximumWidth(),
+            DetectedMediaApps = _detectedApps
+                .Select(app => new DetectedMediaApp(app.AppId, app.DisplayName))
+                .ToList(),
+            IgnoredMediaAppIds = _detectedApps
+                .Where(app => app.IsIgnored)
+                .Select(app => app.AppId)
+                .ToList()
         };
 
         SettingsChanged?.Invoke(this, settings);
@@ -195,5 +207,67 @@ public partial class SettingsWindow : Window
             "Taskbar" => DisplayMode.Taskbar,
             _ => DisplayMode.AppBar
         };
+    }
+
+    private void LoadDetectedApps(AppSettings settings)
+    {
+        _detectedApps.Clear();
+
+        var ignoredIds = new HashSet<string>(settings.IgnoredMediaAppIds, StringComparer.OrdinalIgnoreCase);
+        foreach (var detectedApp in settings.DetectedMediaApps
+                     .Where(app => !string.IsNullOrWhiteSpace(app.AppId))
+                     .OrderBy(app => app.DisplayName, StringComparer.OrdinalIgnoreCase)
+                     .ThenBy(app => app.AppId, StringComparer.OrdinalIgnoreCase))
+        {
+            _detectedApps.Add(new DetectedAppRuleItem(
+                detectedApp.AppId,
+                string.IsNullOrWhiteSpace(detectedApp.DisplayName) ? detectedApp.AppId : detectedApp.DisplayName,
+                ignoredIds.Contains(detectedApp.AppId)));
+        }
+
+        DetectedAppsEmptyStateTextBlock.Visibility = _detectedApps.Count == 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        DetectedAppsListBox.Visibility = _detectedApps.Count == 0
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+    }
+
+    private void DetectedAppIgnoreCheckBox_OnChanged(object sender, RoutedEventArgs e)
+    {
+        RaiseSettingsChanged();
+    }
+
+    private sealed class DetectedAppRuleItem : INotifyPropertyChanged
+    {
+        private bool _isIgnored;
+
+        public DetectedAppRuleItem(string appId, string displayName, bool isIgnored)
+        {
+            AppId = appId;
+            DisplayName = displayName;
+            _isIgnored = isIgnored;
+        }
+
+        public string AppId { get; }
+
+        public string DisplayName { get; }
+
+        public bool IsIgnored
+        {
+            get => _isIgnored;
+            set
+            {
+                if (_isIgnored == value)
+                {
+                    return;
+                }
+
+                _isIgnored = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsIgnored)));
+            }
+        }
+
+        public event PropertyChangedEventHandler? PropertyChanged;
     }
 }

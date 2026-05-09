@@ -9,6 +9,294 @@
         Height="520"
         WindowStartupLocation="CenterOwner"
         Background="#111821">
+    <Window.Resources>
+        <SolidColorBrush x:Key="ControlForegroundBrush" Color="#F5F7FA" />
+        <SolidColorBrush x:Key="ControlBackgroundBrush" Color="#1A2431" />
+        <SolidColorBrush x:Key="ControlBorderBrush" Color="#365067" />
+        <SolidColorBrush x:Key="DisabledControlForegroundBrush" Color="#C8D5E3" />
+        <SolidColorBrush x:Key="DisabledControlBackgroundBrush" Color="#253242" />
+        <SolidColorBrush x:Key="DisabledControlBorderBrush" Color="#42576E" />
+        <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}" Color="#1A2431" />
+        <SolidColorBrush x:Key="{x:Static SystemColors.WindowTextBrushKey}" Color="#F5F7FA" />
+        <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}" Color="#1A2431" />
+        <SolidColorBrush x:Key="{x:Static SystemColors.ControlTextBrushKey}" Color="#F5F7FA" />
+        <SolidColorBrush x:Key="{x:Static SystemColors.GrayTextBrushKey}" Color="#C8D5E3" />
+        <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#2B3B4D" />
+        <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#F5F7FA" />
+        <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#2B3B4D" />
+        <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="#F5F7FA" />
+
+        <ControlTemplate x:Key="DarkComboBoxToggleButton" TargetType="ToggleButton">
+            <Border x:Name="ToggleBorder"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="34" />
+                    </Grid.ColumnDefinitions>
+                    <Border Grid.Column="1"
+                            Background="#223041"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="1,0,0,0">
+                        <Path HorizontalAlignment="Center"
+                              VerticalAlignment="Center"
+                              Fill="{TemplateBinding Foreground}"
+                              Data="M 0 0 L 4 4 L 8 0 Z" />
+                    </Border>
+                </Grid>
+            </Border>
+            <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter TargetName="ToggleBorder" Property="Background" Value="#223041" />
+                </Trigger>
+                <Trigger Property="IsChecked" Value="True">
+                    <Setter TargetName="ToggleBorder" Property="Background" Value="#223041" />
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter TargetName="ToggleBorder" Property="Background" Value="{StaticResource DisabledControlBackgroundBrush}" />
+                </Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate>
+
+        <Style TargetType="ComboBox">
+            <Setter Property="Foreground" Value="{StaticResource ControlForegroundBrush}" />
+            <Setter Property="Background" Value="{StaticResource ControlBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource ControlBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="Opacity" Value="1" />
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Auto" />
+            <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
+            <Setter Property="ScrollViewer.CanContentScroll" Value="True" />
+            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <ToggleButton Name="ToggleButton"
+                                          Background="{TemplateBinding Background}"
+                                          BorderBrush="{TemplateBinding BorderBrush}"
+                                          BorderThickness="{TemplateBinding BorderThickness}"
+                                          Foreground="{TemplateBinding Foreground}"
+                                          Focusable="False"
+                                          ClickMode="Press"
+                                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
+                                          Template="{StaticResource DarkComboBoxToggleButton}" />
+                            <ContentPresenter Name="ContentSite"
+                                              Margin="{TemplateBinding Padding}"
+                                              HorizontalAlignment="Left"
+                                              VerticalAlignment="Center"
+                                              Content="{TemplateBinding SelectionBoxItem}"
+                                              ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}"
+                                              ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                              ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
+                                              IsHitTestVisible="False" />
+                            <Popup Name="Popup"
+                                   AllowsTransparency="True"
+                                   Focusable="False"
+                                   IsOpen="{TemplateBinding IsDropDownOpen}"
+                                   Placement="Bottom"
+                                   PopupAnimation="Slide">
+                                <Grid Name="DropDown"
+                                      MinWidth="{TemplateBinding ActualWidth}"
+                                      MaxHeight="{TemplateBinding MaxDropDownHeight}"
+                                      SnapsToDevicePixels="True">
+                                    <Border Background="{StaticResource ControlBackgroundBrush}"
+                                            BorderBrush="{TemplateBinding BorderBrush}"
+                                            BorderThickness="{TemplateBinding BorderThickness}" />
+                                    <ScrollViewer Margin="1" SnapsToDevicePixels="True">
+                                        <StackPanel IsItemsHost="True"
+                                                    KeyboardNavigation.DirectionalNavigation="Contained" />
+                                    </ScrollViewer>
+                                </Grid>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="HasItems" Value="False">
+                                <Setter TargetName="DropDown" Property="MinHeight" Value="34" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter TargetName="ToggleButton" Property="BorderBrush" Value="#4E708F" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ToggleButton" Property="Background" Value="#223041" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="{StaticResource DisabledControlForegroundBrush}" />
+                                <Setter TargetName="ToggleButton" Property="Background" Value="{StaticResource DisabledControlBackgroundBrush}" />
+                                <Setter TargetName="ToggleButton" Property="BorderBrush" Value="{StaticResource DisabledControlBorderBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Foreground" Value="{StaticResource DisabledControlForegroundBrush}" />
+                    <Setter Property="Background" Value="{StaticResource DisabledControlBackgroundBrush}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource DisabledControlBorderBrush}" />
+                    <Setter Property="Opacity" Value="1" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style TargetType="TextBox">
+            <Setter Property="Foreground" Value="{StaticResource ControlForegroundBrush}" />
+            <Setter Property="Background" Value="{StaticResource ControlBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource ControlBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="CaretBrush" Value="{StaticResource ControlForegroundBrush}" />
+            <Setter Property="Opacity" Value="1" />
+            <Style.Triggers>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Foreground" Value="{StaticResource DisabledControlForegroundBrush}" />
+                    <Setter Property="Background" Value="{StaticResource DisabledControlBackgroundBrush}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource DisabledControlBorderBrush}" />
+                    <Setter Property="Opacity" Value="1" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style TargetType="ComboBoxItem">
+            <Setter Property="Foreground" Value="{StaticResource ControlForegroundBrush}" />
+            <Setter Property="Background" Value="{StaticResource ControlBackgroundBrush}" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBoxItem">
+                        <Border x:Name="ItemBorder"
+                                Background="{TemplateBinding Background}"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="ItemBorder" Property="Background" Value="#2B3B4D" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="ItemBorder" Property="Background" Value="#223041" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="{StaticResource DisabledControlForegroundBrush}" />
+                                <Setter TargetName="ItemBorder" Property="Background" Value="{StaticResource DisabledControlBackgroundBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsHighlighted" Value="True">
+                    <Setter Property="Background" Value="#2B3B4D" />
+                </Trigger>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="#223041" />
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Foreground" Value="{StaticResource DisabledControlForegroundBrush}" />
+                    <Setter Property="Background" Value="{StaticResource DisabledControlBackgroundBrush}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style TargetType="TabControl">
+            <Setter Property="Background" Value="#111821" />
+            <Setter Property="BorderBrush" Value="#2A394A" />
+            <Setter Property="Foreground" Value="#F5F7FA" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+
+        <Style TargetType="TabItem">
+            <Setter Property="Foreground" Value="#D7E2EE" />
+            <Setter Property="Background" Value="#1A2431" />
+            <Setter Property="BorderBrush" Value="#365067" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="Margin" Value="0,0,6,0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border x:Name="TabBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6,6,0,0"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter x:Name="ContentSite"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              ContentSource="Header"
+                                              RecognizesAccessKey="True" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="TabBorder" Property="Background" Value="#223041" />
+                                <Setter Property="Foreground" Value="#F5F7FA" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="TabBorder" Property="Background" Value="#223041" />
+                                <Setter TargetName="TabBorder" Property="BorderBrush" Value="#4E708F" />
+                                <Setter Property="Foreground" Value="#FFFFFF" />
+                                <Setter Property="Panel.ZIndex" Value="1" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="TabBorder" Property="Background" Value="{StaticResource DisabledControlBackgroundBrush}" />
+                                <Setter TargetName="TabBorder" Property="BorderBrush" Value="{StaticResource DisabledControlBorderBrush}" />
+                                <Setter Property="Foreground" Value="{StaticResource DisabledControlForegroundBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="ListBox">
+            <Setter Property="Foreground" Value="{StaticResource ControlForegroundBrush}" />
+            <Setter Property="Background" Value="{StaticResource ControlBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource ControlBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+
+        <Style TargetType="ListBoxItem">
+            <Setter Property="Background" Value="{StaticResource ControlBackgroundBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource ControlForegroundBrush}" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="ItemBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{StaticResource ControlBorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                Padding="12,10">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ItemBorder" Property="Background" Value="#223041" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="ItemBorder" Property="Background" Value="#223041" />
+                                <Setter TargetName="ItemBorder" Property="BorderBrush" Value="#4E708F" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="CheckBox">
+            <Setter Property="Foreground" Value="{StaticResource ControlForegroundBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+    </Window.Resources>
     <Grid Margin="22">
         <TabControl Background="#111821"
                     BorderBrush="#2A394A"
@@ -37,10 +325,6 @@
                               Grid.Column="1"
                               Margin="0,0,0,18"
                               MinWidth="240"
-                              Padding="10,6"
-                              Foreground="#F5F7FA"
-                              Background="#1A2431"
-                              BorderBrush="#365067"
                               SelectionChanged="DisplayModeComboBox_OnSelectionChanged">
                         <ComboBoxItem Tag="AppBar" Content="App bar" />
                         <ComboBoxItem Tag="Taskbar" Content="Taskbar" />
@@ -75,10 +359,6 @@
                               Grid.Column="1"
                               Margin="0,0,0,18"
                               MinWidth="240"
-                              Padding="10,6"
-                              Foreground="#F5F7FA"
-                              Background="#1A2431"
-                              BorderBrush="#365067"
                               SelectionChanged="HideModeComboBox_OnSelectionChanged">
                         <ComboBoxItem Tag="Nothing" Content="Nothing" />
                         <ComboBoxItem Tag="Blackout" Content="Blackout" />
@@ -98,10 +378,6 @@
                               Grid.Column="1"
                               Margin="0,0,0,18"
                               MinWidth="240"
-                              Padding="10,6"
-                              Foreground="#F5F7FA"
-                              Background="#1A2431"
-                              BorderBrush="#365067"
                               SelectionChanged="ShowNextLineComboBox_OnSelectionChanged">
                         <ComboBoxItem Content="Disabled" />
                         <ComboBoxItem Content="Enabled" />
@@ -120,12 +396,8 @@
                               Grid.Column="1"
                               Margin="0,0,0,18"
                               MinWidth="240"
-                              Padding="10,6"
                               DisplayMemberPath="DisplayName"
                               SelectedValuePath="DeviceName"
-                              Foreground="#F5F7FA"
-                              Background="#1A2431"
-                              BorderBrush="#365067"
                               SelectionChanged="AppBarMonitorComboBox_OnSelectionChanged" />
 
                     <TextBlock Grid.Row="3"
@@ -142,10 +414,6 @@
                         <TextBox x:Name="CustomHeightTextBox"
                                  MinWidth="240"
                                  MaxWidth="240"
-                                 Padding="10,6"
-                                 Foreground="#F5F7FA"
-                                 Background="#1A2431"
-                                 BorderBrush="#365067"
                                  TextChanged="CustomHeightTextBox_OnTextChanged" />
                         <TextBlock x:Name="BarHeightHintTextBlock"
                                    Margin="0,8,0,0"
@@ -181,12 +449,8 @@
                               Grid.Column="1"
                               Margin="0,0,0,18"
                               MinWidth="240"
-                              Padding="10,6"
                               DisplayMemberPath="DisplayName"
                               SelectedValuePath="DeviceName"
-                              Foreground="#F5F7FA"
-                              Background="#1A2431"
-                              BorderBrush="#365067"
                               SelectionChanged="TaskbarMonitorComboBox_OnSelectionChanged" />
 
                     <TextBlock Grid.Row="1"
@@ -203,10 +467,6 @@
                         <TextBox x:Name="TaskbarMaximumWidthTextBox"
                                  MinWidth="240"
                                  MaxWidth="240"
-                                 Padding="10,6"
-                                 Foreground="#F5F7FA"
-                                 Background="#1A2431"
-                                 BorderBrush="#365067"
                                  TextChanged="TaskbarMaximumWidthTextBox_OnTextChanged" />
                         <TextBlock x:Name="TaskbarMaximumWidthHintTextBlock"
                                    Margin="0,8,0,0"
@@ -214,6 +474,72 @@
                                    FontSize="12"
                                    Text="Leave empty to use the default taskbar width cap." />
                     </StackPanel>
+                </Grid>
+            </TabItem>
+
+            <TabItem Header="Detected Apps">
+                <Grid Margin="22">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Grid.Row="0"
+                               Margin="0,0,0,10"
+                               Foreground="#E5EDF5"
+                               FontSize="16"
+                               FontWeight="SemiBold"
+                               Text="Media app ignore rules" />
+
+                    <TextBlock Grid.Row="1"
+                               Margin="0,0,0,18"
+                               Foreground="#9DB1C4"
+                               TextWrapping="Wrap"
+                               Text="Lyrictified remembers apps that expose media sessions. Enable ignore for apps you never want to drive lyrics, like web browsers or background players." />
+
+                    <Grid Grid.Row="2">
+                        <TextBlock x:Name="DetectedAppsEmptyStateTextBlock"
+                                   VerticalAlignment="Top"
+                                   Foreground="#9DB1C4"
+                                   Text="No media apps detected yet. Start playback in an app and reopen this tab." />
+
+                        <ListBox x:Name="DetectedAppsListBox"
+                                 Visibility="Collapsed"
+                                 BorderThickness="0"
+                                 Background="Transparent"
+                                 SelectionMode="Single"
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock FontSize="14"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="#F5F7FA"
+                                                       Text="{Binding DisplayName}" />
+                                            <TextBlock Margin="0,4,0,0"
+                                                       Foreground="#9DB1C4"
+                                                       Text="{Binding AppId}" />
+                                        </StackPanel>
+
+                                        <CheckBox Grid.Column="1"
+                                                  Margin="20,0,0,0"
+                                                  VerticalAlignment="Center"
+                                                  Content="Ignore"
+                                                  IsChecked="{Binding IsIgnored}"
+                                                  Checked="DetectedAppIgnoreCheckBox_OnChanged"
+                                                  Unchecked="DetectedAppIgnoreCheckBox_OnChanged" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
                 </Grid>
             </TabItem>
         </TabControl>

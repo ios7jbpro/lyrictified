@@ -448,6 +448,8 @@ public partial class TaskbarWindow : Window
             return;
         }
 
+        _settings = _appSettingsService.Load();
+
         var monitors = _appBarManager.Monitors
             .Select((monitor, index) => new MonitorOption(
                 monitor.DeviceName,
@@ -461,15 +463,9 @@ public partial class TaskbarWindow : Window
 
     private void SettingsWindow_OnSettingsChanged(object? sender, AppSettings settings)
     {
-        _settings.DisplayMode = settings.DisplayMode;
-        _settings.HideMode = settings.HideMode;
-        _settings.ShowNextLine = settings.ShowNextLine;
-        _settings.AppBarPreferredMonitorDeviceName = settings.AppBarPreferredMonitorDeviceName;
-        _settings.TaskbarPreferredMonitorDeviceName = settings.TaskbarPreferredMonitorDeviceName;
-        _settings.CustomBarHeight = settings.CustomBarHeight;
-        _settings.TaskbarMaximumWidth = settings.TaskbarMaximumWidth;
-        _settings.PreferredMonitorDeviceName = null;
+        _settings = MergeSettings(settings);
         _appSettingsService.Save(_settings);
+        _viewModel.UpdateSettings(_settings);
 
         if (_settings.DisplayMode != DisplayMode.Taskbar)
         {
@@ -492,6 +488,91 @@ public partial class TaskbarWindow : Window
         PositionWindow();
         RefreshSettingsWindowOptions();
         ApplyAppearance();
+    }
+
+    private AppSettings MergeSettings(AppSettings incomingSettings)
+    {
+        var persistedSettings = _appSettingsService.Load();
+        persistedSettings.DisplayMode = incomingSettings.DisplayMode;
+        persistedSettings.HideMode = incomingSettings.HideMode;
+        persistedSettings.ShowNextLine = incomingSettings.ShowNextLine;
+        persistedSettings.AppBarPreferredMonitorDeviceName = incomingSettings.AppBarPreferredMonitorDeviceName;
+        persistedSettings.TaskbarPreferredMonitorDeviceName = incomingSettings.TaskbarPreferredMonitorDeviceName;
+        persistedSettings.CustomBarHeight = incomingSettings.CustomBarHeight;
+        persistedSettings.TaskbarMaximumWidth = incomingSettings.TaskbarMaximumWidth;
+        persistedSettings.PreferredMonitorDeviceName = null;
+        persistedSettings.DetectedMediaApps = MergeDetectedApps(
+            incomingSettings.DetectedMediaApps,
+            persistedSettings.DetectedMediaApps);
+        persistedSettings.IgnoredMediaAppIds = MergeIgnoredMediaAppIds(
+            incomingSettings.IgnoredMediaAppIds,
+            incomingSettings.DetectedMediaApps,
+            persistedSettings.IgnoredMediaAppIds,
+            persistedSettings.DetectedMediaApps);
+        return persistedSettings;
+    }
+
+    private static List<DetectedMediaApp> MergeDetectedApps(
+        IEnumerable<DetectedMediaApp> primaryApps,
+        IEnumerable<DetectedMediaApp> secondaryApps)
+    {
+        var mergedApps = new Dictionary<string, DetectedMediaApp>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var app in primaryApps.Concat(secondaryApps))
+        {
+            if (string.IsNullOrWhiteSpace(app.AppId))
+            {
+                continue;
+            }
+
+            if (!mergedApps.TryGetValue(app.AppId, out var existingApp)
+                || string.IsNullOrWhiteSpace(existingApp.DisplayName))
+            {
+                mergedApps[app.AppId] = new DetectedMediaApp(
+                    app.AppId,
+                    string.IsNullOrWhiteSpace(app.DisplayName) ? app.AppId : app.DisplayName);
+            }
+        }
+
+        return mergedApps.Values
+            .OrderBy(app => app.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(app => app.AppId, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static List<string> MergeIgnoredMediaAppIds(
+        IEnumerable<string> primaryIgnoredIds,
+        IEnumerable<DetectedMediaApp> primaryDetectedApps,
+        IEnumerable<string> secondaryIgnoredIds,
+        IEnumerable<DetectedMediaApp> secondaryDetectedApps)
+    {
+        var primaryDetectedIds = new HashSet<string>(
+            primaryDetectedApps
+                .Where(app => !string.IsNullOrWhiteSpace(app.AppId))
+                .Select(app => app.AppId),
+            StringComparer.OrdinalIgnoreCase);
+        var mergedIgnoredIds = new HashSet<string>(
+            primaryIgnoredIds.Where(appId => !string.IsNullOrWhiteSpace(appId)),
+            StringComparer.OrdinalIgnoreCase);
+
+        foreach (var appId in secondaryIgnoredIds.Where(appId => !string.IsNullOrWhiteSpace(appId)))
+        {
+            if (!primaryDetectedIds.Contains(appId))
+            {
+                mergedIgnoredIds.Add(appId);
+            }
+        }
+
+        var knownDetectedIds = new HashSet<string>(
+            primaryDetectedIds.Concat(secondaryDetectedApps
+                .Where(app => !string.IsNullOrWhiteSpace(app.AppId))
+                .Select(app => app.AppId)),
+            StringComparer.OrdinalIgnoreCase);
+
+        return mergedIgnoredIds
+            .Where(knownDetectedIds.Contains)
+            .OrderBy(appId => appId, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     private bool IsSettingsWindowVisible()

@@ -17,4 +17,8 @@ public sealed class AppSettings
     public int? CustomBarHeight { get; set; }
 
     public int? TaskbarMaximumWidth { get; set; }
+
+    public List<DetectedMediaApp> DetectedMediaApps { get; set; } = new();
+
+    public List<string> IgnoredMediaAppIds { get; set; } = new();
 }

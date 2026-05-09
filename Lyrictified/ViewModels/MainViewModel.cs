@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using System.Windows.Threading;
 using Lyrictified.Models;
 using Lyrictified.Services;
+using Lyrictified.Settings;
 
 namespace Lyrictified.ViewModels;
 
@@ -19,6 +20,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private readonly DispatcherTimer _timer;
     private readonly Stopwatch _playbackClock = new();
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
+    private readonly AppSettingsService _appSettingsService = new();
 
     private IReadOnlyList<LyricLine> _lyrics = Array.Empty<LyricLine>();
     private CancellationTokenSource? _lyricsLoadCts;
@@ -46,6 +48,10 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         };
         _timer.Tick += OnTimerTick;
         _mediaSessionWatcher.SongChanged += OnSongChanged;
+        _mediaSessionWatcher.DetectedApp += OnDetectedApp;
+
+        var settings = _appSettingsService.Load();
+        _mediaSessionWatcher.UpdateIgnoredAppIds(settings.IgnoredMediaAppIds);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -113,6 +119,11 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             Debug.WriteLine($"MainViewModel.InitializeAsync failed: {ex}");
             ApplyFatalFallbackState("Unable to initialize media session.");
         }
+    }
+
+    public void UpdateSettings(AppSettings settings)
+    {
+        _mediaSessionWatcher.UpdateIgnoredAppIds(settings.IgnoredMediaAppIds);
     }
 
     private async void OnSongChanged(object? sender, SongInfo? song)
@@ -217,6 +228,34 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         {
             Debug.WriteLine($"MainViewModel.HandleSongAsync failed: {ex}");
             ApplySongFallbackState(song, "Unable to switch songs.");
+        }
+    }
+
+    private void OnDetectedApp(object? sender, DetectedMediaAppInfo appInfo)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(appInfo.AppId))
+            {
+                return;
+            }
+
+            var settings = _appSettingsService.Load();
+            if (settings.DetectedMediaApps.Any(app => string.Equals(app.AppId, appInfo.AppId, StringComparison.OrdinalIgnoreCase)))
+            {
+                return;
+            }
+
+            settings.DetectedMediaApps.Add(new DetectedMediaApp(appInfo.AppId, appInfo.DisplayName));
+            settings.DetectedMediaApps = settings.DetectedMediaApps
+                .OrderBy(app => app.DisplayName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(app => app.AppId, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            _appSettingsService.Save(settings);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"MainViewModel.OnDetectedApp failed: {ex}");
         }
     }
 
@@ -498,6 +537,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         _timer.Stop();
         _timer.Tick -= OnTimerTick;
         _mediaSessionWatcher.SongChanged -= OnSongChanged;
+        _mediaSessionWatcher.DetectedApp -= OnDetectedApp;
         CancelLyricsLoad();
         _refreshGate.Dispose();
         _mediaSessionWatcher.Dispose();
