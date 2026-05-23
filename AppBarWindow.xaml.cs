@@ -572,10 +572,10 @@ public partial class AppBarWindow : Window
 
         if (_viewModel.IsLoadingLyrics)
         {
-            _displayedLyricText = newCurrentLine;
+            _displayedLyricText = string.Empty;
             StopWordAnim();
             IncomingLyricTextBlock.Inlines.Clear();
-            IncomingLyricTextBlock.Text = newCurrentLine;
+            IncomingLyricTextBlock.Text = string.Empty;
             OutgoingLyricTextBlock.Text = string.Empty;
             PreviewLyricTextBlock.Text = string.Empty;
             return;

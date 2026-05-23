@@ -271,9 +271,9 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 }
 
                 NoTimedLyricsFound = false;
+                IsLoadingLyrics = false;
                 await ReanchorPlaybackAsync(song.IsPlaying);
                 await UpdateCurrentLineAsync();
-                IsLoadingLyrics = false;
             }
             catch (OperationCanceledException)
             {
