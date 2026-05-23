@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using Lyrictified.DisplayModes;
@@ -46,6 +47,7 @@ public partial class SettingsWindow : Window
             };
             ShowAlbumArtComboBox.SelectedIndex = settings.ShowAlbumArt ? 0 : 1;
             WordByWordComboBox.SelectedIndex = settings.WordByWordMode ? 1 : 0;
+            MaxCacheSizeTextBox.Text = settings.MaxCacheSize.ToString();
             TaskbarMaximumWidthTextBox.Text = settings.TaskbarMaximumWidth?.ToString() ?? string.Empty;
             LoadDetectedApps(settings);
 
@@ -160,6 +162,7 @@ public partial class SettingsWindow : Window
             },
             ShowAlbumArt = ShowAlbumArtComboBox.SelectedIndex == 0,
             WordByWordMode = WordByWordComboBox.SelectedIndex == 1,
+            MaxCacheSize = ParseMaxCacheSize(),
             DetectedMediaApps = _detectedApps
                 .Select(app => new DetectedMediaApp(app.AppId, app.DisplayName))
                 .ToList(),
@@ -190,6 +193,42 @@ public partial class SettingsWindow : Window
         }
 
         return int.TryParse(TaskbarMaximumWidthTextBox.Text, out var parsedWidth) ? parsedWidth : null;
+    }
+
+    private int ParseMaxCacheSize()
+    {
+        if (int.TryParse(MaxCacheSizeTextBox.Text, out var parsed) && parsed >= 0)
+        {
+            return parsed;
+        }
+
+        return 25;
+    }
+
+    private void MaxCacheSizeTextBox_PreviewTextInput(object sender, TextCompositionEventArgs e)
+    {
+        e.Handled = !int.TryParse(e.Text, out _);
+    }
+
+    private void MaxCacheSizeTextBox_Pasting(object sender, DataObjectPastingEventArgs e)
+    {
+        if (e.DataObject.GetDataPresent(typeof(string)))
+        {
+            var text = (string)e.DataObject.GetData(typeof(string));
+            if (!int.TryParse(text, out _))
+            {
+                e.CancelCommand();
+            }
+        }
+        else
+        {
+            e.CancelCommand();
+        }
+    }
+
+    private void MaxCacheSizeTextBox_OnTextChanged(object sender, TextChangedEventArgs e)
+    {
+        RaiseSettingsChanged();
     }
 
     private void UpdateBarHeightHint()

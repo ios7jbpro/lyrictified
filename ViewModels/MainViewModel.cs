@@ -61,6 +61,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         var settings = _appSettingsService.Load();
         _wordByWordMode = settings.WordByWordMode;
         _mediaSessionWatcher.UpdateIgnoredAppIds(settings.IgnoredMediaAppIds);
+        _lyricsService.SetMaxCacheSize(settings.MaxCacheSize);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -176,6 +177,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         _wordByWordMode = settings.WordByWordMode;
         _mediaSessionWatcher.UpdateIgnoredAppIds(settings.IgnoredMediaAppIds);
+        _lyricsService.SetMaxCacheSize(settings.MaxCacheSize);
     }
 
     private async void OnSongChanged(object? sender, SongInfo? song)

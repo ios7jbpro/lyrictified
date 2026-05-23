@@ -266,6 +266,32 @@
                                     </ComboBox>
                                 </StackPanel>
                             </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel>
+                                    <TextBlock Text="Lyrics Cache" Style="{StaticResource SectionTitleStyle}" />
+                                    <TextBlock Text="Cache lyrics locally for instant loading on repeat plays. Set to 0 to disable." Style="{StaticResource LabelStyle}" />
+                                    <Grid Margin="0,8,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBox x:Name="MaxCacheSizeTextBox"
+                                                 Grid.Column="0"
+                                                 Width="80"
+                                                 VerticalAlignment="Center"
+                                                 TextAlignment="Center"
+                                                 MaxLength="3"
+                                                 PreviewTextInput="MaxCacheSizeTextBox_PreviewTextInput"
+                                                 DataObject.Pasting="MaxCacheSizeTextBox_Pasting"
+                                                 TextChanged="MaxCacheSizeTextBox_OnTextChanged" />
+                                        <TextBlock Grid.Column="1"
+                                                   Text="songs max"
+                                                   VerticalAlignment="Center"
+                                                   Margin="8,0,0,0"
+                                                   Style="{StaticResource LabelStyle}" />
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
                     </ScrollViewer>
                 </TabItem>
