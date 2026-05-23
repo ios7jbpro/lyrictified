@@ -274,8 +274,6 @@ public partial class AppBarWindow : Window
         AnimateBorderVisibility(isBlackout);
         if (!_viewModel.IsLoadingLyrics)
         {
-            StatusTextBlock.Foreground = new SolidColorBrush(Color.FromRgb(201, 216, 229));
-            HelperStatusTextBlock.Foreground = new SolidColorBrush(Color.FromRgb(231, 198, 91));
             IncomingLyricTextBlock.Foreground = new SolidColorBrush(Color.FromRgb(245, 247, 250));
             OutgoingLyricTextBlock.Foreground = new SolidColorBrush(Color.FromRgb(245, 247, 250));
             PreviewLyricTextBlock.Foreground = PreviewLyricBrush;
@@ -286,7 +284,6 @@ public partial class AppBarWindow : Window
     {
         var enabled = IsPreviewModeEnabled;
         var effectiveHeight = GetEffectiveBarHeight(enabled);
-        StatusPanel.Visibility = enabled ? Visibility.Collapsed : Visibility.Visible;
         LyricStage.Height = GetLyricStageHeight(enabled, effectiveHeight);
         PreviewLyricTextBlock.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
         PreviewLyricTextBlock.Text = _displayedNextLineText;
@@ -342,9 +339,6 @@ public partial class AppBarWindow : Window
 
     private void UpdateAlbumArtAndCredit()
     {
-        SongTitleTextBlock.Text = _viewModel.SongTitle;
-        SongArtistTextBlock.Text = _viewModel.SongArtist;
-
         var albumArtData = _viewModel.AlbumArt;
         if (albumArtData is not null && albumArtData.Length > 0)
         {
@@ -406,25 +400,16 @@ public partial class AppBarWindow : Window
             var scaleFactor = (double)effectiveHeight / autoHeight;
             scaleFactor = Math.Max(scaleFactor, 0.4);
 
-            var artSize = Math.Max(32, 64 * scaleFactor);
+            var artSize = Math.Max(32, 76 * scaleFactor);
             AlbumArtBorder.Width = artSize;
             AlbumArtBorder.Height = artSize;
-            SongCreditPanel.Visibility = effectiveHeight < 50 ? Visibility.Collapsed : Visibility.Visible;
-
-            var isCompact = effectiveHeight < 70;
-
-            SongTitleTextBlock.FontSize = isCompact ? 11 : 13;
-            SongArtistTextBlock.FontSize = isCompact ? 9 : 11;
 
             LyricsContentPanel.LayoutTransform = new ScaleTransform(scaleFactor, scaleFactor);
         }
         else
         {
-            AlbumArtBorder.Width = 64;
-            AlbumArtBorder.Height = 64;
-            SongCreditPanel.Visibility = Visibility.Visible;
-            SongTitleTextBlock.FontSize = 13;
-            SongArtistTextBlock.FontSize = 11;
+            AlbumArtBorder.Width = 76;
+            AlbumArtBorder.Height = 76;
             LyricsContentPanel.LayoutTransform = null;
         }
 
@@ -575,34 +560,34 @@ public partial class AppBarWindow : Window
         {
             From = OutgoingLyricTextBlock.Opacity,
             To = 0,
-            Duration = TimeSpan.FromMilliseconds(170),
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
+            Duration = TimeSpan.FromMilliseconds(220),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
         };
 
         var slideOut = new DoubleAnimation
         {
             From = 0,
-            To = -8,
-            Duration = TimeSpan.FromMilliseconds(170),
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
+            To = -14,
+            Duration = TimeSpan.FromMilliseconds(220),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
         };
 
         var fadeIn = new DoubleAnimation
         {
             From = 0,
             To = 1,
-            BeginTime = TimeSpan.FromMilliseconds(60),
-            Duration = TimeSpan.FromMilliseconds(210),
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+            BeginTime = TimeSpan.FromMilliseconds(80),
+            Duration = TimeSpan.FromMilliseconds(280),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         };
 
         var slideIn = new DoubleAnimation
         {
             From = GetSingleLineStartY(),
             To = 0,
-            BeginTime = TimeSpan.FromMilliseconds(60),
-            Duration = TimeSpan.FromMilliseconds(240),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            BeginTime = TimeSpan.FromMilliseconds(80),
+            Duration = TimeSpan.FromMilliseconds(320),
+            EasingFunction = new QuarticEase { EasingMode = EasingMode.EaseOut }
         };
 
         OutgoingLyricTextBlock.BeginAnimation(OpacityProperty, fadeOut);
@@ -646,51 +631,51 @@ public partial class AppBarWindow : Window
         {
             From = OutgoingLyricTextBlock.Opacity,
             To = 0,
-            Duration = TimeSpan.FromMilliseconds(190),
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
+            Duration = TimeSpan.FromMilliseconds(240),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
         };
 
         var slideOut = new DoubleAnimation
         {
             From = 0,
-            To = -12,
-            Duration = TimeSpan.FromMilliseconds(190),
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
+            To = -16,
+            Duration = TimeSpan.FromMilliseconds(240),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
         };
 
         var promoteOpacity = new DoubleAnimation
         {
             From = canPromotePreview ? AppBarDisplayMode.PreviewLyricOpacity : 0,
             To = string.IsNullOrWhiteSpace(newCurrentLine) ? 0 : 1,
-            BeginTime = TimeSpan.FromMilliseconds(40),
-            Duration = TimeSpan.FromMilliseconds(260),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            BeginTime = TimeSpan.FromMilliseconds(60),
+            Duration = TimeSpan.FromMilliseconds(320),
+            EasingFunction = new QuarticEase { EasingMode = EasingMode.EaseOut }
         };
 
         var promoteSlide = new DoubleAnimation
         {
             From = canPromotePreview ? AppBarDisplayMode.PreviewPromoteStartY : AppBarDisplayMode.IncomingPromoteStartY,
             To = 0,
-            BeginTime = TimeSpan.FromMilliseconds(40),
-            Duration = TimeSpan.FromMilliseconds(300),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            BeginTime = TimeSpan.FromMilliseconds(60),
+            Duration = TimeSpan.FromMilliseconds(380),
+            EasingFunction = new QuarticEase { EasingMode = EasingMode.EaseOut }
         };
 
         var promoteSize = new DoubleAnimation
         {
             From = canPromotePreview ? AppBarDisplayMode.PreviewLyricFontSize : 24,
             To = AppBarDisplayMode.CurrentLyricFontSize,
-            BeginTime = TimeSpan.FromMilliseconds(40),
-            Duration = TimeSpan.FromMilliseconds(300),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+            BeginTime = TimeSpan.FromMilliseconds(60),
+            Duration = TimeSpan.FromMilliseconds(380),
+            EasingFunction = new QuarticEase { EasingMode = EasingMode.EaseOut }
         };
 
         var previewFadeOut = new DoubleAnimation
         {
             From = canPromotePreview ? AppBarDisplayMode.PreviewLyricOpacity : PreviewLyricTextBlock.Opacity,
             To = 0,
-            Duration = TimeSpan.FromMilliseconds(180),
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
+            Duration = TimeSpan.FromMilliseconds(220),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
         };
 
         var completeAnimation = newCurrentLine;
@@ -729,16 +714,16 @@ public partial class AppBarWindow : Window
         {
             From = 0,
             To = string.IsNullOrWhiteSpace(newNextLine) ? 0 : AppBarDisplayMode.PreviewLyricOpacity,
-            Duration = TimeSpan.FromMilliseconds(240),
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+            Duration = TimeSpan.FromMilliseconds(300),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         };
 
         var slideAnimation = new DoubleAnimation
         {
             From = AppBarDisplayMode.PreviewEnterY,
             To = AppBarDisplayMode.PreviewRestY,
-            Duration = TimeSpan.FromMilliseconds(240),
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+            Duration = TimeSpan.FromMilliseconds(300),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
         };
 
         PreviewLyricTextBlock.BeginAnimation(OpacityProperty, opacityAnimation);
@@ -853,8 +838,6 @@ public partial class AppBarWindow : Window
         if (isLoading)
         {
             EndNoLyricsHideDeferral("loading started");
-            StatusTextBlock.Foreground = LoadingTextBrush;
-            HelperStatusTextBlock.Foreground = LoadingTextBrush;
             IncomingLyricTextBlock.Foreground = LoadingTextBrush;
             OutgoingLyricTextBlock.Foreground = LoadingTextBrush;
             PreviewLyricTextBlock.Foreground = LoadingTextBrush;
@@ -924,22 +907,10 @@ public partial class AppBarWindow : Window
         IncomingLyricTextBlock.BeginAnimation(OpacityProperty, null);
         IncomingLyricTranslateTransform.BeginAnimation(TranslateTransform.XProperty, null);
         IncomingLyricTranslateTransform.BeginAnimation(TranslateTransform.YProperty, null);
-        StatusPanel.BeginAnimation(OpacityProperty, null);
 
         OutgoingLyricTextBlock.Opacity = 0;
         OutgoingLyricTextBlock.Text = string.Empty;
         OutgoingLyricTranslateTransform.Y = 0;
-
-        if (!_settings.ShowNextLine)
-        {
-            var statusFadeOut = new DoubleAnimation
-            {
-                To = 0,
-                Duration = TimeSpan.FromMilliseconds(120),
-                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
-            };
-            StatusPanel.BeginAnimation(OpacityProperty, statusFadeOut);
-        }
 
         IncomingLyricTextBlock.Text = _displayedLyricText;
         IncomingLyricTextBlock.Opacity = string.IsNullOrWhiteSpace(_displayedLyricText) ? 0 : 1;
@@ -998,8 +969,6 @@ public partial class AppBarWindow : Window
             IncomingLyricTextBlock.Text = string.Empty;
             IncomingLyricTextBlock.Opacity = 0;
                     IncomingLyricTranslateTransform.X = 0;
-                    StatusPanel.BeginAnimation(OpacityProperty, null);
-                    StatusPanel.Opacity = 1;
                     _isNotFoundAnimationRunning = false;
                     EndNoLyricsHideDeferral("animation completed");
                     ApplyHideModeState();
