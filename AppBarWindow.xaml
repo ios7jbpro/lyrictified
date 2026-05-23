@@ -51,8 +51,8 @@
                         VerticalAlignment="Center"
                         Margin="0,0,14,0">
                 <Border x:Name="AlbumArtBorder"
-                        Width="64"
-                        Height="64"
+                        Width="76"
+                        Height="76"
                         CornerRadius="8"
                         ClipToBounds="True"
                         Background="#1A2431"
@@ -62,26 +62,9 @@
                            Stretch="UniformToFill"
                            RenderOptions.BitmapScalingMode="HighQuality" />
                 </Border>
-                <StackPanel x:Name="SongCreditPanel"
-                            VerticalAlignment="Center"
-                            Margin="10,0,0,0">
-                    <TextBlock x:Name="SongTitleTextBlock"
-                               Foreground="#F5F7FA"
-                               FontSize="13"
-                               FontWeight="SemiBold"
-                               TextTrimming="CharacterEllipsis"
-                               MaxWidth="180" />
-                    <TextBlock x:Name="SongArtistTextBlock"
-                               Foreground="#9DB1C4"
-                               FontSize="11"
-                               FontWeight="Medium"
-                               TextTrimming="CharacterEllipsis"
-                               MaxWidth="180" />
-                </StackPanel>
             </StackPanel>
             <Grid Grid.Column="1"
-                  VerticalAlignment="Center"
-                  ClipToBounds="True">
+                  VerticalAlignment="Center">
                 <Image x:Name="PauseIcon"
                        Width="28"
                        Height="28"
@@ -98,32 +81,15 @@
                     <StackPanel.RenderTransform>
                         <TranslateTransform x:Name="LyricsContentTranslateTransform" X="0" />
                     </StackPanel.RenderTransform>
-                    <StackPanel x:Name="StatusPanel"
-                                Orientation="Horizontal"
-                                Margin="0,0,0,4">
-                        <TextBlock x:Name="StatusTextBlock"
-                                   Text="{Binding StatusText}"
-                                   Foreground="#C9D8E5"
-                                   FontSize="13"
-                                   FontWeight="Medium"
-                                   VerticalAlignment="Center" />
-                        <TextBlock x:Name="HelperStatusTextBlock"
-                                   Text="{Binding HelperStatusHint}"
-                                   Foreground="#E7C65B"
-                                   FontSize="13"
-                                   FontWeight="SemiBold"
-                                   Margin="10,0,0,0"
-                                   VerticalAlignment="Center" />
-                    </StackPanel>
                     <Grid x:Name="LyricStage"
-                          Height="76"
                           ClipToBounds="True">
                         <TextBlock x:Name="OutgoingLyricTextBlock"
                                    Foreground="#F5F7FA"
                                    FontSize="30"
                                    FontWeight="SemiBold"
                                    TextTrimming="CharacterEllipsis"
-                                   Opacity="0">
+                                   Opacity="0"
+                                   Margin="0,0,0,6">
                             <TextBlock.RenderTransform>
                                 <TranslateTransform x:Name="OutgoingLyricTranslateTransform" Y="0" />
                             </TextBlock.RenderTransform>
@@ -133,13 +99,14 @@
                                    FontSize="30"
                                    FontWeight="SemiBold"
                                    TextTrimming="CharacterEllipsis"
-                                   Opacity="1">
+                                   Opacity="1"
+                                   Margin="0,0,0,6">
                             <TextBlock.RenderTransform>
                                 <TranslateTransform x:Name="IncomingLyricTranslateTransform" Y="0" />
                             </TextBlock.RenderTransform>
                         </TextBlock>
                         <TextBlock x:Name="PreviewLyricTextBlock"
-                                   Margin="0,42,0,0"
+                                   Margin="0,42,0,6"
                                    Foreground="#F5F7FA"
                                    FontSize="18"
                                    FontWeight="SemiBold"
