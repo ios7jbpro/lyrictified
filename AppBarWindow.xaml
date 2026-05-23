@@ -24,14 +24,15 @@ CornerRadius="0"
         <Border.RenderTransform>
             <ScaleTransform x:Name="SurfaceScaleTransform" ScaleX="1" ScaleY="1" />
         </Border.RenderTransform>
-        <Grid>
+        <Grid x:Name="MainGrid">
             <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <Border x:Name="MonitorWarningBanner"
-                    Grid.ColumnSpan="3"
+                    Grid.ColumnSpan="4"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Top"
                     Margin="0,0,0,8"
@@ -49,11 +50,28 @@ CornerRadius="0"
                            FontSize="13"
                            FontWeight="SemiBold" />
             </Border>
+<Border x:Name="PauseSpacer"
+                     Grid.Column="0"
+                     Width="0"
+                     VerticalAlignment="Stretch" />
+<Image x:Name="PauseIcon"
+                   Grid.ColumnSpan="4"
+                   Width="28"
+                   Height="28"
+                   Margin="0,0,14,0"
+                   HorizontalAlignment="Left"
+                   VerticalAlignment="Center"
+                   Opacity="0"
+                   Source="Assets/pause.png"
+                   Stretch="Uniform"
+                   Visibility="Collapsed"
+                   IsHitTestVisible="False"
+                   Panel.ZIndex="3" />
 <StackPanel x:Name="AlbumArtPanel"
-                        Grid.Column="0"
-                        Orientation="Horizontal"
-                        VerticalAlignment="Center"
-                        Margin="0,0,14,0">
+                         Grid.Column="1"
+                         Orientation="Horizontal"
+                         VerticalAlignment="Center"
+                         Margin="0,0,14,0">
                 <Border x:Name="AlbumArtBorder"
                         Width="56"
                         Height="56"
@@ -62,7 +80,7 @@ CornerRadius="0"
                         Background="#1A2431"
                         BorderBrush="#365067"
                         BorderThickness="1">
-<Grid x:Name="MainGrid">
+<Grid>
                         <Image x:Name="AlbumArtImage"
                                Stretch="UniformToFill"
                                RenderOptions.BitmapScalingMode="HighQuality" />
@@ -105,20 +123,9 @@ CornerRadius="0"
                 </StackPanel>
             </StackPanel>
             <Grid x:Name="LyricsGrid"
-                  Grid.Column="1"
+                  Grid.Column="2"
                   VerticalAlignment="Center"
                   ClipToBounds="True">
-                <Image x:Name="PauseIcon"
-                       Width="28"
-                       Height="28"
-                       Margin="0,0,14,0"
-                       HorizontalAlignment="Left"
-                       VerticalAlignment="Center"
-                       Opacity="0"
-                       Source="Assets/pause.png"
-                       Stretch="Uniform"
-                       Visibility="Visible"
-                       IsHitTestVisible="False" />
                 <StackPanel x:Name="LyricsContentPanel"
                             VerticalAlignment="Center">
                     <StackPanel.RenderTransform>
@@ -185,7 +192,7 @@ CornerRadius="0"
             </Grid>
 
             <StackPanel x:Name="ControlButtonsPanel"
-                        Grid.Column="2"
+                        Grid.Column="3"
                         Orientation="Horizontal"
                         VerticalAlignment="Center"
                         Opacity="1">
@@ -232,7 +239,7 @@ CornerRadius="0"
             </StackPanel>
 
             <Border x:Name="ProgressBarTrack"
-                         Grid.ColumnSpan="3"
+                         Grid.ColumnSpan="4"
                          Height="3"
                          Background="#0A0E14"
                          CornerRadius="1"

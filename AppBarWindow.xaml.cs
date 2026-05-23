@@ -31,7 +31,7 @@ public partial class AppBarWindow : Window
     private static readonly WpfBrush BlackoutBrush = new SolidColorBrush(Colors.Black);
     private static readonly WpfBrush PreviewLyricBrush = new SolidColorBrush(MediaColor.FromRgb(245, 247, 250));
     private static readonly WpfBrush LoadingTextBrush = new SolidColorBrush(MediaColor.FromRgb(150, 156, 164));
-    private const double PauseShiftX = 42;
+    
     private readonly MainViewModel _viewModel;
     private readonly DispatcherTimer _controlsFadeTimer;
     private readonly DispatcherTimer _monitorWarningTimer;
@@ -484,18 +484,23 @@ public partial class AppBarWindow : Window
 
         var colDefs = MainGrid.ColumnDefinitions;
         colDefs.Clear();
-        colDefs.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) });
-        colDefs.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        colDefs.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) });
+        colDefs.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) }); // PauseSpacer
+        colDefs.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) }); // AlbumArt/Buttons
+        colDefs.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });  // Lyrics
+        colDefs.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) }); // Buttons/AlbumArt
+
+        Grid.SetColumn(PauseSpacer, 0);
+        Grid.SetColumn(PauseIcon, 0);
+        Grid.SetColumnSpan(PauseIcon, 4);
 
         switch (alignment)
         {
             case LyricAlignment.Left:
-                Grid.SetColumn(LyricsGrid, 0);
+                Grid.SetColumn(LyricsGrid, 1);
                 Grid.SetColumnSpan(LyricsGrid, 2);
-                Grid.SetColumn(AlbumArtPanel, 2);
+                Grid.SetColumn(AlbumArtPanel, 3);
                 AlbumArtPanel.HorizontalAlignment = System.Windows.HorizontalAlignment.Right;
-                Grid.SetColumn(ControlButtonsPanel, 2);
+                Grid.SetColumn(ControlButtonsPanel, 3);
                 ControlButtonsPanel.HorizontalAlignment = System.Windows.HorizontalAlignment.Right;
                 if (AlbumArtPanel.Children.IndexOf(AlbumArtBorder) < AlbumArtPanel.Children.IndexOf(SongCreditPanel))
                 {
@@ -510,11 +515,11 @@ public partial class AppBarWindow : Window
                 AlbumArtPanel.Margin = new Thickness(14, 0, 0, 0);
                 break;
             case LyricAlignment.Right:
-                Grid.SetColumn(ControlButtonsPanel, 0);
+                Grid.SetColumn(ControlButtonsPanel, 1);
                 ControlButtonsPanel.HorizontalAlignment = System.Windows.HorizontalAlignment.Left;
-                Grid.SetColumn(LyricsGrid, 1);
+                Grid.SetColumn(LyricsGrid, 2);
                 Grid.SetColumnSpan(LyricsGrid, 2);
-                Grid.SetColumn(AlbumArtPanel, 0);
+                Grid.SetColumn(AlbumArtPanel, 1);
                 AlbumArtPanel.HorizontalAlignment = System.Windows.HorizontalAlignment.Left;
                 if (AlbumArtPanel.Children.IndexOf(AlbumArtBorder) > AlbumArtPanel.Children.IndexOf(SongCreditPanel))
                 {
@@ -529,11 +534,11 @@ public partial class AppBarWindow : Window
                 AlbumArtPanel.Margin = new Thickness(0, 0, 14, 0);
                 break;
             default:
-                Grid.SetColumn(AlbumArtPanel, 0);
+                Grid.SetColumn(AlbumArtPanel, 1);
                 AlbumArtPanel.HorizontalAlignment = System.Windows.HorizontalAlignment.Left;
-                Grid.SetColumn(LyricsGrid, 1);
+                Grid.SetColumn(LyricsGrid, 2);
                 Grid.SetColumnSpan(LyricsGrid, 1);
-                Grid.SetColumn(ControlButtonsPanel, 2);
+                Grid.SetColumn(ControlButtonsPanel, 3);
                 ControlButtonsPanel.HorizontalAlignment = System.Windows.HorizontalAlignment.Right;
                 if (AlbumArtPanel.Children.IndexOf(AlbumArtBorder) > AlbumArtPanel.Children.IndexOf(SongCreditPanel))
                 {
@@ -1210,12 +1215,13 @@ public partial class AppBarWindow : Window
         }
 
         PauseIcon.BeginAnimation(OpacityProperty, null);
-        LyricsContentTranslateTransform.BeginAnimation(TranslateTransform.XProperty, null);
+        PauseSpacer.BeginAnimation(FrameworkElement.WidthProperty, null);
+        SurfaceBorder.BeginAnimation(Border.PaddingProperty, null);
 
-        var shiftAnimation = new DoubleAnimation
+        var spacerAnimation = new DoubleAnimation
         {
-            From = LyricsContentTranslateTransform.X,
-            To = isPaused ? PauseShiftX : 0,
+            From = PauseSpacer.ActualWidth,
+            To = isPaused ? 42 : 0,
             Duration = TimeSpan.FromMilliseconds(isPaused ? 260 : 150),
             EasingFunction = new CubicEase
             {
@@ -1235,17 +1241,26 @@ public partial class AppBarWindow : Window
             }
         };
 
-        shiftAnimation.Completed += (_, _) =>
+        spacerAnimation.Completed += (_, _) =>
         {
-            LyricsContentTranslateTransform.X = isPaused ? PauseShiftX : 0;
+            PauseSpacer.Width = isPaused ? 42 : 0;
         };
 
         iconAnimation.Completed += (_, _) =>
         {
             PauseIcon.Opacity = isPaused ? 1 : 0;
+            if (!isPaused)
+            {
+                PauseIcon.Visibility = Visibility.Collapsed;
+            }
         };
 
-        LyricsContentTranslateTransform.BeginAnimation(TranslateTransform.XProperty, shiftAnimation);
+        if (isPaused)
+        {
+            PauseIcon.Visibility = Visibility.Visible;
+        }
+
+        PauseSpacer.BeginAnimation(FrameworkElement.WidthProperty, spacerAnimation);
         PauseIcon.BeginAnimation(OpacityProperty, iconAnimation);
         _isPauseVisualActive = isPaused;
     }
@@ -1253,13 +1268,14 @@ public partial class AppBarWindow : Window
     private void ApplyPlaybackStateVisual(bool immediate)
     {
         _isPauseVisualActive = _viewModel.IsPlaybackPaused;
-        LyricsContentTranslateTransform.BeginAnimation(TranslateTransform.XProperty, null);
+        PauseSpacer.BeginAnimation(FrameworkElement.WidthProperty, null);
         PauseIcon.BeginAnimation(OpacityProperty, null);
 
         if (immediate)
         {
-            LyricsContentTranslateTransform.X = _isPauseVisualActive ? PauseShiftX : 0;
+            PauseSpacer.Width = _isPauseVisualActive ? 42 : 0;
             PauseIcon.Opacity = _isPauseVisualActive ? 1 : 0;
+            PauseIcon.Visibility = _isPauseVisualActive ? Visibility.Visible : Visibility.Collapsed;
             return;
         }
 
