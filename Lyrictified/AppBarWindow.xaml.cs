@@ -219,7 +219,8 @@ public partial class AppBarWindow : Window
 
         if (e.PropertyName == nameof(MainViewModel.AlbumArt)
             || e.PropertyName == nameof(MainViewModel.SongTitle)
-            || e.PropertyName == nameof(MainViewModel.SongArtist))
+            || e.PropertyName == nameof(MainViewModel.SongArtist)
+            || e.PropertyName == nameof(MainViewModel.StatusText))
         {
             if (Dispatcher.CheckAccess())
             {
@@ -339,6 +340,10 @@ public partial class AppBarWindow : Window
 
     private void UpdateAlbumArtAndCredit()
     {
+        SongTitleTextBlock.Text = _viewModel.SongTitle;
+        SongArtistTextBlock.Text = _viewModel.SongArtist;
+        SongTimestampTextBlock.Text = _viewModel.StatusText;
+
         var albumArtData = _viewModel.AlbumArt;
         if (albumArtData is not null && albumArtData.Length > 0)
         {
@@ -403,6 +408,12 @@ public partial class AppBarWindow : Window
             var artSize = Math.Max(32, 76 * scaleFactor);
             AlbumArtBorder.Width = artSize;
             AlbumArtBorder.Height = artSize;
+            SongCreditPanel.Visibility = effectiveHeight < 50 ? Visibility.Collapsed : Visibility.Visible;
+
+            var isCompact = effectiveHeight < 70;
+            SongTitleTextBlock.FontSize = isCompact ? 11 : 13;
+            SongArtistTextBlock.FontSize = isCompact ? 9 : 11;
+            SongTimestampTextBlock.FontSize = isCompact ? 8 : 10;
 
             LyricsContentPanel.LayoutTransform = new ScaleTransform(scaleFactor, scaleFactor);
         }
@@ -410,6 +421,10 @@ public partial class AppBarWindow : Window
         {
             AlbumArtBorder.Width = 76;
             AlbumArtBorder.Height = 76;
+            SongCreditPanel.Visibility = Visibility.Visible;
+            SongTitleTextBlock.FontSize = 13;
+            SongArtistTextBlock.FontSize = 11;
+            SongTimestampTextBlock.FontSize = 10;
             LyricsContentPanel.LayoutTransform = null;
         }
 

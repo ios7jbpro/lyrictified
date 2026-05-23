@@ -62,6 +62,28 @@
                            Stretch="UniformToFill"
                            RenderOptions.BitmapScalingMode="HighQuality" />
                 </Border>
+                <StackPanel x:Name="SongCreditPanel"
+                            VerticalAlignment="Center"
+                            Margin="10,0,0,0">
+                    <TextBlock x:Name="SongTitleTextBlock"
+                               Foreground="#F5F7FA"
+                               FontSize="13"
+                               FontWeight="SemiBold"
+                               TextTrimming="CharacterEllipsis"
+                               MaxWidth="180" />
+                    <TextBlock x:Name="SongArtistTextBlock"
+                               Foreground="#9DB1C4"
+                               FontSize="11"
+                               FontWeight="Medium"
+                               TextTrimming="CharacterEllipsis"
+                               MaxWidth="180" />
+                    <TextBlock x:Name="SongTimestampTextBlock"
+                               Foreground="#7A8FA3"
+                               FontSize="10"
+                               FontWeight="Medium"
+                               TextTrimming="CharacterEllipsis"
+                               MaxWidth="180" />
+                </StackPanel>
             </StackPanel>
             <Grid Grid.Column="1"
                   VerticalAlignment="Center">
