@@ -45,6 +45,7 @@ public partial class AppBarWindow : Window
     private bool _controlsVisible = true;
     private bool _isPointerOverWindow;
     private SettingsWindow? _settingsWindow;
+    private byte[]? _lastAlbumArtData;
     private bool IsPreviewModeEnabled => _settings.ShowNextLine;
 
     public AppBarWindow()
@@ -361,8 +362,19 @@ public partial class AppBarWindow : Window
         SongTitleTextBlock.Text = _viewModel.SongTitle;
         SongArtistTextBlock.Text = _viewModel.SongArtist;
         SongTimestampTextBlock.Text = FormatTimestamp(_viewModel.StatusText);
-        AnimateAlbumArtTransition(_viewModel.AlbumArt);
-        AlbumArtPanel.Visibility = _settings.ShowAlbumArt ? Visibility.Visible : Visibility.Collapsed;
+
+        var newArt = _viewModel.AlbumArt;
+        var artChanged = !ReferenceEquals(newArt, _lastAlbumArtData);
+        if (artChanged)
+        {
+            _lastAlbumArtData = newArt;
+            AnimateAlbumArtTransition(newArt);
+        }
+
+        if (!artChanged)
+        {
+            AlbumArtPanel.Visibility = _settings.ShowAlbumArt ? Visibility.Visible : Visibility.Collapsed;
+        }
     }
 
     private static string FormatTimestamp(string statusText)
@@ -1154,65 +1166,44 @@ public partial class AppBarWindow : Window
 
     private void UpdateHoverEffect(bool isHovering)
     {
-        SurfaceBorder.BeginAnimation(Border.BorderBrushProperty, null);
-        SurfaceBorder.BeginAnimation(Border.BackgroundProperty, null);
+        var targetBgColor = isHovering ? Color.FromArgb(140, 16, 26, 37) : Color.FromArgb(102, 16, 26, 37);
+        var targetBorderColor = isHovering ? Color.FromArgb(160, 48, 70, 92) : Color.FromArgb(138, 48, 70, 92);
+        var duration = isHovering ? 150 : 250;
 
-        if (isHovering)
+        if (SurfaceBorder.Background is SolidColorBrush bgBrush && bgBrush.Color.A > 0)
         {
-            var bgAnimation = new ColorAnimation
+            bgBrush.BeginAnimation(SolidColorBrush.ColorProperty, null);
+            var bgAnim = new ColorAnimation
             {
-                To = Color.FromArgb(140, 16, 26, 37),
-                Duration = TimeSpan.FromMilliseconds(150),
-                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+                To = targetBgColor,
+                Duration = TimeSpan.FromMilliseconds(duration),
+                EasingFunction = new QuadraticEase { EasingMode = isHovering ? EasingMode.EaseOut : EasingMode.EaseIn }
             };
-            var borderAnimation = new ColorAnimation
-            {
-                To = Color.FromArgb(160, 48, 70, 92),
-                Duration = TimeSpan.FromMilliseconds(150),
-                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
-            };
-            ((SolidColorBrush)SurfaceBorder.Background).BeginAnimation(SolidColorBrush.ColorProperty, bgAnimation);
-            ((SolidColorBrush)SurfaceBorder.BorderBrush).BeginAnimation(SolidColorBrush.ColorProperty, borderAnimation);
+            bgBrush.BeginAnimation(SolidColorBrush.ColorProperty, bgAnim);
         }
-        else
-        {
-            if (ShouldUseBlackoutMode())
-            {
-                return;
-            }
 
-            var bgAnimation = new ColorAnimation
+        if (SurfaceBorder.BorderBrush is SolidColorBrush borderBrush && borderBrush.Color.A > 0)
+        {
+            borderBrush.BeginAnimation(SolidColorBrush.ColorProperty, null);
+            var borderAnim = new ColorAnimation
             {
-                To = Color.FromArgb(102, 16, 26, 37),
-                Duration = TimeSpan.FromMilliseconds(250),
-                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
+                To = targetBorderColor,
+                Duration = TimeSpan.FromMilliseconds(duration),
+                EasingFunction = new QuadraticEase { EasingMode = isHovering ? EasingMode.EaseOut : EasingMode.EaseIn }
             };
-            var borderAnimation = new ColorAnimation
-            {
-                To = Color.FromArgb(138, 48, 70, 92),
-                Duration = TimeSpan.FromMilliseconds(250),
-                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
-            };
-            ((SolidColorBrush)SurfaceBorder.Background).BeginAnimation(SolidColorBrush.ColorProperty, bgAnimation);
-            ((SolidColorBrush)SurfaceBorder.BorderBrush).BeginAnimation(SolidColorBrush.ColorProperty, borderAnimation);
+            borderBrush.BeginAnimation(SolidColorBrush.ColorProperty, borderAnim);
         }
     }
 
     private void AnimateAlbumArtTransition(byte[]? newArt)
     {
+        AlbumArtPanel.Visibility = _settings.ShowAlbumArt ? Visibility.Visible : Visibility.Collapsed;
+
         if (newArt is null || newArt.Length == 0)
         {
-            var fadeOut = new DoubleAnimation
-            {
-                To = 0,
-                Duration = TimeSpan.FromMilliseconds(200),
-                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
-            };
-            fadeOut.Completed += (_, _) =>
-            {
-                AlbumArtImage.Source = null;
-            };
-            AlbumArtImage.BeginAnimation(OpacityProperty, fadeOut);
+            AlbumArtImage.Source = null;
+            AlbumArtOverlayImage.Source = null;
+            AlbumArtOverlayBorder.Opacity = 0;
             return;
         }
 
@@ -1225,42 +1216,10 @@ public partial class AppBarWindow : Window
             bitmap.EndInit();
             bitmap.Freeze();
 
-            if (AlbumArtImage.Source is null)
-            {
-                AlbumArtImage.Source = bitmap;
-                AlbumArtImage.Opacity = 0;
-                var fadeIn = new DoubleAnimation
-                {
-                    From = 0,
-                    To = 1,
-                    Duration = TimeSpan.FromMilliseconds(300),
-                    EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
-                };
-                AlbumArtImage.BeginAnimation(OpacityProperty, fadeIn);
-                return;
-            }
-
-            AlbumArtOverlayImage.Source = bitmap;
+            AlbumArtImage.Source = bitmap;
+            AlbumArtImage.Opacity = 1;
             AlbumArtOverlayBorder.Opacity = 0;
-            AlbumArtOverlayBorder.BeginAnimation(OpacityProperty, null);
-
-            var overlayFadeIn = new DoubleAnimation
-            {
-                From = 0,
-                To = 1,
-                Duration = TimeSpan.FromMilliseconds(350),
-                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
-            };
-
-            overlayFadeIn.Completed += (_, _) =>
-            {
-                AlbumArtImage.Source = bitmap;
-                AlbumArtImage.Opacity = 1;
-                AlbumArtOverlayBorder.Opacity = 0;
-                AlbumArtOverlayImage.Source = null;
-            };
-
-            AlbumArtOverlayBorder.BeginAnimation(OpacityProperty, overlayFadeIn);
+            AlbumArtOverlayImage.Source = null;
         }
         catch
         {

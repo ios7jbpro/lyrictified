@@ -227,6 +227,7 @@ public partial class SettingsWindow : Window
         var isAppBarMode = GetSelectedDisplayMode() == DisplayMode.AppBar;
         HideModeComboBox.IsEnabled = isAppBarMode;
         ShowNextLineComboBox.IsEnabled = isAppBarMode;
+        KaraokeModeComboBox.IsEnabled = isAppBarMode;
         CustomHeightTextBox.IsEnabled = isAppBarMode;
     }
 
