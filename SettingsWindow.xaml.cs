@@ -21,6 +21,16 @@ public partial class SettingsWindow : Window
 
     public event EventHandler<AppSettings>? SettingsChanged;
 
+    public void UpdateLastSearchInfo(string info)
+    {
+        if (_isInitializing)
+        {
+            return;
+        }
+
+        LastSearchInfoTextBox.Text = string.IsNullOrWhiteSpace(info) ? "No search yet" : info;
+    }
+
     public void LoadSettings(AppSettings settings, IReadOnlyList<MonitorOption> monitors)
     {
         _isInitializing = true;

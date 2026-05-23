@@ -9,6 +9,11 @@ public sealed class CompositeLyricsService : IDisposable
     private readonly SyncedLyricsCliService _syncedLyricsCliService;
     private readonly LyricsCacheService _cacheService;
     private int _maxCacheSize = 25;
+    private string _lastSearchInfo = string.Empty;
+
+    public string HelperStatusHint => _syncedLyricsCliService.StatusHint;
+
+    public string LastSearchInfo => _lastSearchInfo;
 
     public CompositeLyricsService()
     {
@@ -16,8 +21,6 @@ public sealed class CompositeLyricsService : IDisposable
         _syncedLyricsCliService = new SyncedLyricsCliService();
         _cacheService = new LyricsCacheService();
     }
-
-    public string HelperStatusHint => _syncedLyricsCliService.StatusHint;
 
     public void SetMaxCacheSize(int maxSize)
     {
@@ -32,12 +35,19 @@ public sealed class CompositeLyricsService : IDisposable
     {
         Logger.Log($"GetTimedLyricsAsync: {song.Title} - {song.Artist}");
 
+        var searchTitle = song.Title ?? "";
+        var searchArtist = song.Artist ?? "";
+        var searchAlbum = song.Album ?? "";
+        var searchDuration = song.Duration > TimeSpan.Zero ? $"{(int)Math.Round(song.Duration.TotalSeconds)}s" : "unknown";
+        var searchKey = $"Title=\"{searchTitle}\" Artist=\"{searchArtist}\" Album=\"{searchAlbum}\" Duration={searchDuration}";
+
         if (_maxCacheSize > 0)
         {
-            var cached = _cacheService.TryGet(song.Title, song.Artist);
+            var cached = _cacheService.TryGet(searchTitle, searchArtist);
             if (cached is not null)
             {
                 Logger.Log($"Cache hit: {cached.Count} lines");
+                _lastSearchInfo = $"{searchKey}\nResult: Cache hit — {cached.Count} lines";
                 return cached;
             }
         }
@@ -48,12 +58,15 @@ public sealed class CompositeLyricsService : IDisposable
             var sw = Stopwatch.StartNew();
             var lrclibLyrics = await _lrcLibLyricsService.GetLyricsAsync(song, cancellationToken);
             sw.Stop();
-            Logger.Log($"lrclib: {lrclibLyrics.Count} lines in {sw.ElapsedMilliseconds}ms");
             if (lrclibLyrics.Count > 0)
             {
-                _cacheService.Store(song.Title, song.Artist, lrclibLyrics, _maxCacheSize);
+                Logger.Log($"lrclib: {lrclibLyrics.Count} lines in {sw.ElapsedMilliseconds}ms");
+                _lastSearchInfo = $"{searchKey}\nSource: lrclib.net — {lrclibLyrics.Count} lines ({sw.ElapsedMilliseconds}ms) — Accepted";
+                _cacheService.Store(searchTitle, searchArtist, lrclibLyrics, _maxCacheSize);
                 return lrclibLyrics;
             }
+            Logger.Log($"lrclib: 0 lines in {sw.ElapsedMilliseconds}ms");
+            _lastSearchInfo = $"{searchKey}\nSource: lrclib.net — No synced lyrics found ({sw.ElapsedMilliseconds}ms) — Denied";
         }
         catch (OperationCanceledException)
         {
@@ -62,6 +75,7 @@ public sealed class CompositeLyricsService : IDisposable
         catch (Exception ex)
         {
             Logger.Log($"lrclib failed: {ex.Message}");
+            _lastSearchInfo = $"{searchKey}\nSource: lrclib.net — Error: {ex.Message} — Denied";
         }
 
         try
@@ -70,12 +84,16 @@ public sealed class CompositeLyricsService : IDisposable
             var sw = Stopwatch.StartNew();
             var sidecarLyrics = await _syncedLyricsCliService.GetTimedLyricsAsync(song, cancellationToken);
             sw.Stop();
-            Logger.Log($"syncedlyrics: {sidecarLyrics.Count} lines in {sw.ElapsedMilliseconds}ms");
             if (sidecarLyrics.Count > 0)
             {
-                _cacheService.Store(song.Title, song.Artist, sidecarLyrics, _maxCacheSize);
+                Logger.Log($"syncedlyrics: {sidecarLyrics.Count} lines in {sw.ElapsedMilliseconds}ms");
+                _lastSearchInfo = $"{searchKey}\nSource: syncedlyrics — {sidecarLyrics.Count} lines ({sw.ElapsedMilliseconds}ms) — Accepted";
+                _cacheService.Store(searchTitle, searchArtist, sidecarLyrics, _maxCacheSize);
+                return sidecarLyrics;
             }
-            return sidecarLyrics.Count > 0 ? sidecarLyrics : Array.Empty<LyricLine>();
+            Logger.Log($"syncedlyrics: 0 lines in {sw.ElapsedMilliseconds}ms");
+            _lastSearchInfo = $"{searchKey}\nSource: syncedlyrics — No lyrics found ({sw.ElapsedMilliseconds}ms) — Denied";
+            return Array.Empty<LyricLine>();
         }
         catch (OperationCanceledException)
         {
@@ -84,6 +102,7 @@ public sealed class CompositeLyricsService : IDisposable
         catch (Exception ex)
         {
             Logger.Log($"syncedlyrics failed: {ex.Message}");
+            _lastSearchInfo = $"{searchKey}\nSource: syncedlyrics — Error: {ex.Message} — Denied";
             return Array.Empty<LyricLine>();
         }
     }

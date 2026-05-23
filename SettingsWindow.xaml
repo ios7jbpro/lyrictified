@@ -292,6 +292,24 @@
                                     </Grid>
                                 </StackPanel>
                             </Border>
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel>
+                                    <TextBlock Text="Last Lyrics Search" Style="{StaticResource SectionTitleStyle}" />
+                                    <TextBlock Text="Shows the most recent search query and result. Useful for debugging which song data was sent." Style="{StaticResource LabelStyle}" />
+                                    <TextBox x:Name="LastSearchInfoTextBox"
+                                             IsReadOnly="True"
+                                             Margin="0,8,0,0"
+                                             TextWrapping="Wrap"
+                                             MaxHeight="120"
+                                             VerticalScrollBarVisibility="Auto"
+                                             Background="#0A0E14"
+                                             Foreground="#9DB1C4"
+                                             BorderBrush="#365067"
+                                             FontSize="11"
+                                             FontFamily="Consolas"
+                                             Text="No search yet" />
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
                     </ScrollViewer>
                 </TabItem>

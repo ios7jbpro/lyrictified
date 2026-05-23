@@ -241,6 +241,8 @@ public partial class AppBarWindow : Window
 
             _lastKnownLoadingLyrics = _viewModel.IsLoadingLyrics;
 
+            UpdateLastSearchInfo();
+
             if (Dispatcher.CheckAccess())
             {
                 ApplyHideModeState();
@@ -1780,6 +1782,14 @@ public partial class AppBarWindow : Window
         _settingsWindow.Activate();
     }
 
+    private void UpdateLastSearchInfo()
+    {
+        if (_settingsWindow is not null)
+        {
+            _settingsWindow.UpdateLastSearchInfo(_viewModel.LastSearchInfo);
+        }
+    }
+
     private void RefreshSettingsWindowOptions()
     {
         if (_settingsWindow is null || _appBarManager is null)
@@ -1798,6 +1808,7 @@ public partial class AppBarWindow : Window
             .ToList();
 
         _settingsWindow.LoadSettings(_settings, monitors);
+        _settingsWindow.UpdateLastSearchInfo(_viewModel.LastSearchInfo);
     }
 
     private void SettingsWindow_OnSettingsChanged(object? sender, AppSettings settings)

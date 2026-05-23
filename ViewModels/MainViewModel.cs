@@ -84,6 +84,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         private set => SetField(ref _helperStatusHint, value);
     }
 
+    public string LastSearchInfo => _lyricsService.LastSearchInfo;
+
     public string CurrentLine
     {
         get => _currentLine;
