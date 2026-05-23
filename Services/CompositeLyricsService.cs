@@ -16,40 +16,9 @@ public sealed class CompositeLyricsService : IDisposable
 
     public string HelperStatusHint => _syncedLyricsCliService.StatusHint;
 
-    public async Task<IReadOnlyList<LyricLine>> GetTimedLyricsAsync(SongInfo song, bool enhanced, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<LyricLine>> GetTimedLyricsAsync(SongInfo song, CancellationToken cancellationToken)
     {
-        Logger.Log($"GetTimedLyricsAsync: {song.Title} - {song.Artist} enhanced={enhanced}");
-
-        if (enhanced)
-        {
-            try
-            {
-                Logger.Log("Trying syncedlyrics --enhanced first");
-                var sw = Stopwatch.StartNew();
-                var enhancedLyrics = await _syncedLyricsCliService.GetTimedLyricsAsync(song, true, cancellationToken);
-                sw.Stop();
-                var hasWords = enhancedLyrics.Any(l => l.Words?.Count > 0);
-                Logger.Log($"Enhanced: {enhancedLyrics.Count} lines, hasWords={hasWords} in {sw.ElapsedMilliseconds}ms");
-                if (enhancedLyrics.Count > 0 && hasWords)
-                {
-                    Logger.Log("Using enhanced word-level lyrics");
-                    return enhancedLyrics;
-                }
-                if (enhancedLyrics.Count > 0)
-                {
-                    Logger.Log("Enhanced no word data, fall through to lrclib");
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                Logger.Log("Enhanced lookup cancelled");
-                throw;
-            }
-            catch (Exception ex)
-            {
-                Logger.Log($"Enhanced lookup failed: {ex.Message}");
-            }
-        }
+        Logger.Log($"GetTimedLyricsAsync: {song.Title} - {song.Artist}");
 
         try
         {
@@ -74,9 +43,9 @@ public sealed class CompositeLyricsService : IDisposable
 
         try
         {
-            Logger.Log("Trying syncedlyrics without --enhanced");
+            Logger.Log("Trying syncedlyrics fallback");
             var sw = Stopwatch.StartNew();
-            var sidecarLyrics = await _syncedLyricsCliService.GetTimedLyricsAsync(song, false, cancellationToken);
+            var sidecarLyrics = await _syncedLyricsCliService.GetTimedLyricsAsync(song, cancellationToken);
             sw.Stop();
             Logger.Log($"syncedlyrics: {sidecarLyrics.Count} lines in {sw.ElapsedMilliseconds}ms");
             return sidecarLyrics.Count > 0 ? sidecarLyrics : Array.Empty<LyricLine>();

@@ -19,9 +19,9 @@ public sealed class SyncedLyricsCliService
 
     public string StatusHint { get; }
 
-    public async Task<IReadOnlyList<LyricLine>> GetTimedLyricsAsync(SongInfo song, bool enhanced, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<LyricLine>> GetTimedLyricsAsync(SongInfo song, CancellationToken cancellationToken)
     {
-        Logger.Log($"SyncedLyricsCli: enhanced={enhanced} song={song.Title}");
+        Logger.Log($"SyncedLyricsCli: song={song.Title}");
 
         if (!IsAvailable || string.IsNullOrWhiteSpace(song.Title) || string.IsNullOrWhiteSpace(song.Artist))
         {
@@ -29,7 +29,7 @@ public sealed class SyncedLyricsCliService
             return Array.Empty<LyricLine>();
         }
 
-        foreach (var command in GetCandidateCommands(enhanced))
+        foreach (var command in GetCandidateCommands())
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -64,7 +64,7 @@ public sealed class SyncedLyricsCliService
 
     private bool DetectAvailability()
     {
-        foreach (var command in GetCandidateCommands(false))
+        foreach (var command in GetCandidateCommands())
         {
             if (TryProbeCommand(command.FileName, command.ProbeArguments))
             {
@@ -118,30 +118,27 @@ public sealed class SyncedLyricsCliService
         }
     }
 
-    private IEnumerable<CommandSpec> GetCandidateCommands(bool enhanced)
+    private IEnumerable<CommandSpec> GetCandidateCommands()
     {
         if (!string.IsNullOrWhiteSpace(_configuredCommand))
         {
-            yield return new CommandSpec(_configuredCommand, s => BuildArgs(s, enhanced), "--help");
+            yield return new CommandSpec(_configuredCommand, s => BuildArgs(s), "--help");
         }
 
-        yield return new CommandSpec("syncedlyrics", s => BuildArgs(s, enhanced), "--help");
-        yield return new CommandSpec("py", s => BuildPyArgs(s, enhanced), "-m syncedlyrics --help");
-        yield return new CommandSpec("python", s => BuildPyArgs(s, enhanced), "-m syncedlyrics --help");
+        yield return new CommandSpec("syncedlyrics", s => BuildArgs(s), "--help");
+        yield return new CommandSpec("py", BuildPyArgs, "-m syncedlyrics --help");
     }
 
-    private static string BuildArgs(SongInfo song, bool enhanced)
+    private static string BuildArgs(SongInfo song)
     {
         var searchTerm = BuildSearchTerm(song);
-        var enhancedFlag = enhanced ? " --enhanced" : "";
-        return $"\"{searchTerm}\" --synced-only -p {string.Join(' ', PreferredProviders)}{enhancedFlag}";
+        return $"\"{searchTerm}\" --synced-only -p {string.Join(' ', PreferredProviders)}";
     }
 
-    private static string BuildPyArgs(SongInfo song, bool enhanced)
+    private static string BuildPyArgs(SongInfo song)
     {
         var searchTerm = BuildSearchTerm(song);
-        var enhancedFlag = enhanced ? " --enhanced" : "";
-        return $"-m syncedlyrics \"{searchTerm}\" --synced-only -p {string.Join(' ', PreferredProviders)}{enhancedFlag}";
+        return $"-m syncedlyrics \"{searchTerm}\" --synced-only -p {string.Join(' ', PreferredProviders)}";
     }
 
     private static string BuildSearchTerm(SongInfo song)
@@ -176,7 +173,7 @@ public sealed class SyncedLyricsCliService
         try
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            cts.CancelAfter(TimeSpan.FromSeconds(8));
+            cts.CancelAfter(TimeSpan.FromSeconds(5));
 
             var outputTask = process.StandardOutput.ReadToEndAsync(cts.Token);
             var errorTask = process.StandardError.ReadToEndAsync(cts.Token);

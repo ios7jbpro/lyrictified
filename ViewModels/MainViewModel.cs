@@ -247,7 +247,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
             try
             {
-                var lyrics = await _lyricsService.GetTimedLyricsAsync(song, WordByWordMode, cancellationToken);
+                var lyrics = await _lyricsService.GetTimedLyricsAsync(song, cancellationToken);
                 if (cancellationToken.IsCancellationRequested)
                 {
                     return;
