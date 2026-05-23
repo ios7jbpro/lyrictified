@@ -39,6 +39,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private string _helperStatusHint = string.Empty;
     private string _currentLine = "Play something to show lyrics here.";
     private string _nextLine = string.Empty;
+    private LyricLine? _currentLyricLine;
+    private int _currentWordIndex;
 
     public MainViewModel()
     {
@@ -131,6 +133,24 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         get => _progress;
         private set => SetField(ref _progress, value);
     }
+
+    public TimeSpan? EstimatedPosition => GetEstimatedPlaybackPosition();
+
+    public TimeSpan SongDuration => _currentSong?.Duration ?? TimeSpan.Zero;
+
+    public LyricLine? CurrentLyricLine
+    {
+        get => _currentLyricLine;
+        private set => SetField(ref _currentLyricLine, value);
+    }
+
+    public int CurrentWordIndex
+    {
+        get => _currentWordIndex;
+        private set => SetField(ref _currentWordIndex, value);
+    }
+
+    public bool WordByWordMode => _appSettingsService.Load().WordByWordMode;
 
     public async Task InitializeAsync()
     {
@@ -227,13 +247,15 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
             try
             {
-                var lyrics = await _lyricsService.GetTimedLyricsAsync(song, cancellationToken);
+                var lyrics = await _lyricsService.GetTimedLyricsAsync(song, WordByWordMode, cancellationToken);
                 if (cancellationToken.IsCancellationRequested)
                 {
                     return;
                 }
 
                 _lyrics = lyrics;
+                var wordsTotal = lyrics.Count(l => l.Words?.Count > 0);
+                Logger.Log($"HandleSongAsync: {lyrics.Count} lines, {wordsTotal} with word data");
                 IsLoadingLyrics = false;
                 if (_lyrics.Count == 0)
                 {
@@ -251,6 +273,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             }
             catch (OperationCanceledException)
             {
+                IsLoadingLyrics = false;
             }
             catch (Exception ex)
             {
@@ -398,11 +421,36 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
                 if (currentLyric is not null)
                 {
+                    var words = currentLyric.Words;
+                    if (WordByWordMode && words is null)
+                    {
+                        words = EstimateWordInfos(currentLyric, currentIndex, _lyrics);
+                    }
+
+                    CurrentLyricLine = words is not null ? currentLyric with { Words = words } : currentLyric;
+
+                    if (WordByWordMode && words is not null)
+                    {
+                        var wordIdx = FindCurrentWordIndex(words, position.Value);
+                        Logger.Log($"wordIdx={wordIdx}/{words.Count}");
+                        CurrentWordIndex = wordIdx;
+                    }
+                    else
+                    {
+                        CurrentWordIndex = -1;
+                    }
+
                     CurrentLine = currentLyric.Text;
                 }
-                else if (_lyrics.Count > 0 && position.Value < _lyrics[0].Timestamp)
+                else
                 {
-                    CurrentLine = _lyrics[0].Text;
+                    CurrentLyricLine = null;
+                    CurrentWordIndex = -1;
+
+                    if (_lyrics.Count > 0 && position.Value < _lyrics[0].Timestamp)
+                    {
+                        CurrentLine = _lyrics[0].Text;
+                    }
                 }
 
                 var nextIndex = currentIndex >= 0 ? currentIndex + 1 : 1;
@@ -488,6 +536,50 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         }
 
         return result;
+    }
+
+    internal static int FindCurrentWordIndex(IReadOnlyList<WordInfo> words, TimeSpan position)
+    {
+        if (words.Count == 0)
+            return -1;
+
+        var result = -1;
+        for (var i = 0; i < words.Count; i++)
+        {
+            if (words[i].Timestamp <= position)
+            {
+                result = i;
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        return result;
+    }
+
+    private static IReadOnlyList<WordInfo> EstimateWordInfos(LyricLine line, int lineIndex, IReadOnlyList<LyricLine> allLines)
+    {
+        var split = line.Text.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (split.Length == 0) return Array.Empty<WordInfo>();
+
+        var nextTimestamp = lineIndex + 1 < allLines.Count
+            ? allLines[lineIndex + 1].Timestamp
+            : line.Timestamp + TimeSpan.FromSeconds(4);
+
+        var totalDuration = nextTimestamp - line.Timestamp;
+        if (totalDuration <= TimeSpan.Zero)
+            totalDuration = TimeSpan.FromSeconds(4);
+
+        var wordDuration = totalDuration / split.Length;
+        var infos = new WordInfo[split.Length];
+        for (var i = 0; i < split.Length; i++)
+        {
+            infos[i] = new WordInfo(line.Timestamp + wordDuration * i, split[i]);
+        }
+
+        return infos;
     }
 
     private TimeSpan GetNextRefreshInterval(TimeSpan position, int currentIndex)

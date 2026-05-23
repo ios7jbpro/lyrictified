@@ -22,3 +22,6 @@ TestResults/
 # OS files
 Thumbs.db
 Desktop.ini
+
+# Lyrics cache
+*.lrc

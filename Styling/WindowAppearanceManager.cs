@@ -3,6 +3,9 @@ using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Media;
 using Windows.UI.ViewManagement;
+using MediaColor = System.Windows.Media.Color;
+using MediaBrush = System.Windows.Media.Brush;
+using WpfBrushes = System.Windows.Media.Brushes;
 
 namespace Lyrictified.Styling;
 
@@ -49,17 +52,17 @@ public sealed class WindowAppearanceManager
         return result == 0;
     }
 
-    private static AppearancePalette CreateBackdropPalette(Color accent)
+    private static AppearancePalette CreateBackdropPalette(MediaColor accent)
     {
         return new AppearancePalette(
-            WindowBackground: Brushes.Transparent,
-            SurfaceBackground: new SolidColorBrush(Color.FromArgb(0x58, 0x08, 0x0C, 0x11)),
-            SurfaceBorder: new SolidColorBrush(Color.FromArgb(0x90, accent.R, accent.G, accent.B)),
-            ButtonBackground: new SolidColorBrush(Color.FromArgb(0x55, accent.R, accent.G, accent.B)),
-            ButtonBorder: new SolidColorBrush(Color.FromArgb(0xA0, accent.R, accent.G, accent.B)));
+            WindowBackground: WpfBrushes.Transparent,
+            SurfaceBackground: new SolidColorBrush(MediaColor.FromArgb(0x58, 0x08, 0x0C, 0x11)),
+            SurfaceBorder: new SolidColorBrush(MediaColor.FromArgb(0x90, accent.R, accent.G, accent.B)),
+            ButtonBackground: new SolidColorBrush(MediaColor.FromArgb(0x55, accent.R, accent.G, accent.B)),
+            ButtonBorder: new SolidColorBrush(MediaColor.FromArgb(0xA0, accent.R, accent.G, accent.B)));
     }
 
-    private static AppearancePalette CreateFallbackPalette(Color accent)
+    private static AppearancePalette CreateFallbackPalette(MediaColor accent)
     {
         var surface = Darken(accent, 0.78);
         var button = Darken(accent, 0.68);
@@ -73,33 +76,33 @@ public sealed class WindowAppearanceManager
             ButtonBorder: new SolidColorBrush(Lighten(button, 0.16)));
     }
 
-    private static Color GetAccentBaseColor()
+    private static MediaColor GetAccentBaseColor()
     {
         try
         {
             var settings = new UISettings();
             var accent = settings.GetColorValue(UIColorType.AccentDark2);
-            return Color.FromArgb(accent.A, accent.R, accent.G, accent.B);
+            return MediaColor.FromArgb(accent.A, accent.R, accent.G, accent.B);
         }
         catch
         {
-            return Color.FromRgb(0x20, 0x46, 0x68);
+            return MediaColor.FromRgb(0x20, 0x46, 0x68);
         }
     }
 
-    private static Color Darken(Color color, double amount)
+    private static MediaColor Darken(MediaColor color, double amount)
     {
         var factor = Math.Clamp(1.0 - amount, 0.0, 1.0);
-        return Color.FromArgb(
+        return MediaColor.FromArgb(
             color.A,
             (byte)Math.Clamp(color.R * factor, 0, 255),
             (byte)Math.Clamp(color.G * factor, 0, 255),
             (byte)Math.Clamp(color.B * factor, 0, 255));
     }
 
-    private static Color Lighten(Color color, double amount)
+    private static MediaColor Lighten(MediaColor color, double amount)
     {
-        return Color.FromArgb(
+        return MediaColor.FromArgb(
             color.A,
             (byte)Math.Clamp(color.R + ((255 - color.R) * amount), 0, 255),
             (byte)Math.Clamp(color.G + ((255 - color.G) * amount), 0, 255),
@@ -120,8 +123,8 @@ public sealed class WindowAppearanceManager
 }
 
 public sealed record AppearancePalette(
-    Brush WindowBackground,
-    Brush SurfaceBackground,
-    Brush SurfaceBorder,
-    Brush ButtonBackground,
-    Brush ButtonBorder);
+    MediaBrush WindowBackground,
+    MediaBrush SurfaceBackground,
+    MediaBrush SurfaceBorder,
+    MediaBrush ButtonBackground,
+    MediaBrush ButtonBorder);

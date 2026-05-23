@@ -37,7 +37,6 @@ public partial class SettingsWindow : Window
             };
 
             ShowNextLineComboBox.SelectedIndex = settings.ShowNextLine ? 1 : 0;
-            KaraokeModeComboBox.SelectedIndex = settings.KaraokeMode ? 1 : 0;
             CustomHeightTextBox.Text = settings.CustomBarHeight?.ToString() ?? string.Empty;
             LyricAlignmentComboBox.SelectedIndex = settings.LyricAlignment switch
             {
@@ -46,6 +45,7 @@ public partial class SettingsWindow : Window
                 _ => 1
             };
             ShowAlbumArtComboBox.SelectedIndex = settings.ShowAlbumArt ? 0 : 1;
+            WordByWordComboBox.SelectedIndex = settings.WordByWordMode ? 1 : 0;
             TaskbarMaximumWidthTextBox.Text = settings.TaskbarMaximumWidth?.ToString() ?? string.Empty;
             LoadDetectedApps(settings);
 
@@ -93,11 +93,6 @@ public partial class SettingsWindow : Window
         RaiseSettingsChanged();
     }
 
-    private void KaraokeModeComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        RaiseSettingsChanged();
-    }
-
     private void AppBarMonitorComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         RaiseSettingsChanged();
@@ -120,6 +115,11 @@ public partial class SettingsWindow : Window
     }
 
     private void ShowAlbumArtComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        RaiseSettingsChanged();
+    }
+
+    private void WordByWordComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         RaiseSettingsChanged();
     }
@@ -159,7 +159,7 @@ public partial class SettingsWindow : Window
                 _ => LyricAlignment.Center
             },
             ShowAlbumArt = ShowAlbumArtComboBox.SelectedIndex == 0,
-            KaraokeMode = KaraokeModeComboBox.SelectedIndex == 1,
+            WordByWordMode = WordByWordComboBox.SelectedIndex == 1,
             DetectedMediaApps = _detectedApps
                 .Select(app => new DetectedMediaApp(app.AppId, app.DisplayName))
                 .ToList(),
@@ -227,7 +227,6 @@ public partial class SettingsWindow : Window
         var isAppBarMode = GetSelectedDisplayMode() == DisplayMode.AppBar;
         HideModeComboBox.IsEnabled = isAppBarMode;
         ShowNextLineComboBox.IsEnabled = isAppBarMode;
-        KaraokeModeComboBox.IsEnabled = isAppBarMode;
         CustomHeightTextBox.IsEnabled = isAppBarMode;
     }
 

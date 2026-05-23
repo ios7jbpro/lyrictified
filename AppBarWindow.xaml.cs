@@ -1,8 +1,10 @@
 using Microsoft.Win32;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media.Imaging;
 using System.Windows.Media;
@@ -10,9 +12,14 @@ using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using Lyrictified.DisplayModes;
 using Lyrictified.Interop;
+using Lyrictified.Services;
 using Lyrictified.Settings;
 using Lyrictified.Styling;
 using Lyrictified.ViewModels;
+using WpfBrush = System.Windows.Media.Brush;
+using WpfMouseEventArgs = System.Windows.Input.MouseEventArgs;
+using MediaColor = System.Windows.Media.Color;
+using WpfApplication = System.Windows.Application;
 
 namespace Lyrictified;
 
@@ -21,14 +28,15 @@ public partial class AppBarWindow : Window
     private static readonly TimeSpan ControlFadeDelay = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan MonitorWarningDuration = TimeSpan.FromSeconds(4);
     private static readonly TimeSpan NoLyricsHideDeferralDuration = TimeSpan.FromMilliseconds(2600);
-    private static readonly Brush BlackoutBrush = new SolidColorBrush(Colors.Black);
-    private static readonly Brush PreviewLyricBrush = new SolidColorBrush(Color.FromRgb(245, 247, 250));
-    private static readonly Brush LoadingTextBrush = new SolidColorBrush(Color.FromRgb(150, 156, 164));
+    private static readonly WpfBrush BlackoutBrush = new SolidColorBrush(Colors.Black);
+    private static readonly WpfBrush PreviewLyricBrush = new SolidColorBrush(MediaColor.FromRgb(245, 247, 250));
+    private static readonly WpfBrush LoadingTextBrush = new SolidColorBrush(MediaColor.FromRgb(150, 156, 164));
     private const double PauseShiftX = 42;
     private readonly MainViewModel _viewModel;
     private readonly DispatcherTimer _controlsFadeTimer;
     private readonly DispatcherTimer _monitorWarningTimer;
     private readonly DispatcherTimer _deferredHideTimer;
+    private readonly DispatcherTimer _progressTimer;
     private readonly AppSettingsService _appSettingsService;
     private AppBarManager? _appBarManager;
     private WindowAppearanceManager? _appearanceManager;
@@ -46,7 +54,12 @@ public partial class AppBarWindow : Window
     private bool _isPointerOverWindow;
     private SettingsWindow? _settingsWindow;
     private byte[]? _lastAlbumArtData;
+    private string _lastProgressSongId = string.Empty;
+    private TrayIcon? _trayIcon;
     private bool IsPreviewModeEnabled => _settings.ShowNextLine;
+    private DispatcherTimer? _wordAnimTimer;
+    private double[]? _wordCharOpacities;
+    private DateTime _lastLineChangeTimestamp = DateTime.MinValue;
 
     public AppBarWindow()
     {
@@ -79,6 +92,12 @@ public partial class AppBarWindow : Window
         };
         _deferredHideTimer.Tick += DeferredHideTimer_OnTick;
 
+        _progressTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromMilliseconds(16)
+        };
+        _progressTimer.Tick += ProgressTimer_OnTick;
+
         SourceInitialized += OnSourceInitialized;
         Loaded += OnLoaded;
         Closing += OnClosing;
@@ -97,13 +116,22 @@ public partial class AppBarWindow : Window
         ApplyHideModeState();
         ApplyPlaybackStateVisual(immediate: true);
 
+        _trayIcon = new TrayIcon(this);
+
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
         SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
-        IncomingLyricTextBlock.Text = _viewModel.CurrentLine;
+        if (_viewModel.WordByWordMode && _viewModel.CurrentLyricLine?.Words?.Count > 0)
+        {
+            SetWordByWordInlines();
+        }
+        else
+        {
+            IncomingLyricTextBlock.Text = _viewModel.CurrentLine;
+        }
         PreviewLyricTextBlock.Text = _viewModel.NextLine;
         _displayedLyricText = _viewModel.CurrentLine;
         _displayedNextLineText = _viewModel.NextLine;
@@ -126,12 +154,18 @@ public partial class AppBarWindow : Window
         _monitorWarningTimer.Tick -= MonitorWarningTimer_OnTick;
         _deferredHideTimer.Stop();
         _deferredHideTimer.Tick -= DeferredHideTimer_OnTick;
+        _progressTimer.Stop();
+        _progressTimer.Tick -= ProgressTimer_OnTick;
+        StopWordAnim();
+        if (_wordAnimTimer is not null)
+            _wordAnimTimer.Tick -= WordAnimTimer_Tick;
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
         SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
         SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
         _appBarManager?.Dispose();
         _settingsWindow?.Close();
         _viewModel.Dispose();
+        _trayIcon?.Dispose();
     }
 
     private void OnDisplaySettingsChanged(object? sender, EventArgs e)
@@ -159,6 +193,14 @@ public partial class AppBarWindow : Window
             else
             {
                 _ = Dispatcher.InvokeAsync(() => HandleCurrentLineChanged(_viewModel.CurrentLine));
+            }
+        }
+
+        if (e.PropertyName == nameof(MainViewModel.CurrentWordIndex))
+        {
+            if (_viewModel.WordByWordMode)
+            {
+                StartWordAnim();
             }
         }
 
@@ -288,15 +330,10 @@ public partial class AppBarWindow : Window
         AnimateBorderVisibility(isBlackout);
         if (!_viewModel.IsLoadingLyrics)
         {
-            var isActiveBrush = new SolidColorBrush(Color.FromRgb(245, 247, 250));
-            var dimBrush = _settings.KaraokeMode
-                ? new SolidColorBrush(Color.FromArgb(90, 245, 247, 250))
-                : new SolidColorBrush(Color.FromRgb(245, 247, 250));
+            var isActiveBrush = new SolidColorBrush(MediaColor.FromRgb(245, 247, 250));
             IncomingLyricTextBlock.Foreground = isActiveBrush;
-            OutgoingLyricTextBlock.Foreground = dimBrush;
-            PreviewLyricTextBlock.Foreground = _settings.KaraokeMode
-                ? new SolidColorBrush(Color.FromArgb(60, 245, 247, 250))
-                : PreviewLyricBrush;
+            OutgoingLyricTextBlock.Foreground = isActiveBrush;
+            PreviewLyricTextBlock.Foreground = PreviewLyricBrush;
         }
     }
 
@@ -399,9 +436,9 @@ public partial class AppBarWindow : Window
 
         var horizontalAlignment = alignment switch
         {
-            LyricAlignment.Left => HorizontalAlignment.Left,
-            LyricAlignment.Right => HorizontalAlignment.Right,
-            _ => HorizontalAlignment.Stretch
+            LyricAlignment.Left => System.Windows.HorizontalAlignment.Left,
+            LyricAlignment.Right => System.Windows.HorizontalAlignment.Right,
+            _ => System.Windows.HorizontalAlignment.Stretch
         };
 
         var textAlignment = alignment switch
@@ -431,6 +468,8 @@ public partial class AppBarWindow : Window
             var artSize = Math.Max(28, 56 * scaleFactor);
             AlbumArtBorder.Width = artSize;
             AlbumArtBorder.Height = artSize;
+            AlbumArtOverlayBorder.Width = artSize;
+            AlbumArtOverlayBorder.Height = artSize;
             SongCreditPanel.Visibility = effectiveHeight < 50 ? Visibility.Collapsed : Visibility.Visible;
 
             var isCompact = effectiveHeight < 70;
@@ -444,6 +483,8 @@ public partial class AppBarWindow : Window
         {
             AlbumArtBorder.Width = 56;
             AlbumArtBorder.Height = 56;
+            AlbumArtOverlayBorder.Width = 56;
+            AlbumArtOverlayBorder.Height = 56;
             SongCreditPanel.Visibility = Visibility.Visible;
             SongTitleTextBlock.FontSize = 13;
             SongArtistTextBlock.FontSize = 11;
@@ -529,6 +570,86 @@ public partial class AppBarWindow : Window
             return;
         }
 
+        if (_viewModel.IsLoadingLyrics)
+        {
+            _displayedLyricText = newCurrentLine;
+            return;
+        }
+
+        var wbw = _viewModel.WordByWordMode;
+        var wc = _viewModel.CurrentLyricLine?.Words?.Count ?? 0;
+        Logger.Log($"HandleCurrentLineChanged: WordByWord={wbw} Words={wc} text='{newCurrentLine}'");
+
+        if (wbw && wc > 0)
+        {
+            if (!string.Equals(_displayedLyricText, newCurrentLine, StringComparison.Ordinal))
+            {
+                StopWordAnim();
+                _lastLineChangeTimestamp = DateTime.UtcNow;
+
+                var oldInlines = IncomingLyricTextBlock.Inlines.ToList();
+                OutgoingLyricTextBlock.Inlines.Clear();
+                foreach (var inline in oldInlines)
+                {
+                    var src = (Run)inline;
+                    OutgoingLyricTextBlock.Inlines.Add(new Run(src.Text) { Foreground = src.Foreground });
+                }
+
+                SetWordByWordInlines();
+
+                OutgoingLyricTextBlock.BeginAnimation(OpacityProperty, null);
+                OutgoingLyricTranslateTransform.BeginAnimation(TranslateTransform.YProperty, null);
+                IncomingLyricTextBlock.BeginAnimation(OpacityProperty, null);
+                IncomingLyricTranslateTransform.BeginAnimation(TranslateTransform.YProperty, null);
+
+                OutgoingLyricTextBlock.Opacity = 1;
+                OutgoingLyricTranslateTransform.Y = 0;
+                IncomingLyricTextBlock.Opacity = 0;
+                IncomingLyricTranslateTransform.Y = 14;
+
+                var fadeOut = new DoubleAnimation
+                {
+                    To = 0,
+                    Duration = TimeSpan.FromMilliseconds(220),
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
+                };
+                var slideOut = new DoubleAnimation
+                {
+                    To = -14,
+                    Duration = TimeSpan.FromMilliseconds(220),
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseIn }
+                };
+                var fadeIn = new DoubleAnimation
+                {
+                    From = 0,
+                    To = 1,
+                    BeginTime = TimeSpan.FromMilliseconds(60),
+                    Duration = TimeSpan.FromMilliseconds(280),
+                    EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                };
+                var slideIn = new DoubleAnimation
+                {
+                    From = 14,
+                    To = 0,
+                    BeginTime = TimeSpan.FromMilliseconds(60),
+                    Duration = TimeSpan.FromMilliseconds(320),
+                    EasingFunction = new QuarticEase { EasingMode = EasingMode.EaseOut }
+                };
+
+                OutgoingLyricTextBlock.BeginAnimation(OpacityProperty, fadeOut);
+                OutgoingLyricTranslateTransform.BeginAnimation(TranslateTransform.YProperty, slideOut);
+                IncomingLyricTextBlock.BeginAnimation(OpacityProperty, fadeIn);
+                IncomingLyricTranslateTransform.BeginAnimation(TranslateTransform.YProperty, slideIn);
+
+                _displayedLyricText = newCurrentLine;
+            }
+            else
+            {
+                StartWordAnim();
+            }
+            return;
+        }
+
         if (string.Equals(_displayedLyricText, newCurrentLine, StringComparison.Ordinal))
         {
             return;
@@ -541,6 +662,182 @@ public partial class AppBarWindow : Window
         }
 
         AnimateSingleLine(newCurrentLine);
+    }
+
+    private static WpfBrush GetWordBrush(WpfBrush baseBrush, double opacity)
+    {
+        if (baseBrush is SolidColorBrush solid)
+        {
+            var color = solid.Color;
+            return new SolidColorBrush(MediaColor.FromArgb((byte)(color.A * opacity), color.R, color.G, color.B));
+        }
+        return baseBrush;
+    }
+
+    private void SetWordByWordInlines()
+    {
+        var lyricLine = _viewModel.CurrentLyricLine;
+        var words = lyricLine?.Words;
+        if (words is null || words.Count == 0)
+        {
+            Logger.Log("SetWordByWordInlines: no words");
+            return;
+        }
+
+        Logger.Log($"SetWordByWordInlines: {words.Count} words");
+
+        IncomingLyricTextBlock.Inlines.Clear();
+
+        var dimBrush = GetWordBrush(IncomingLyricTextBlock.Foreground, 0.15);
+        var totalChars = 0;
+        for (var i = 0; i < words.Count; i++)
+        {
+            var word = words[i].Word;
+            for (var j = 0; j < word.Length; j++)
+            {
+                IncomingLyricTextBlock.Inlines.Add(new Run(word[j].ToString()) { Foreground = dimBrush });
+                totalChars++;
+            }
+
+            if (i < words.Count - 1)
+            {
+                IncomingLyricTextBlock.Inlines.Add(new Run(" ") { Foreground = dimBrush });
+                totalChars++;
+            }
+        }
+
+        _wordCharOpacities = new double[totalChars];
+        Array.Fill(_wordCharOpacities, 0.15);
+
+        OutgoingLyricTextBlock.Text = string.Empty;
+        _displayedLyricText = _viewModel.CurrentLine;
+
+        StartWordAnim();
+    }
+
+    private void UpdateWordInlineHighlight()
+    {
+        StartWordAnim();
+    }
+
+    private void StartWordAnim()
+    {
+        if (_wordAnimTimer is null)
+        {
+            _wordAnimTimer = new DispatcherTimer(DispatcherPriority.Normal, Dispatcher)
+            {
+                Interval = TimeSpan.FromMilliseconds(16)
+            };
+            _wordAnimTimer.Tick += WordAnimTimer_Tick;
+        }
+        if (!_wordAnimTimer.IsEnabled)
+            _wordAnimTimer.Start();
+    }
+
+    private void StopWordAnim()
+    {
+        if (_wordAnimTimer is not null && _wordAnimTimer.IsEnabled)
+            _wordAnimTimer.Stop();
+    }
+
+    private void WordAnimTimer_Tick(object? sender, EventArgs e)
+    {
+        var line = _viewModel.CurrentLyricLine;
+        var words = line?.Words;
+        if (words is null || words.Count == 0)
+        {
+            StopWordAnim();
+            return;
+        }
+
+        if (_viewModel.IsPlaybackPaused) return;
+
+        var position = _viewModel.EstimatedPosition;
+        if (position is null)
+        {
+            StopWordAnim();
+            return;
+        }
+
+        var msSinceChange = (DateTime.UtcNow - _lastLineChangeTimestamp).TotalMilliseconds;
+        var lookAhead = msSinceChange < 150 ? 0.0 : Math.Min(250.0, (msSinceChange - 150.0) * 2.5);
+
+        var adjustedPos = position.Value + TimeSpan.FromMilliseconds(lookAhead);
+        var songDuration = _viewModel.SongDuration;
+        if (songDuration > TimeSpan.Zero && adjustedPos > songDuration)
+            adjustedPos = songDuration;
+
+        var inlines = IncomingLyricTextBlock.Inlines.ToList();
+        var totalChars = inlines.Count;
+        if (totalChars == 0) return;
+
+        if (_wordCharOpacities is null || _wordCharOpacities.Length != totalChars)
+        {
+            _wordCharOpacities = new double[totalChars];
+            Array.Fill(_wordCharOpacities, 0.15);
+        }
+
+        var runningChars = 0;
+        double? fillPos = null;
+
+        for (var i = 0; i < words.Count; i++)
+        {
+            var wordChars = words[i].Word.Length;
+            var hasSpace = i < words.Count - 1 ? 1 : 0;
+            var wordVisualSpan = wordChars + hasSpace;
+
+            var wordStartTime = words[i].Timestamp;
+            TimeSpan wordEndTime;
+            if (i + 1 < words.Count)
+            {
+                wordEndTime = words[i + 1].Timestamp;
+            }
+            else if (words.Count >= 2)
+            {
+                var avgGap = words[^1].Timestamp - words[^2].Timestamp;
+                wordEndTime = words[i].Timestamp + (avgGap > TimeSpan.Zero ? avgGap : TimeSpan.FromMilliseconds(500));
+            }
+            else
+            {
+                wordEndTime = words[i].Timestamp + TimeSpan.FromMilliseconds(500);
+            }
+
+            if (adjustedPos >= wordStartTime && adjustedPos < wordEndTime)
+            {
+                var timeProgress = wordEndTime > wordStartTime
+                    ? (adjustedPos - wordStartTime).TotalMilliseconds / (wordEndTime - wordStartTime).TotalMilliseconds
+                    : 0;
+
+                var visualStart = (double)runningChars / totalChars;
+                var visualEnd = (double)(runningChars + wordVisualSpan) / totalChars;
+                fillPos = visualStart + timeProgress * (visualEnd - visualStart);
+                break;
+            }
+
+            runningChars += wordVisualSpan;
+        }
+
+        if (fillPos is null)
+        {
+            fillPos = adjustedPos < words[0].Timestamp ? 0.0 : 1.0;
+        }
+
+        var baseBrush = IncomingLyricTextBlock.Foreground;
+        for (var i = 0; i < totalChars; i++)
+        {
+            var charPos = (double)i / totalChars;
+            var diff = (fillPos.Value - charPos) * totalChars;
+            var target = Math.Clamp(0.15 + 0.85 * diff, 0.15, 1.0);
+
+            var current = _wordCharOpacities[i];
+            var err = target - current;
+            if (Math.Abs(err) < 0.003)
+                _wordCharOpacities[i] = target;
+            else
+                _wordCharOpacities[i] = current + err * 0.28;
+
+            ((Run)inlines[i]).Foreground = GetWordBrush(baseBrush, _wordCharOpacities[i]);
+        }
     }
 
     private void ApplyDisplayModeState()
@@ -1150,33 +1447,40 @@ public partial class AppBarWindow : Window
 
     private void UpdateProgressBar()
     {
-        var progress = _viewModel.Progress;
-        var fillWidth = Math.Max(0, progress * ProgressBarTrack.ActualWidth);
+        var currentSongId = _viewModel.SongTitle ?? string.Empty;
 
-        ProgressBarFill.BeginAnimation(WidthProperty, null);
-        var targetWidth = double.IsNaN(fillWidth) || double.IsInfinity(fillWidth) ? 0 : fillWidth;
-
-        var currentWidth = ProgressBarFill.Width;
-        if (Math.Abs(currentWidth - targetWidth) < 1)
+        if (currentSongId != _lastProgressSongId)
         {
-            ProgressBarFill.Width = targetWidth;
+            _lastProgressSongId = currentSongId;
+            ProgressBarFill.BeginAnimation(WidthProperty, null);
+            ProgressBarFill.Width = 0;
+        }
+
+        _progressTimer.Start();
+    }
+
+    private void ProgressTimer_OnTick(object? sender, EventArgs e)
+    {
+        var position = _viewModel.EstimatedPosition;
+        var duration = _viewModel.SongDuration;
+
+        if (position is null || duration <= TimeSpan.Zero)
+        {
             return;
         }
 
-        var animation = new DoubleAnimation
-        {
-            From = currentWidth,
-            To = targetWidth,
-            Duration = TimeSpan.FromMilliseconds(300),
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
-        };
-        ProgressBarFill.BeginAnimation(WidthProperty, animation);
+        var progress = Math.Clamp(position.Value.TotalMilliseconds / duration.TotalMilliseconds, 0, 1);
+        var fillWidth = Math.Max(0, progress * ProgressBarTrack.ActualWidth);
+        var targetWidth = double.IsNaN(fillWidth) || double.IsInfinity(fillWidth) ? 0 : fillWidth;
+
+        ProgressBarFill.BeginAnimation(WidthProperty, null);
+        ProgressBarFill.Width = targetWidth;
     }
 
     private void UpdateHoverEffect(bool isHovering)
     {
-        var targetBgColor = isHovering ? Color.FromArgb(140, 16, 26, 37) : Color.FromArgb(102, 16, 26, 37);
-        var targetBorderColor = isHovering ? Color.FromArgb(160, 48, 70, 92) : Color.FromArgb(138, 48, 70, 92);
+        var targetBgColor = isHovering ? MediaColor.FromArgb(140, 16, 26, 37) : MediaColor.FromArgb(102, 16, 26, 37);
+        var targetBorderColor = isHovering ? MediaColor.FromArgb(160, 48, 70, 92) : MediaColor.FromArgb(138, 48, 70, 92);
         var duration = isHovering ? 150 : 250;
 
         if (SurfaceBorder.Background is SolidColorBrush bgBrush && bgBrush.Color.A > 0)
@@ -1236,7 +1540,7 @@ public partial class AppBarWindow : Window
         }
     }
 
-    private void Window_OnMouseEnter(object sender, MouseEventArgs e)
+    private void Window_OnMouseEnter(object sender, WpfMouseEventArgs e)
     {
         _isPointerOverWindow = true;
         ShowControls();
@@ -1244,7 +1548,7 @@ public partial class AppBarWindow : Window
         UpdateHoverEffect(true);
     }
 
-    private void Window_OnMouseLeave(object sender, MouseEventArgs e)
+    private void Window_OnMouseLeave(object sender, WpfMouseEventArgs e)
     {
         _isPointerOverWindow = false;
         _controlsFadeTimer.Stop();
@@ -1252,7 +1556,7 @@ public partial class AppBarWindow : Window
         UpdateHoverEffect(false);
     }
 
-    private void Window_OnMouseMove(object sender, MouseEventArgs e)
+    private void Window_OnMouseMove(object sender, WpfMouseEventArgs e)
     {
         if (!_isPointerOverWindow)
         {
@@ -1319,7 +1623,7 @@ public partial class AppBarWindow : Window
 
         if (_settings.DisplayMode != DisplayMode.AppBar)
         {
-            ((App)Application.Current).RestartDisplayWindow();
+            ((App)WpfApplication.Current).RestartDisplayWindow();
             return;
         }
 
@@ -1340,11 +1644,27 @@ public partial class AppBarWindow : Window
 
         _displayedLyricText = _viewModel.CurrentLine;
         _displayedNextLineText = _viewModel.NextLine;
-        IncomingLyricTextBlock.Text = _displayedLyricText;
-        IncomingLyricTextBlock.FontSize = AppBarDisplayMode.CurrentLyricFontSize;
-        IncomingLyricTextBlock.Opacity = 1;
-        IncomingLyricTranslateTransform.Y = 0;
-        OutgoingLyricTextBlock.Opacity = 0;
+
+        if (_viewModel.WordByWordMode && _viewModel.CurrentLyricLine?.Words?.Count > 0)
+        {
+            IncomingLyricTextBlock.Inlines.Clear();
+            OutgoingLyricTextBlock.Inlines.Clear();
+            OutgoingLyricTextBlock.Text = string.Empty;
+            SetWordByWordInlines();
+            IncomingLyricTextBlock.FontSize = AppBarDisplayMode.CurrentLyricFontSize;
+            IncomingLyricTextBlock.Opacity = 1;
+            IncomingLyricTranslateTransform.Y = 0;
+            OutgoingLyricTextBlock.Opacity = 0;
+        }
+        else
+        {
+            IncomingLyricTextBlock.Inlines.Clear();
+            IncomingLyricTextBlock.Text = _displayedLyricText;
+            IncomingLyricTextBlock.FontSize = AppBarDisplayMode.CurrentLyricFontSize;
+            IncomingLyricTextBlock.Opacity = 1;
+            IncomingLyricTranslateTransform.Y = 0;
+            OutgoingLyricTextBlock.Opacity = 0;
+        }
         PreviewLyricTextBlock.Text = _displayedNextLineText;
         ApplyNextLineLayout();
         UpdateAlbumArtAndCredit();
@@ -1352,7 +1672,15 @@ public partial class AppBarWindow : Window
         ApplyDisplayModeState();
         ApplyPlaybackStateVisual(immediate: true);
         ApplyLoadingState(immediate: true);
-        ApplyHideModeState();
+
+        if (!IsVisible)
+        {
+            Show();
+        }
+
+        ApplyAppearance();
+        _appBarManager?.SetHeight(GetEffectiveBarHeight(IsPreviewModeEnabled));
+        _appBarManager?.Reposition();
     }
 
     private AppSettings MergeSettings(AppSettings incomingSettings)
@@ -1367,7 +1695,7 @@ public partial class AppBarWindow : Window
         persistedSettings.TaskbarMaximumWidth = incomingSettings.TaskbarMaximumWidth;
         persistedSettings.LyricAlignment = incomingSettings.LyricAlignment;
         persistedSettings.ShowAlbumArt = incomingSettings.ShowAlbumArt;
-        persistedSettings.KaraokeMode = incomingSettings.KaraokeMode;
+        persistedSettings.WordByWordMode = incomingSettings.WordByWordMode;
         persistedSettings.PreferredMonitorDeviceName = null;
         persistedSettings.DetectedMediaApps = MergeDetectedApps(
             incomingSettings.DetectedMediaApps,
@@ -1480,6 +1808,43 @@ public partial class AppBarWindow : Window
     private void CloseButton_OnClick(object sender, RoutedEventArgs e)
     {
         Close();
+    }
+
+    private void HideToTray()
+    {
+        Hide();
+        _appBarManager?.Detach();
+        _trayIcon ??= new TrayIcon(this);
+    }
+
+    internal void ShowFromTray()
+    {
+        Show();
+        if (_appBarManager is null)
+        {
+            _appBarManager = new AppBarManager(this, AppBarDisplayMode.DefaultHeight);
+        }
+
+        if (!_appBarManager.IsAttached)
+        {
+            _appBarManager.Attach();
+        }
+        _appBarManager.SetHeight(GetEffectiveBarHeight(IsPreviewModeEnabled));
+        _appBarManager.Reposition();
+        ApplyAppearance();
+        ApplyNextLineLayout();
+        ApplyDisplayModeState();
+    }
+
+    internal void ExitApp()
+    {
+        Close();
+    }
+
+    internal void OpenSettingsFromTray()
+    {
+        ShowFromTray();
+        SettingsButton_OnClick(this, new RoutedEventArgs());
     }
 
     private void BeginNoLyricsHideDeferral(string reason)

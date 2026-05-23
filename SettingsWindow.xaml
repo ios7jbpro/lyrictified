@@ -2,8 +2,8 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Lyrictified Settings"
-        Width="680"
-        Height="620"
+        Width="740"
+        Height="720"
         WindowStartupLocation="CenterOwner"
         Background="#0D1117">
     <Window.Resources>
@@ -300,24 +300,6 @@
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Grid.Column="0">
-                                            <TextBlock Text="Karaoke mode" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" FontWeight="Medium" />
-                                            <TextBlock Text="Dim previous and next lyrics, highlight the current line." Style="{StaticResource HintTextStyle}" />
-                                        </StackPanel>
-                                        <ComboBox x:Name="KaraokeModeComboBox"
-                                                  Grid.Column="1"
-                                                  MinWidth="120"
-                                                  VerticalAlignment="Center"
-                                                  SelectionChanged="KaraokeModeComboBox_OnSelectionChanged">
-                                            <ComboBoxItem Content="Disabled" />
-                                            <ComboBoxItem Content="Enabled" />
-                                        </ComboBox>
-                                    </Grid>
-                                    <Grid Margin="0,0,0,12">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel Grid.Column="0">
                                             <TextBlock Text="Lyric alignment" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" FontWeight="Medium" />
                                             <TextBlock Text="Position lyrics within the bar." Style="{StaticResource HintTextStyle}" />
                                         </StackPanel>
@@ -347,6 +329,24 @@
                                                   SelectionChanged="ShowAlbumArtComboBox_OnSelectionChanged">
                                             <ComboBoxItem Content="Enabled" />
                                             <ComboBoxItem Content="Disabled" />
+                                        </ComboBox>
+                                    </Grid>
+                                    <Grid Margin="0,0,0,12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="Word-by-word lyrics" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" FontWeight="Medium" />
+                                            <TextBlock Text="Highlight each word as it is sung (requires LRC word timestamps)." Style="{StaticResource HintTextStyle}" />
+                                        </StackPanel>
+                                        <ComboBox x:Name="WordByWordComboBox"
+                                                  Grid.Column="1"
+                                                  MinWidth="120"
+                                                  VerticalAlignment="Center"
+                                                  SelectionChanged="WordByWordComboBox_OnSelectionChanged">
+                                            <ComboBoxItem Content="Disabled" />
+                                            <ComboBoxItem Content="Enabled" />
                                         </ComboBox>
                                     </Grid>
                                     <Grid>

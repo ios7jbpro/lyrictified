@@ -1,4 +1,7 @@
+using System.Diagnostics;
 using System.Windows;
+using Application = System.Windows.Application;
+using Lyrictified.Services;
 using Lyrictified.Settings;
 
 namespace Lyrictified;
@@ -9,6 +12,7 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        Logger.Log("=== App started ===");
         base.OnStartup(e);
         RestartDisplayWindow();
     }
@@ -26,6 +30,6 @@ public partial class App : Application
         if (previousWindow is not null && !ReferenceEquals(previousWindow, nextWindow))
         {
             previousWindow.Close();
-        }
     }
+}
 }
