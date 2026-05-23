@@ -339,6 +339,9 @@ public partial class AppBarWindow : Window
             SwitchMonitorButton.BorderBrush = BlackoutBrush;
         }
 
+        AlbumArtPanel.Visibility = isBlackout ? Visibility.Collapsed : (_settings.ShowAlbumArt ? Visibility.Visible : Visibility.Collapsed);
+        SongCreditPanel.Visibility = isBlackout ? Visibility.Collapsed : Visibility.Visible;
+        ProgressBarTrack.Visibility = isBlackout ? Visibility.Collapsed : Visibility.Visible;
         LyricsContentPanel.Visibility = isBlackout ? Visibility.Collapsed : Visibility.Visible;
         AnimateBorderVisibility(isBlackout);
         if (!_viewModel.IsLoadingLyrics)
@@ -478,7 +481,7 @@ public partial class AppBarWindow : Window
             AlbumArtBorder.Height = artSize;
             AlbumArtOverlayBorder.Width = artSize;
             AlbumArtOverlayBorder.Height = artSize;
-            SongCreditPanel.Visibility = effectiveHeight < 50 ? Visibility.Collapsed : Visibility.Visible;
+            SongCreditPanel.Visibility = ShouldUseBlackoutMode() ? Visibility.Collapsed : (effectiveHeight < 50 ? Visibility.Collapsed : Visibility.Visible);
 
             var isCompact = effectiveHeight < 70;
             SongTitleTextBlock.FontSize = isCompact ? 11 : 13;
@@ -493,14 +496,13 @@ public partial class AppBarWindow : Window
             AlbumArtBorder.Height = 56;
             AlbumArtOverlayBorder.Width = 56;
             AlbumArtOverlayBorder.Height = 56;
-            SongCreditPanel.Visibility = Visibility.Visible;
-            SongTitleTextBlock.FontSize = 13;
+            SongCreditPanel.Visibility = ShouldUseBlackoutMode() ? Visibility.Collapsed : Visibility.Visible;
             SongArtistTextBlock.FontSize = 11;
             SongTimestampTextBlock.FontSize = 10;
             LyricsContentPanel.LayoutTransform = null;
         }
 
-        AlbumArtPanel.Visibility = _settings.ShowAlbumArt ? Visibility.Visible : Visibility.Collapsed;
+        AlbumArtPanel.Visibility = ShouldUseBlackoutMode() ? Visibility.Collapsed : (_settings.ShowAlbumArt ? Visibility.Visible : Visibility.Collapsed);
     }
 
     private void UpdateMonitorControls()
@@ -1494,6 +1496,11 @@ public partial class AppBarWindow : Window
 
     private void UpdateHoverEffect(bool isHovering)
     {
+        if (ShouldUseBlackoutMode())
+        {
+            return;
+        }
+
         var targetBgColor = isHovering ? MediaColor.FromArgb(140, 16, 26, 37) : MediaColor.FromArgb(102, 16, 26, 37);
         var targetBorderColor = isHovering ? MediaColor.FromArgb(160, 48, 70, 92) : MediaColor.FromArgb(138, 48, 70, 92);
         var duration = isHovering ? 150 : 250;
@@ -1525,7 +1532,7 @@ public partial class AppBarWindow : Window
 
     private void AnimateAlbumArtTransition(byte[]? newArt)
     {
-        if (!_settings.ShowAlbumArt)
+        if (!_settings.ShowAlbumArt || ShouldUseBlackoutMode())
         {
             AlbumArtPanel.Visibility = Visibility.Collapsed;
             return;

@@ -19,7 +19,7 @@
             Background="#66101A25"
             BorderBrush="#8A30465C"
             BorderThickness="0,0,0,1"
-            CornerRadius="0"
+CornerRadius="0"
             Padding="18,10">
         <Border.RenderTransform>
             <ScaleTransform x:Name="SurfaceScaleTransform" ScaleX="1" ScaleY="1" />
@@ -111,7 +111,8 @@
             </StackPanel>
             <Grid Grid.Column="1"
                   Grid.Row="0"
-                  VerticalAlignment="Center">
+                  VerticalAlignment="Center"
+                  ClipToBounds="True">
                 <Image x:Name="PauseIcon"
                        Width="28"
                        Height="28"
@@ -128,7 +129,8 @@
                     <StackPanel.RenderTransform>
                         <TranslateTransform x:Name="LyricsContentTranslateTransform" X="0" />
                     </StackPanel.RenderTransform>
-                    <Grid x:Name="LyricStage">
+                    <Grid x:Name="LyricStage"
+                          ClipToBounds="True">
                         <TextBlock x:Name="OutgoingLyricTextBlock"
                                    Foreground="#F5F7FA"
                                    FontSize="34"
