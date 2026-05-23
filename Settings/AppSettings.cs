@@ -22,7 +22,7 @@ public sealed class AppSettings
 
     public bool ShowAlbumArt { get; set; } = true;
 
-    public bool KaraokeMode { get; set; }
+    public bool WordByWordMode { get; set; }
 
     public List<DetectedMediaApp> DetectedMediaApps { get; set; } = new();
 

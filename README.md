@@ -9,16 +9,20 @@ A Windows desktop app that displays real-time synced lyrics for whatever music i
 - Two display modes:
   - **AppBar** — a full-width bar attached to the top of a monitor
   - **Taskbar** — a compact floating window positioned above the taskbar
+- Album artwork display with song title, artist, and timestamp
+- Smooth progress bar showing current playback position
 - Multi-monitor support with per-mode monitor selection
 - Optional next-line preview
-- Configurable bar height and taskbar width
+- Lyric alignment (Left, Center, Right)
+- Configurable bar height (minimum 32px, default 80px)
+- Graceful no-lyrics state (fades in song title instead of error animation)
 - Per-app ignore lists to exclude specific media sources
 - Settings persisted to `%LOCALAPPDATA%\Lyrictified\settings.json`
 
 ## Requirements
 
 - Windows 10 version 2004 (build 19041) or later
-- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
 
 ## Build
 

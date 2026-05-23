@@ -22,7 +22,8 @@ public sealed class LrcLibLyricsService : IDisposable
     {
         _httpClient = new HttpClient
         {
-            BaseAddress = new Uri("https://lrclib.net/")
+            BaseAddress = new Uri("https://lrclib.net/"),
+            Timeout = TimeSpan.FromSeconds(3)
         };
         _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("Lyrictified/0.1");
     }
@@ -111,6 +112,7 @@ public sealed class LrcLibLyricsService : IDisposable
     internal static IReadOnlyList<LyricLine> ParseSyncedLyrics(string syncedLyrics)
     {
         var lines = new List<LyricLine>();
+        var wordRegex = new Regex(@"<(\d{1,2}):(\d{2})(?:\.(\d{1,3}))?>", RegexOptions.Compiled);
 
         foreach (var rawLine in syncedLyrics.Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
@@ -139,7 +141,53 @@ public sealed class LrcLibLyricsService : IDisposable
                     continue;
                 }
 
-                lines.Add(new LyricLine(new TimeSpan(0, 0, minutes, seconds, milliseconds), text));
+                var baseTimestamp = new TimeSpan(0, 0, minutes, seconds, milliseconds);
+
+                IReadOnlyList<WordInfo>? words = null;
+                var wordMatches = wordRegex.Matches(text);
+                if (wordMatches.Count > 0)
+                {
+                    Logger.Log($"Parse: {wordMatches.Count} word timestamps in '{text.Substring(0, Math.Min(80, text.Length))}'");
+                    var wordList = new List<WordInfo>();
+                    var lastEnd = 0;
+                    foreach (System.Text.RegularExpressions.Match wordMatch in wordMatches)
+                    {
+                        var wMinutes = int.Parse(wordMatch.Groups[1].Value, CultureInfo.InvariantCulture);
+                        var wSeconds = int.Parse(wordMatch.Groups[2].Value, CultureInfo.InvariantCulture);
+                        var wFractionValue = wordMatch.Groups[3].Value;
+                        var wMilliseconds = wFractionValue.Length switch
+                        {
+                            1 => int.Parse(wFractionValue, CultureInfo.InvariantCulture) * 100,
+                            2 => int.Parse(wFractionValue, CultureInfo.InvariantCulture) * 10,
+                            3 => int.Parse(wFractionValue, CultureInfo.InvariantCulture),
+                            _ => 0
+                        };
+
+                        var wordStart = wordMatch.Index + wordMatch.Length;
+                        var wordEnd = text.Length;
+                        if (wordMatches.Count > wordList.Count + 1)
+                        {
+                            wordEnd = wordMatches[wordList.Count + 1].Index;
+                        }
+
+                        var wordText = text.AsSpan(wordStart, wordEnd - wordStart).Trim().ToString();
+                        if (!string.IsNullOrWhiteSpace(wordText))
+                        {
+                            wordList.Add(new WordInfo(new TimeSpan(0, 0, wMinutes, wSeconds, wMilliseconds), wordText));
+                        }
+
+                        lastEnd = wordEnd;
+                    }
+
+                    if (wordList.Count > 0)
+                    {
+                        words = wordList;
+                        text = string.Join(" ", wordList.Select(w => w.Word));
+                        Logger.Log($"Parse: {wordList.Count} words extracted");
+                    }
+                }
+
+                lines.Add(new LyricLine(baseTimestamp, text, words));
             }
             catch (Exception ex)
             {

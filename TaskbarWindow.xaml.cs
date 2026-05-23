@@ -13,13 +13,17 @@ using Lyrictified.DisplayModes;
 using Lyrictified.Interop;
 using Lyrictified.Settings;
 using Lyrictified.ViewModels;
+using WpfBrush = System.Windows.Media.Brush;
+using MediaColor = System.Windows.Media.Color;
+using WpfBrushes = System.Windows.Media.Brushes;
+using WpfApplication = System.Windows.Application;
 
 namespace Lyrictified;
 
 public partial class TaskbarWindow : Window
 {
     private static readonly TimeSpan MonitorWarningDuration = TimeSpan.FromSeconds(4);
-    private static readonly Brush LoadingTextBrush = new SolidColorBrush(Color.FromRgb(150, 156, 164));
+    private static readonly WpfBrush LoadingTextBrush = new SolidColorBrush(MediaColor.FromRgb(150, 156, 164));
     private const uint EVENT_SYSTEM_FOREGROUND = 0x0003;
     private const uint WINEVENT_OUTOFCONTEXT = 0x0000;
 
@@ -182,14 +186,14 @@ public partial class TaskbarWindow : Window
 
     private void ApplyAppearance()
     {
-        Background = Brushes.Transparent;
+        Background = WpfBrushes.Transparent;
         RootGrid.Background = IsSettingsWindowVisible()
-            ? new SolidColorBrush(Color.FromArgb(180, 10, 14, 20))
-            : new SolidColorBrush(Color.FromArgb(0, 0, 0, 0));
+            ? new SolidColorBrush(MediaColor.FromArgb(180, 10, 14, 20))
+            : new SolidColorBrush(MediaColor.FromArgb(0, 0, 0, 0));
         if (!_viewModel.IsLoadingLyrics)
         {
-            IncomingLyricTextBlock.Foreground = new SolidColorBrush(Color.FromRgb(245, 247, 250));
-            OutgoingLyricTextBlock.Foreground = new SolidColorBrush(Color.FromRgb(245, 247, 250));
+            IncomingLyricTextBlock.Foreground = new SolidColorBrush(MediaColor.FromRgb(245, 247, 250));
+            OutgoingLyricTextBlock.Foreground = new SolidColorBrush(MediaColor.FromRgb(245, 247, 250));
         }
     }
 
@@ -437,7 +441,7 @@ public partial class TaskbarWindow : Window
 
     private void Window_OnMouseRightButtonUp(object sender, MouseButtonEventArgs e)
     {
-        Application.Current.Shutdown();
+        WpfApplication.Current.Shutdown();
         e.Handled = true;
     }
 
@@ -469,7 +473,7 @@ public partial class TaskbarWindow : Window
 
         if (_settings.DisplayMode != DisplayMode.Taskbar)
         {
-            ((App)Application.Current).RestartDisplayWindow();
+            ((App)WpfApplication.Current).RestartDisplayWindow();
             return;
         }
 
@@ -502,7 +506,6 @@ public partial class TaskbarWindow : Window
         persistedSettings.TaskbarMaximumWidth = incomingSettings.TaskbarMaximumWidth;
         persistedSettings.LyricAlignment = incomingSettings.LyricAlignment;
         persistedSettings.ShowAlbumArt = incomingSettings.ShowAlbumArt;
-        persistedSettings.KaraokeMode = incomingSettings.KaraokeMode;
         persistedSettings.PreferredMonitorDeviceName = null;
         persistedSettings.DetectedMediaApps = MergeDetectedApps(
             incomingSettings.DetectedMediaApps,
