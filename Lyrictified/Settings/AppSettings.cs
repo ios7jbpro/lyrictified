@@ -22,6 +22,8 @@ public sealed class AppSettings
 
     public bool ShowAlbumArt { get; set; } = true;
 
+    public bool KaraokeMode { get; set; }
+
     public List<DetectedMediaApp> DetectedMediaApps { get; set; } = new();
 
     public List<string> IgnoredMediaAppIds { get; set; } = new();

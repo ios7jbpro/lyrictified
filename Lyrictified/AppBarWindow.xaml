@@ -19,13 +19,21 @@
             Background="#66101A25"
             BorderBrush="#8A30465C"
             BorderThickness="0,0,0,1"
+            CornerRadius="0"
             Padding="18,10">
+        <Border.RenderTransform>
+            <ScaleTransform x:Name="SurfaceScaleTransform" ScaleX="1" ScaleY="1" />
+        </Border.RenderTransform>
         <Grid>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
             <Border x:Name="MonitorWarningBanner"
                     Grid.ColumnSpan="3"
                     HorizontalAlignment="Center"
@@ -47,21 +55,37 @@
             </Border>
             <StackPanel x:Name="AlbumArtPanel"
                         Grid.Column="0"
+                        Grid.Row="0"
                         Orientation="Horizontal"
                         VerticalAlignment="Center"
                         Margin="0,0,14,0">
-                <Border x:Name="AlbumArtBorder"
-                        Width="76"
-                        Height="76"
-                        CornerRadius="8"
-                        ClipToBounds="True"
-                        Background="#1A2431"
-                        BorderBrush="#365067"
-                        BorderThickness="1">
-                    <Image x:Name="AlbumArtImage"
-                           Stretch="UniformToFill"
-                           RenderOptions.BitmapScalingMode="HighQuality" />
-                </Border>
+                <Grid>
+                    <Border x:Name="AlbumArtBorder"
+                            Width="76"
+                            Height="76"
+                            CornerRadius="8"
+                            ClipToBounds="True"
+                            Background="#1A2431"
+                            BorderBrush="#365067"
+                            BorderThickness="1">
+                        <Image x:Name="AlbumArtImage"
+                               Stretch="UniformToFill"
+                               RenderOptions.BitmapScalingMode="HighQuality" />
+                    </Border>
+                    <Border x:Name="AlbumArtOverlayBorder"
+                            Width="76"
+                            Height="76"
+                            CornerRadius="8"
+                            ClipToBounds="True"
+                            Background="#1A2431"
+                            BorderBrush="#365067"
+                            BorderThickness="1"
+                            Opacity="0">
+                        <Image x:Name="AlbumArtOverlayImage"
+                               Stretch="UniformToFill"
+                               RenderOptions.BitmapScalingMode="HighQuality" />
+                    </Border>
+                </Grid>
                 <StackPanel x:Name="SongCreditPanel"
                             VerticalAlignment="Center"
                             Margin="10,0,0,0">
@@ -86,6 +110,7 @@
                 </StackPanel>
             </StackPanel>
             <Grid Grid.Column="1"
+                  Grid.Row="0"
                   VerticalAlignment="Center">
                 <Image x:Name="PauseIcon"
                        Width="28"
@@ -164,6 +189,7 @@
 
             <StackPanel x:Name="ControlButtonsPanel"
                         Grid.Column="2"
+                        Grid.Row="0"
                         Orientation="Horizontal"
                         VerticalAlignment="Center"
                         Opacity="1">
@@ -208,7 +234,19 @@
                         FontSize="18"
                         Content="X" />
             </StackPanel>
+
+            <ProgressBar x:Name="SongProgressBar"
+                         Grid.ColumnSpan="3"
+                         Grid.Row="1"
+                         Height="3"
+                         Minimum="0"
+                         Maximum="1"
+                         Value="0"
+                         Foreground="#5BA3E6"
+                         Background="#1A2431"
+                         BorderBrush="Transparent"
+                         BorderThickness="0"
+                         Margin="-18,-2,-18,-10" />
         </Grid>
     </Border>
 </Window>
-

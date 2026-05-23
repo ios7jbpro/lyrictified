@@ -502,6 +502,7 @@ public partial class TaskbarWindow : Window
         persistedSettings.TaskbarMaximumWidth = incomingSettings.TaskbarMaximumWidth;
         persistedSettings.LyricAlignment = incomingSettings.LyricAlignment;
         persistedSettings.ShowAlbumArt = incomingSettings.ShowAlbumArt;
+        persistedSettings.KaraokeMode = incomingSettings.KaraokeMode;
         persistedSettings.PreferredMonitorDeviceName = null;
         persistedSettings.DetectedMediaApps = MergeDetectedApps(
             incomingSettings.DetectedMediaApps,

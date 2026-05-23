@@ -1,230 +1,91 @@
 <Window x:Class="Lyrictified.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d"
         Title="Lyrictified Settings"
-        Width="760"
-        Height="520"
+        Width="680"
+        Height="620"
         WindowStartupLocation="CenterOwner"
-        Background="#111821">
+        Background="#0D1117">
     <Window.Resources>
-        <SolidColorBrush x:Key="ControlForegroundBrush" Color="#F5F7FA" />
-        <SolidColorBrush x:Key="ControlBackgroundBrush" Color="#1A2431" />
-        <SolidColorBrush x:Key="ControlBorderBrush" Color="#365067" />
-        <SolidColorBrush x:Key="DisabledControlForegroundBrush" Color="#C8D5E3" />
-        <SolidColorBrush x:Key="DisabledControlBackgroundBrush" Color="#253242" />
-        <SolidColorBrush x:Key="DisabledControlBorderBrush" Color="#42576E" />
-        <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}" Color="#1A2431" />
-        <SolidColorBrush x:Key="{x:Static SystemColors.WindowTextBrushKey}" Color="#F5F7FA" />
-        <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}" Color="#1A2431" />
-        <SolidColorBrush x:Key="{x:Static SystemColors.ControlTextBrushKey}" Color="#F5F7FA" />
-        <SolidColorBrush x:Key="{x:Static SystemColors.GrayTextBrushKey}" Color="#C8D5E3" />
-        <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#2B3B4D" />
-        <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#F5F7FA" />
-        <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#2B3B4D" />
-        <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="#F5F7FA" />
+        <SolidColorBrush x:Key="SurfaceBrush" Color="#161B22" />
+        <SolidColorBrush x:Key="BorderBrush" Color="#30363D" />
+        <SolidColorBrush x:Key="TextPrimaryBrush" Color="#E6EDF3" />
+        <SolidColorBrush x:Key="TextSecondaryBrush" Color="#8B949E" />
+        <SolidColorBrush x:Key="AccentBrush" Color="#58A6FF" />
+        <SolidColorBrush x:Key="AccentHoverBrush" Color="#79C0FF" />
+        <SolidColorBrush x:Key="DangerBrush" Color="#F85149" />
+        <SolidColorBrush x:Key="InputBackgroundBrush" Color="#0D1117" />
+        <SolidColorBrush x:Key="CardBrush" Color="#1C2128" />
 
-        <ControlTemplate x:Key="DarkComboBoxToggleButton" TargetType="ToggleButton">
-            <Border x:Name="ToggleBorder"
-                    Background="{TemplateBinding Background}"
-                    BorderBrush="{TemplateBinding BorderBrush}"
-                    BorderThickness="{TemplateBinding BorderThickness}">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="34" />
-                    </Grid.ColumnDefinitions>
-                    <Border Grid.Column="1"
-                            Background="#223041"
-                            BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="1,0,0,0">
-                        <Path HorizontalAlignment="Center"
-                              VerticalAlignment="Center"
-                              Fill="{TemplateBinding Foreground}"
-                              Data="M 0 0 L 4 4 L 8 0 Z" />
-                    </Border>
-                </Grid>
-            </Border>
-            <ControlTemplate.Triggers>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter TargetName="ToggleBorder" Property="Background" Value="#223041" />
-                </Trigger>
-                <Trigger Property="IsChecked" Value="True">
-                    <Setter TargetName="ToggleBorder" Property="Background" Value="#223041" />
-                </Trigger>
-                <Trigger Property="IsEnabled" Value="False">
-                    <Setter TargetName="ToggleBorder" Property="Background" Value="{StaticResource DisabledControlBackgroundBrush}" />
-                </Trigger>
-            </ControlTemplate.Triggers>
-        </ControlTemplate>
+        <Style x:Key="CardStyle" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource CardBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Padding" Value="20" />
+            <Setter Property="Margin" Value="0,0,0,16" />
+        </Style>
+
+        <Style x:Key="SectionTitleStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+            <Setter Property="FontSize" Value="15" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,0,0,14" />
+        </Style>
+
+        <Style x:Key="LabelStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="Medium" />
+            <Setter Property="Margin" Value="0,0,0,6" />
+        </Style>
 
         <Style TargetType="ComboBox">
-            <Setter Property="Foreground" Value="{StaticResource ControlForegroundBrush}" />
-            <Setter Property="Background" Value="{StaticResource ControlBackgroundBrush}" />
-            <Setter Property="BorderBrush" Value="{StaticResource ControlBorderBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+            <Setter Property="Background" Value="{StaticResource InputBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Padding" Value="10,6" />
-            <Setter Property="Opacity" Value="1" />
-            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Auto" />
-            <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
-            <Setter Property="ScrollViewer.CanContentScroll" Value="True" />
-            <Setter Property="MinHeight" Value="34" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ComboBox">
-                        <Grid>
-                            <ToggleButton Name="ToggleButton"
-                                          Background="{TemplateBinding Background}"
-                                          BorderBrush="{TemplateBinding BorderBrush}"
-                                          BorderThickness="{TemplateBinding BorderThickness}"
-                                          Foreground="{TemplateBinding Foreground}"
-                                          Focusable="False"
-                                          ClickMode="Press"
-                                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
-                                          Template="{StaticResource DarkComboBoxToggleButton}" />
-                            <ContentPresenter Name="ContentSite"
-                                              Margin="{TemplateBinding Padding}"
-                                              HorizontalAlignment="Left"
-                                              VerticalAlignment="Center"
-                                              Content="{TemplateBinding SelectionBoxItem}"
-                                              ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}"
-                                              ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
-                                              ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
-                                              IsHitTestVisible="False" />
-                            <Popup Name="Popup"
-                                   AllowsTransparency="True"
-                                   Focusable="False"
-                                   IsOpen="{TemplateBinding IsDropDownOpen}"
-                                   Placement="Bottom"
-                                   PopupAnimation="Slide">
-                                <Grid Name="DropDown"
-                                      MinWidth="{TemplateBinding ActualWidth}"
-                                      MaxHeight="{TemplateBinding MaxDropDownHeight}"
-                                      SnapsToDevicePixels="True">
-                                    <Border Background="{StaticResource ControlBackgroundBrush}"
-                                            BorderBrush="{TemplateBinding BorderBrush}"
-                                            BorderThickness="{TemplateBinding BorderThickness}" />
-                                    <ScrollViewer Margin="1" SnapsToDevicePixels="True">
-                                        <StackPanel IsItemsHost="True"
-                                                    KeyboardNavigation.DirectionalNavigation="Contained" />
-                                    </ScrollViewer>
-                                </Grid>
-                            </Popup>
-                        </Grid>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="HasItems" Value="False">
-                                <Setter TargetName="DropDown" Property="MinHeight" Value="34" />
-                            </Trigger>
-                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                                <Setter TargetName="ToggleButton" Property="BorderBrush" Value="#4E708F" />
-                            </Trigger>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="ToggleButton" Property="Background" Value="#223041" />
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Foreground" Value="{StaticResource DisabledControlForegroundBrush}" />
-                                <Setter TargetName="ToggleButton" Property="Background" Value="{StaticResource DisabledControlBackgroundBrush}" />
-                                <Setter TargetName="ToggleButton" Property="BorderBrush" Value="{StaticResource DisabledControlBorderBrush}" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-            <Style.Triggers>
-                <Trigger Property="IsEnabled" Value="False">
-                    <Setter Property="Foreground" Value="{StaticResource DisabledControlForegroundBrush}" />
-                    <Setter Property="Background" Value="{StaticResource DisabledControlBackgroundBrush}" />
-                    <Setter Property="BorderBrush" Value="{StaticResource DisabledControlBorderBrush}" />
-                    <Setter Property="Opacity" Value="1" />
-                </Trigger>
-            </Style.Triggers>
+            <Setter Property="Padding" Value="12,8" />
+            <Setter Property="MinHeight" Value="38" />
+            <Setter Property="FontSize" Value="13" />
         </Style>
 
         <Style TargetType="TextBox">
-            <Setter Property="Foreground" Value="{StaticResource ControlForegroundBrush}" />
-            <Setter Property="Background" Value="{StaticResource ControlBackgroundBrush}" />
-            <Setter Property="BorderBrush" Value="{StaticResource ControlBorderBrush}" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+            <Setter Property="Background" Value="{StaticResource InputBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Padding" Value="10,6" />
-            <Setter Property="CaretBrush" Value="{StaticResource ControlForegroundBrush}" />
-            <Setter Property="Opacity" Value="1" />
-            <Style.Triggers>
-                <Trigger Property="IsEnabled" Value="False">
-                    <Setter Property="Foreground" Value="{StaticResource DisabledControlForegroundBrush}" />
-                    <Setter Property="Background" Value="{StaticResource DisabledControlBackgroundBrush}" />
-                    <Setter Property="BorderBrush" Value="{StaticResource DisabledControlBorderBrush}" />
-                    <Setter Property="Opacity" Value="1" />
-                </Trigger>
-            </Style.Triggers>
+            <Setter Property="Padding" Value="12,8" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="CaretBrush" Value="{StaticResource AccentBrush}" />
         </Style>
 
-        <Style TargetType="ComboBoxItem">
-            <Setter Property="Foreground" Value="{StaticResource ControlForegroundBrush}" />
-            <Setter Property="Background" Value="{StaticResource ControlBackgroundBrush}" />
-            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            <Setter Property="Padding" Value="10,6" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ComboBoxItem">
-                        <Border x:Name="ItemBorder"
-                                Background="{TemplateBinding Background}"
-                                SnapsToDevicePixels="True">
-                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                              VerticalAlignment="Center" />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsHighlighted" Value="True">
-                                <Setter TargetName="ItemBorder" Property="Background" Value="#2B3B4D" />
-                            </Trigger>
-                            <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="ItemBorder" Property="Background" Value="#223041" />
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Foreground" Value="{StaticResource DisabledControlForegroundBrush}" />
-                                <Setter TargetName="ItemBorder" Property="Background" Value="{StaticResource DisabledControlBackgroundBrush}" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-            <Style.Triggers>
-                <Trigger Property="IsHighlighted" Value="True">
-                    <Setter Property="Background" Value="#2B3B4D" />
-                </Trigger>
-                <Trigger Property="IsSelected" Value="True">
-                    <Setter Property="Background" Value="#223041" />
-                </Trigger>
-                <Trigger Property="IsEnabled" Value="False">
-                    <Setter Property="Foreground" Value="{StaticResource DisabledControlForegroundBrush}" />
-                    <Setter Property="Background" Value="{StaticResource DisabledControlBackgroundBrush}" />
-                </Trigger>
-            </Style.Triggers>
+        <Style TargetType="CheckBox">
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
 
         <Style TargetType="TabControl">
-            <Setter Property="Background" Value="#111821" />
-            <Setter Property="BorderBrush" Value="#2A394A" />
-            <Setter Property="Foreground" Value="#F5F7FA" />
-            <Setter Property="Padding" Value="0" />
+            <Setter Property="Background" Value="#0D1117" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
         </Style>
 
         <Style TargetType="TabItem">
-            <Setter Property="Foreground" Value="#D7E2EE" />
-            <Setter Property="Background" Value="#1A2431" />
-            <Setter Property="BorderBrush" Value="#365067" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Padding" Value="12,6" />
-            <Setter Property="Margin" Value="0,0,6,0" />
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="16,10" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="Medium" />
+            <Setter Property="Margin" Value="0,0,4,0" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="TabItem">
                         <Border x:Name="TabBorder"
                                 Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="6,6,0,0"
+                                CornerRadius="8,8,0,0"
                                 Padding="{TemplateBinding Padding}">
                             <ContentPresenter x:Name="ContentSite"
                                               HorizontalAlignment="Center"
@@ -234,19 +95,14 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="TabBorder" Property="Background" Value="#223041" />
-                                <Setter Property="Foreground" Value="#F5F7FA" />
+                                <Setter TargetName="TabBorder" Property="Background" Value="#1C2128" />
+                                <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
                             </Trigger>
                             <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="TabBorder" Property="Background" Value="#223041" />
-                                <Setter TargetName="TabBorder" Property="BorderBrush" Value="#4E708F" />
-                                <Setter Property="Foreground" Value="#FFFFFF" />
-                                <Setter Property="Panel.ZIndex" Value="1" />
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="TabBorder" Property="Background" Value="{StaticResource DisabledControlBackgroundBrush}" />
-                                <Setter TargetName="TabBorder" Property="BorderBrush" Value="{StaticResource DisabledControlBorderBrush}" />
-                                <Setter Property="Foreground" Value="{StaticResource DisabledControlForegroundBrush}" />
+                                <Setter TargetName="TabBorder" Property="Background" Value="#1C2128" />
+                                <Setter TargetName="TabBorder" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                                <Setter TargetName="TabBorder" Property="BorderThickness" Value="0,2,0,0" />
+                                <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -254,333 +110,261 @@
             </Setter>
         </Style>
 
-        <Style TargetType="ListBox">
-            <Setter Property="Foreground" Value="{StaticResource ControlForegroundBrush}" />
-            <Setter Property="Background" Value="{StaticResource ControlBackgroundBrush}" />
-            <Setter Property="BorderBrush" Value="{StaticResource ControlBorderBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-        </Style>
-
-        <Style TargetType="ListBoxItem">
-            <Setter Property="Background" Value="{StaticResource ControlBackgroundBrush}" />
-            <Setter Property="Foreground" Value="{StaticResource ControlForegroundBrush}" />
-            <Setter Property="Padding" Value="0" />
-            <Setter Property="Margin" Value="0,0,0,8" />
-            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ListBoxItem">
-                        <Border x:Name="ItemBorder"
-                                Background="{TemplateBinding Background}"
-                                BorderBrush="{StaticResource ControlBorderBrush}"
-                                BorderThickness="1"
-                                CornerRadius="4"
-                                Padding="12,10">
-                            <ContentPresenter />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="ItemBorder" Property="Background" Value="#223041" />
-                            </Trigger>
-                            <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="ItemBorder" Property="Background" Value="#223041" />
-                                <Setter TargetName="ItemBorder" Property="BorderBrush" Value="#4E708F" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <Style TargetType="CheckBox">
-            <Setter Property="Foreground" Value="{StaticResource ControlForegroundBrush}" />
+        <Style x:Key="ToggleSwitchStyle" TargetType="CheckBox">
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
             <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0" />
+        </Style>
+
+        <Style x:Key="HintTextStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Margin" Value="0,6,0,0" />
+            <Setter Property="TextWrapping" Value="Wrap" />
         </Style>
     </Window.Resources>
-    <Grid Margin="22">
-        <TabControl Background="#111821"
-                    BorderBrush="#2A394A"
-                    Foreground="#F5F7FA">
-            <TabItem Header="General">
-                <Grid Margin="22">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="180" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
 
-                    <TextBlock Grid.Row="0"
-                               Grid.Column="0"
-                               Margin="0,0,18,18"
-                               VerticalAlignment="Center"
-                               Foreground="#E5EDF5"
-                               FontSize="15"
-                               FontWeight="SemiBold"
-                               Text="Display mode" />
-                    <ComboBox x:Name="DisplayModeComboBox"
-                              Grid.Row="0"
-                              Grid.Column="1"
-                              Margin="0,0,0,18"
-                              MinWidth="240"
-                              SelectionChanged="DisplayModeComboBox_OnSelectionChanged">
-                        <ComboBoxItem Tag="AppBar" Content="App bar" />
-                        <ComboBoxItem Tag="Taskbar" Content="Taskbar" />
-                    </ComboBox>
-                </Grid>
-            </TabItem>
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <Grid Margin="24,20,24,24">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
 
-            <TabItem Header="App Bar">
-                <Grid Margin="22">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="180" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
+            <TabControl x:Name="SettingsTabControl"
+                        Grid.Row="1"
+                        Background="#0D1117"
+                        BorderBrush="Transparent"
+                        Margin="0,12,0,0">
+                <TabItem Header="General">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,16,0,0">
+                        <StackPanel>
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel>
+                                    <TextBlock Text="Display Mode" Style="{StaticResource SectionTitleStyle}" />
+                                    <TextBlock Text="Choose where lyrics appear on your screen." Style="{StaticResource LabelStyle}" />
+                                    <ComboBox x:Name="DisplayModeComboBox"
+                                              MinWidth="260"
+                                              SelectionChanged="DisplayModeComboBox_OnSelectionChanged">
+                                        <ComboBoxItem Tag="AppBar" Content="App bar (top of screen)" />
+                                        <ComboBoxItem Tag="Taskbar" Content="Taskbar" />
+                                    </ComboBox>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
 
-                    <TextBlock Grid.Row="0"
-                               Grid.Column="0"
-                               Margin="0,0,18,18"
-                               VerticalAlignment="Center"
-                               Foreground="#E5EDF5"
-                               FontSize="15"
-                               FontWeight="SemiBold"
-                               Text="Hide mode" />
-                    <ComboBox x:Name="HideModeComboBox"
-                              Grid.Row="0"
-                              Grid.Column="1"
-                              Margin="0,0,0,18"
-                              MinWidth="240"
-                              SelectionChanged="HideModeComboBox_OnSelectionChanged">
-                        <ComboBoxItem Tag="Nothing" Content="Nothing" />
-                        <ComboBoxItem Tag="Blackout" Content="Blackout" />
-                        <ComboBoxItem Tag="Hide" Content="Hide" />
-                    </ComboBox>
-
-                    <TextBlock Grid.Row="1"
-                               Grid.Column="0"
-                               Margin="0,0,18,18"
-                               VerticalAlignment="Center"
-                               Foreground="#E5EDF5"
-                               FontSize="15"
-                               FontWeight="SemiBold"
-                               Text="Show next line" />
-                    <ComboBox x:Name="ShowNextLineComboBox"
-                              Grid.Row="1"
-                              Grid.Column="1"
-                              Margin="0,0,0,18"
-                              MinWidth="240"
-                              SelectionChanged="ShowNextLineComboBox_OnSelectionChanged">
-                        <ComboBoxItem Content="Disabled" />
-                        <ComboBoxItem Content="Enabled" />
-                    </ComboBox>
-
-                    <TextBlock Grid.Row="2"
-                               Grid.Column="0"
-                               Margin="0,0,18,18"
-                               VerticalAlignment="Center"
-                               Foreground="#E5EDF5"
-                               FontSize="15"
-                               FontWeight="SemiBold"
-                               Text="Display monitor" />
-                    <ComboBox x:Name="AppBarMonitorComboBox"
-                              Grid.Row="2"
-                              Grid.Column="1"
-                              Margin="0,0,0,18"
-                              MinWidth="240"
-                              DisplayMemberPath="DisplayName"
-                              SelectedValuePath="DeviceName"
-                              SelectionChanged="AppBarMonitorComboBox_OnSelectionChanged" />
-
-<TextBlock Grid.Row="3"
-                                Grid.Column="0"
-                                Margin="0,0,18,18"
-                                VerticalAlignment="Center"
-                                Foreground="#E5EDF5"
-                                FontSize="15"
-                                FontWeight="SemiBold"
-                                Text="Bar height" />
-                    <StackPanel Grid.Row="3"
-                                Grid.Column="1"
-                                Margin="0,0,0,18">
-                        <TextBox x:Name="CustomHeightTextBox"
-                                 MinWidth="240"
-                                 MaxWidth="240"
-                                 TextChanged="CustomHeightTextBox_OnTextChanged" />
-                        <TextBlock x:Name="BarHeightHintTextBlock"
-                                   Margin="0,8,0,0"
-                                   Foreground="#9DB1C4"
-                                   FontSize="12"
-                                   Text="Leave empty to use automatic mode height." />
-                    </StackPanel>
-
-                    <TextBlock Grid.Row="4"
-                               Grid.Column="0"
-                               Margin="0,0,18,18"
-                               VerticalAlignment="Center"
-                               Foreground="#E5EDF5"
-                               FontSize="15"
-                               FontWeight="SemiBold"
-                               Text="Lyric alignment" />
-                    <ComboBox x:Name="LyricAlignmentComboBox"
-                              Grid.Row="4"
-                              Grid.Column="1"
-                              Margin="0,0,0,18"
-                              MinWidth="240"
-                              SelectionChanged="LyricAlignmentComboBox_OnSelectionChanged">
-                        <ComboBoxItem Tag="Left" Content="Left" />
-                        <ComboBoxItem Tag="Center" Content="Center" />
-                        <ComboBoxItem Tag="Right" Content="Right" />
-                    </ComboBox>
-
-                    <TextBlock Grid.Row="5"
-                               Grid.Column="0"
-                               Margin="0,0,18,18"
-                               VerticalAlignment="Center"
-                               Foreground="#E5EDF5"
-                               FontSize="15"
-                               FontWeight="SemiBold"
-                               Text="Show album art" />
-                    <ComboBox x:Name="ShowAlbumArtComboBox"
-                              Grid.Row="5"
-                              Grid.Column="1"
-                              Margin="0,0,0,18"
-                              MinWidth="240"
-                              SelectionChanged="ShowAlbumArtComboBox_OnSelectionChanged">
-                        <ComboBoxItem Content="Enabled" />
-                        <ComboBoxItem Content="Disabled" />
-                    </ComboBox>
-                </Grid>
-            </TabItem>
-
-            <TabItem Header="Taskbar">
-                <Grid Margin="22">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="180" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-
-                    <TextBlock Grid.Row="0"
-                               Grid.Column="0"
-                               Margin="0,0,18,18"
-                               VerticalAlignment="Center"
-                               Foreground="#E5EDF5"
-                               FontSize="15"
-                               FontWeight="SemiBold"
-                               Text="Display monitor" />
-                    <ComboBox x:Name="TaskbarMonitorComboBox"
-                              Grid.Row="0"
-                              Grid.Column="1"
-                              Margin="0,0,0,18"
-                              MinWidth="240"
-                              DisplayMemberPath="DisplayName"
-                              SelectedValuePath="DeviceName"
-                              SelectionChanged="TaskbarMonitorComboBox_OnSelectionChanged" />
-
-                    <TextBlock Grid.Row="1"
-                               Grid.Column="0"
-                               Margin="0,0,18,18"
-                               VerticalAlignment="Center"
-                               Foreground="#E5EDF5"
-                               FontSize="15"
-                               FontWeight="SemiBold"
-                               Text="Maximum width" />
-                    <StackPanel Grid.Row="1"
-                                Grid.Column="1"
-                                Margin="0,0,0,18">
-                        <TextBox x:Name="TaskbarMaximumWidthTextBox"
-                                 MinWidth="240"
-                                 MaxWidth="240"
-                                 TextChanged="TaskbarMaximumWidthTextBox_OnTextChanged" />
-                        <TextBlock x:Name="TaskbarMaximumWidthHintTextBlock"
-                                   Margin="0,8,0,0"
-                                   Foreground="#9DB1C4"
-                                   FontSize="12"
-                                   Text="Leave empty to use the default taskbar width cap." />
-                    </StackPanel>
-                </Grid>
-            </TabItem>
-
-            <TabItem Header="Detected Apps">
-                <Grid Margin="22">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
-
-                    <TextBlock Grid.Row="0"
-                               Margin="0,0,0,10"
-                               Foreground="#E5EDF5"
-                               FontSize="16"
-                               FontWeight="SemiBold"
-                               Text="Media app ignore rules" />
-
-                    <TextBlock Grid.Row="1"
-                               Margin="0,0,0,18"
-                               Foreground="#9DB1C4"
-                               TextWrapping="Wrap"
-                               Text="Lyrictified remembers apps that expose media sessions. Enable ignore for apps you never want to drive lyrics, like web browsers or background players." />
-
-                    <Grid Grid.Row="2">
-                        <TextBlock x:Name="DetectedAppsEmptyStateTextBlock"
-                                   VerticalAlignment="Top"
-                                   Foreground="#9DB1C4"
-                                   Text="No media apps detected yet. Start playback in an app and reopen this tab." />
-
-                        <ListBox x:Name="DetectedAppsListBox"
-                                 Visibility="Collapsed"
-                                 BorderThickness="0"
-                                 Background="Transparent"
-                                 SelectionMode="Single"
-                                 ScrollViewer.VerticalScrollBarVisibility="Auto">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
+                <TabItem Header="App Bar">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,16,0,0">
+                        <StackPanel>
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel>
+                                    <TextBlock Text="Lyric Display" Style="{StaticResource SectionTitleStyle}" />
+                                    <Grid Margin="0,0,0,12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="Show next line" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" FontWeight="Medium" />
+                                            <TextBlock Text="Preview the upcoming lyric line below the current one." Style="{StaticResource HintTextStyle}" />
+                                        </StackPanel>
+                                        <ComboBox x:Name="ShowNextLineComboBox"
+                                                  Grid.Column="1"
+                                                  MinWidth="120"
+                                                  VerticalAlignment="Center"
+                                                  SelectionChanged="ShowNextLineComboBox_OnSelectionChanged">
+                                            <ComboBoxItem Content="Disabled" />
+                                            <ComboBoxItem Content="Enabled" />
+                                        </ComboBox>
+                                    </Grid>
+                                    <Grid Margin="0,0,0,12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="Karaoke mode" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" FontWeight="Medium" />
+                                            <TextBlock Text="Dim previous and next lyrics, highlight the current line." Style="{StaticResource HintTextStyle}" />
+                                        </StackPanel>
+                                        <ComboBox x:Name="KaraokeModeComboBox"
+                                                  Grid.Column="1"
+                                                  MinWidth="120"
+                                                  VerticalAlignment="Center"
+                                                  SelectionChanged="KaraokeModeComboBox_OnSelectionChanged">
+                                            <ComboBoxItem Content="Disabled" />
+                                            <ComboBoxItem Content="Enabled" />
+                                        </ComboBox>
+                                    </Grid>
+                                    <Grid Margin="0,0,0,12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="Lyric alignment" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" FontWeight="Medium" />
+                                            <TextBlock Text="Position lyrics within the bar." Style="{StaticResource HintTextStyle}" />
+                                        </StackPanel>
+                                        <ComboBox x:Name="LyricAlignmentComboBox"
+                                                  Grid.Column="1"
+                                                  MinWidth="120"
+                                                  VerticalAlignment="Center"
+                                                  SelectionChanged="LyricAlignmentComboBox_OnSelectionChanged">
+                                            <ComboBoxItem Tag="Left" Content="Left" />
+                                            <ComboBoxItem Tag="Center" Content="Center" />
+                                            <ComboBoxItem Tag="Right" Content="Right" />
+                                        </ComboBox>
+                                    </Grid>
+                                    <Grid Margin="0,0,0,12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="Show album art" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" FontWeight="Medium" />
+                                            <TextBlock Text="Display album artwork and song info on the left side." Style="{StaticResource HintTextStyle}" />
+                                        </StackPanel>
+                                        <ComboBox x:Name="ShowAlbumArtComboBox"
+                                                  Grid.Column="1"
+                                                  MinWidth="120"
+                                                  VerticalAlignment="Center"
+                                                  SelectionChanged="ShowAlbumArtComboBox_OnSelectionChanged">
+                                            <ComboBoxItem Content="Enabled" />
+                                            <ComboBoxItem Content="Disabled" />
+                                        </ComboBox>
+                                    </Grid>
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*" />
                                             <ColumnDefinition Width="Auto" />
                                         </Grid.ColumnDefinitions>
-
                                         <StackPanel Grid.Column="0">
-                                            <TextBlock FontSize="14"
-                                                       FontWeight="SemiBold"
-                                                       Foreground="#F5F7FA"
-                                                       Text="{Binding DisplayName}" />
-                                            <TextBlock Margin="0,4,0,0"
-                                                       Foreground="#9DB1C4"
-                                                       Text="{Binding AppId}" />
+                                            <TextBlock Text="Hide mode" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" FontWeight="Medium" />
+                                            <TextBlock Text="Control bar visibility when lyrics are not found." Style="{StaticResource HintTextStyle}" />
                                         </StackPanel>
-
-                                        <CheckBox Grid.Column="1"
-                                                  Margin="20,0,0,0"
+                                        <ComboBox x:Name="HideModeComboBox"
+                                                  Grid.Column="1"
+                                                  MinWidth="120"
                                                   VerticalAlignment="Center"
-                                                  Content="Ignore"
-                                                  IsChecked="{Binding IsIgnored}"
-                                                  Checked="DetectedAppIgnoreCheckBox_OnChanged"
-                                                  Unchecked="DetectedAppIgnoreCheckBox_OnChanged" />
+                                                  SelectionChanged="HideModeComboBox_OnSelectionChanged">
+                                            <ComboBoxItem Tag="Nothing" Content="Nothing" />
+                                            <ComboBoxItem Tag="Blackout" Content="Blackout" />
+                                            <ComboBoxItem Tag="Hide" Content="Hide" />
+                                        </ComboBox>
                                     </Grid>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                    </Grid>
-                </Grid>
-            </TabItem>
-        </TabControl>
-    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel>
+                                    <TextBlock Text="Bar Height" Style="{StaticResource SectionTitleStyle}" />
+                                    <TextBlock Text="Custom pixel height. Leave empty for automatic sizing (80px default, 136px with next line)." Style="{StaticResource LabelStyle}" />
+                                    <TextBox x:Name="CustomHeightTextBox"
+                                             MinWidth="260"
+                                             MaxWidth="260"
+                                             TextChanged="CustomHeightTextBox_OnTextChanged" />
+                                    <TextBlock x:Name="BarHeightHintTextBlock"
+                                               Style="{StaticResource HintTextStyle}"
+                                               Text="Leave empty to use the automatic 80px height for this mode." />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel>
+                                    <TextBlock Text="Display Monitor" Style="{StaticResource SectionTitleStyle}" />
+                                    <TextBlock Text="Choose which monitor to display the bar on." Style="{StaticResource LabelStyle}" />
+                                    <ComboBox x:Name="AppBarMonitorComboBox"
+                                              MinWidth="260"
+                                              DisplayMemberPath="DisplayName"
+                                              SelectedValuePath="DeviceName"
+                                              SelectionChanged="AppBarMonitorComboBox_OnSelectionChanged" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
+                <TabItem Header="Taskbar">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,16,0,0">
+                        <StackPanel>
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel>
+                                    <TextBlock Text="Display Monitor" Style="{StaticResource SectionTitleStyle}" />
+                                    <TextBlock Text="Choose which monitor to display lyrics on." Style="{StaticResource LabelStyle}" />
+                                    <ComboBox x:Name="TaskbarMonitorComboBox"
+                                              MinWidth="260"
+                                              DisplayMemberPath="DisplayName"
+                                              SelectedValuePath="DeviceName"
+                                              SelectionChanged="TaskbarMonitorComboBox_OnSelectionChanged" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel>
+                                    <TextBlock Text="Maximum Width" Style="{StaticResource SectionTitleStyle}" />
+                                    <TextBlock Text="Custom maximum width in pixels. Leave empty for default." Style="{StaticResource LabelStyle}" />
+                                    <TextBox x:Name="TaskbarMaximumWidthTextBox"
+                                             MinWidth="260"
+                                             MaxWidth="260"
+                                             TextChanged="TaskbarMaximumWidthTextBox_OnTextChanged" />
+                                    <TextBlock x:Name="TaskbarMaximumWidthHintTextBlock"
+                                               Style="{StaticResource HintTextStyle}"
+                                               Text="Leave empty to use the default 880px taskbar width cap." />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
+                <TabItem Header="Detected Apps">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,16,0,0">
+                        <StackPanel>
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel>
+                                    <TextBlock Text="Media App Ignore Rules" Style="{StaticResource SectionTitleStyle}" />
+                                    <TextBlock Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,14"
+                                               Text="Lyrictified remembers apps that expose media sessions. Enable ignore for apps you never want to drive lyrics, like web browsers or background players." />
+                                    <TextBlock x:Name="DetectedAppsEmptyStateTextBlock"
+                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               FontSize="12"
+                                               Text="No media apps detected yet. Start playback in an app and reopen this tab." />
+
+                                    <ListBox x:Name="DetectedAppsListBox"
+                                             Visibility="Collapsed"
+                                             BorderThickness="0"
+                                             Background="Transparent"
+                                             SelectionMode="Single"
+                                             Margin="-8,0"
+                                             ScrollViewer.VerticalScrollBarVisibility="Auto">
+                                        <ListBox.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,4">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel Grid.Column="0">
+                                                        <TextBlock FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource TextPrimaryBrush}" Text="{Binding DisplayName}" />
+                                                        <TextBlock FontSize="11" Foreground="{StaticResource TextSecondaryBrush}" Text="{Binding AppId}" />
+                                                    </StackPanel>
+                                                    <CheckBox Grid.Column="1"
+                                                              Margin="12,0,0,0"
+                                                              VerticalAlignment="Center"
+                                                              Content="Ignore"
+                                                              IsChecked="{Binding IsIgnored}"
+                                                              Checked="DetectedAppIgnoreCheckBox_OnChanged"
+                                                              Unchecked="DetectedAppIgnoreCheckBox_OnChanged" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ListBox.ItemTemplate>
+                                    </ListBox>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+            </TabControl>
+        </Grid>
+    </ScrollViewer>
 </Window>

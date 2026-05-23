@@ -231,6 +231,18 @@ public partial class AppBarWindow : Window
                 _ = Dispatcher.InvokeAsync(() => UpdateAlbumArtAndCredit());
             }
         }
+
+        if (e.PropertyName == nameof(MainViewModel.Progress))
+        {
+            if (Dispatcher.CheckAccess())
+            {
+                UpdateProgressBar();
+            }
+            else
+            {
+                _ = Dispatcher.InvokeAsync(() => UpdateProgressBar());
+            }
+        }
     }
 
     private void ApplyAppearance()
@@ -275,9 +287,15 @@ public partial class AppBarWindow : Window
         AnimateBorderVisibility(isBlackout);
         if (!_viewModel.IsLoadingLyrics)
         {
-            IncomingLyricTextBlock.Foreground = new SolidColorBrush(Color.FromRgb(245, 247, 250));
-            OutgoingLyricTextBlock.Foreground = new SolidColorBrush(Color.FromRgb(245, 247, 250));
-            PreviewLyricTextBlock.Foreground = PreviewLyricBrush;
+            var isActiveBrush = new SolidColorBrush(Color.FromRgb(245, 247, 250));
+            var dimBrush = _settings.KaraokeMode
+                ? new SolidColorBrush(Color.FromArgb(90, 245, 247, 250))
+                : new SolidColorBrush(Color.FromRgb(245, 247, 250));
+            IncomingLyricTextBlock.Foreground = isActiveBrush;
+            OutgoingLyricTextBlock.Foreground = dimBrush;
+            PreviewLyricTextBlock.Foreground = _settings.KaraokeMode
+                ? new SolidColorBrush(Color.FromArgb(60, 245, 247, 250))
+                : PreviewLyricBrush;
         }
     }
 
@@ -342,32 +360,25 @@ public partial class AppBarWindow : Window
     {
         SongTitleTextBlock.Text = _viewModel.SongTitle;
         SongArtistTextBlock.Text = _viewModel.SongArtist;
-        SongTimestampTextBlock.Text = _viewModel.StatusText;
-
-        var albumArtData = _viewModel.AlbumArt;
-        if (albumArtData is not null && albumArtData.Length > 0)
-        {
-            try
-            {
-                var bitmap = new BitmapImage();
-                bitmap.BeginInit();
-                bitmap.StreamSource = new System.IO.MemoryStream(albumArtData);
-                bitmap.CacheOption = BitmapCacheOption.OnLoad;
-                bitmap.EndInit();
-                bitmap.Freeze();
-                AlbumArtImage.Source = bitmap;
-            }
-            catch
-            {
-                AlbumArtImage.Source = null;
-            }
-        }
-        else
-        {
-            AlbumArtImage.Source = null;
-        }
-
+        SongTimestampTextBlock.Text = FormatTimestamp(_viewModel.StatusText);
+        AnimateAlbumArtTransition(_viewModel.AlbumArt);
         AlbumArtPanel.Visibility = _settings.ShowAlbumArt ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private static string FormatTimestamp(string statusText)
+    {
+        if (string.IsNullOrWhiteSpace(statusText))
+        {
+            return string.Empty;
+        }
+
+        var dashIndex = statusText.IndexOf(" - ", StringComparison.Ordinal);
+        if (dashIndex >= 0)
+        {
+            return statusText[(dashIndex + 3)..];
+        }
+
+        return statusText;
     }
 
     private void ApplyLyricAlignment()
@@ -1136,11 +1147,133 @@ public partial class AppBarWindow : Window
         }
     }
 
+    private void UpdateProgressBar()
+    {
+        SongProgressBar.Value = _viewModel.Progress;
+    }
+
+    private void UpdateHoverEffect(bool isHovering)
+    {
+        SurfaceBorder.BeginAnimation(Border.BorderBrushProperty, null);
+        SurfaceBorder.BeginAnimation(Border.BackgroundProperty, null);
+
+        if (isHovering)
+        {
+            var bgAnimation = new ColorAnimation
+            {
+                To = Color.FromArgb(140, 16, 26, 37),
+                Duration = TimeSpan.FromMilliseconds(150),
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+            };
+            var borderAnimation = new ColorAnimation
+            {
+                To = Color.FromArgb(160, 48, 70, 92),
+                Duration = TimeSpan.FromMilliseconds(150),
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+            };
+            ((SolidColorBrush)SurfaceBorder.Background).BeginAnimation(SolidColorBrush.ColorProperty, bgAnimation);
+            ((SolidColorBrush)SurfaceBorder.BorderBrush).BeginAnimation(SolidColorBrush.ColorProperty, borderAnimation);
+        }
+        else
+        {
+            if (ShouldUseBlackoutMode())
+            {
+                return;
+            }
+
+            var bgAnimation = new ColorAnimation
+            {
+                To = Color.FromArgb(102, 16, 26, 37),
+                Duration = TimeSpan.FromMilliseconds(250),
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
+            };
+            var borderAnimation = new ColorAnimation
+            {
+                To = Color.FromArgb(138, 48, 70, 92),
+                Duration = TimeSpan.FromMilliseconds(250),
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
+            };
+            ((SolidColorBrush)SurfaceBorder.Background).BeginAnimation(SolidColorBrush.ColorProperty, bgAnimation);
+            ((SolidColorBrush)SurfaceBorder.BorderBrush).BeginAnimation(SolidColorBrush.ColorProperty, borderAnimation);
+        }
+    }
+
+    private void AnimateAlbumArtTransition(byte[]? newArt)
+    {
+        if (newArt is null || newArt.Length == 0)
+        {
+            var fadeOut = new DoubleAnimation
+            {
+                To = 0,
+                Duration = TimeSpan.FromMilliseconds(200),
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
+            };
+            fadeOut.Completed += (_, _) =>
+            {
+                AlbumArtImage.Source = null;
+            };
+            AlbumArtImage.BeginAnimation(OpacityProperty, fadeOut);
+            return;
+        }
+
+        try
+        {
+            var bitmap = new BitmapImage();
+            bitmap.BeginInit();
+            bitmap.StreamSource = new System.IO.MemoryStream(newArt);
+            bitmap.CacheOption = BitmapCacheOption.OnLoad;
+            bitmap.EndInit();
+            bitmap.Freeze();
+
+            if (AlbumArtImage.Source is null)
+            {
+                AlbumArtImage.Source = bitmap;
+                AlbumArtImage.Opacity = 0;
+                var fadeIn = new DoubleAnimation
+                {
+                    From = 0,
+                    To = 1,
+                    Duration = TimeSpan.FromMilliseconds(300),
+                    EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+                };
+                AlbumArtImage.BeginAnimation(OpacityProperty, fadeIn);
+                return;
+            }
+
+            AlbumArtOverlayImage.Source = bitmap;
+            AlbumArtOverlayBorder.Opacity = 0;
+            AlbumArtOverlayBorder.BeginAnimation(OpacityProperty, null);
+
+            var overlayFadeIn = new DoubleAnimation
+            {
+                From = 0,
+                To = 1,
+                Duration = TimeSpan.FromMilliseconds(350),
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+            };
+
+            overlayFadeIn.Completed += (_, _) =>
+            {
+                AlbumArtImage.Source = bitmap;
+                AlbumArtImage.Opacity = 1;
+                AlbumArtOverlayBorder.Opacity = 0;
+                AlbumArtOverlayImage.Source = null;
+            };
+
+            AlbumArtOverlayBorder.BeginAnimation(OpacityProperty, overlayFadeIn);
+        }
+        catch
+        {
+            AlbumArtImage.Source = null;
+        }
+    }
+
     private void Window_OnMouseEnter(object sender, MouseEventArgs e)
     {
         _isPointerOverWindow = true;
         ShowControls();
         ScheduleControlsFade();
+        UpdateHoverEffect(true);
     }
 
     private void Window_OnMouseLeave(object sender, MouseEventArgs e)
@@ -1148,6 +1281,7 @@ public partial class AppBarWindow : Window
         _isPointerOverWindow = false;
         _controlsFadeTimer.Stop();
         HideControls();
+        UpdateHoverEffect(false);
     }
 
     private void Window_OnMouseMove(object sender, MouseEventArgs e)
@@ -1265,6 +1399,7 @@ public partial class AppBarWindow : Window
         persistedSettings.TaskbarMaximumWidth = incomingSettings.TaskbarMaximumWidth;
         persistedSettings.LyricAlignment = incomingSettings.LyricAlignment;
         persistedSettings.ShowAlbumArt = incomingSettings.ShowAlbumArt;
+        persistedSettings.KaraokeMode = incomingSettings.KaraokeMode;
         persistedSettings.PreferredMonitorDeviceName = null;
         persistedSettings.DetectedMediaApps = MergeDetectedApps(
             incomingSettings.DetectedMediaApps,
