@@ -23,7 +23,7 @@ public sealed class LrcLibLyricsService : IDisposable
         _httpClient = new HttpClient
         {
             BaseAddress = new Uri("https://lrclib.net/"),
-            Timeout = TimeSpan.FromSeconds(3)
+            Timeout = TimeSpan.FromSeconds(30)
         };
         _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("Lyrictified/0.1");
     }

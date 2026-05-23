@@ -41,6 +41,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private string _nextLine = string.Empty;
     private LyricLine? _currentLyricLine;
     private int _currentWordIndex;
+    private DateTime? _noLyricsShownAt;
 
     public MainViewModel()
     {
@@ -240,6 +241,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             NextLine = string.Empty;
             IsLoadingLyrics = true;
             NoTimedLyricsFound = false;
+            _noLyricsShownAt = null;
             _lyrics = Array.Empty<LyricLine>();
             SongTitle = song.Title;
             SongArtist = song.Artist;
@@ -260,7 +262,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 if (_lyrics.Count == 0)
                 {
                     NoTimedLyricsFound = true;
-                    CurrentLine = song.Title;
+                    _noLyricsShownAt = DateTime.UtcNow;
+                    CurrentLine = "Lyrics not found";
                     NextLine = string.Empty;
                     StatusText = $"No synced lyrics found for {song.Artist}";
                     SetNextRefreshInterval(IdleRefreshInterval);
@@ -388,7 +391,9 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
             if (_lyrics.Count == 0)
             {
-                CurrentLine = _currentSong.Title;
+                _noLyricsShownAt ??= DateTime.UtcNow;
+                var elapsed = DateTime.UtcNow - _noLyricsShownAt.Value;
+                CurrentLine = elapsed.TotalSeconds < 5 ? "Lyrics not found" : _currentSong.Title;
                 NextLine = string.Empty;
                 StatusText = _currentSong.IsPlaying
                     ? $"No synced lyrics found for {_currentSong.Artist}"
@@ -622,6 +627,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         _currentSong = null;
         IsLoadingLyrics = false;
         NoTimedLyricsFound = false;
+        _noLyricsShownAt = null;
         IsPlaybackPaused = false;
         WindowTitle = "Lyrictified";
         StatusText = statusText;
@@ -636,10 +642,11 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         _lyrics = Array.Empty<LyricLine>();
         IsLoadingLyrics = false;
         NoTimedLyricsFound = song is not null;
+        _noLyricsShownAt = song is not null ? DateTime.UtcNow : null;
         IsPlaybackPaused = song is not null && !song.IsPlaying;
         WindowTitle = song?.DisplayTitle ?? "Lyrictified";
         StatusText = statusText;
-        CurrentLine = song?.Title ?? "Play something to show lyrics here.";
+        CurrentLine = song is not null ? "Lyrics not found" : "Play something to show lyrics here.";
         NextLine = string.Empty;
         SetNextRefreshInterval(IdleRefreshInterval);
     }
