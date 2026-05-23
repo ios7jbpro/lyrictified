@@ -358,6 +358,11 @@ public partial class AppBarWindow : Window
         var enabled = IsPreviewModeEnabled;
         var effectiveHeight = GetEffectiveBarHeight(enabled);
         LyricStage.Height = GetLyricStageHeight(enabled, effectiveHeight);
+
+        var lyricVerticalAlign = enabled ? VerticalAlignment.Top : VerticalAlignment.Center;
+        OutgoingLyricTextBlock.VerticalAlignment = lyricVerticalAlign;
+        IncomingLyricTextBlock.VerticalAlignment = lyricVerticalAlign;
+
         PreviewLyricTextBlock.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
         PreviewLyricTextBlock.Text = _displayedNextLineText;
         PreviewLyricTextBlock.FontSize = AppBarDisplayMode.PreviewLyricFontSize;
