@@ -258,9 +258,9 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 _lyrics = lyrics;
                 var wordsTotal = lyrics.Count(l => l.Words?.Count > 0);
                 Logger.Log($"HandleSongAsync: {lyrics.Count} lines, {wordsTotal} with word data");
-                IsLoadingLyrics = false;
                 if (_lyrics.Count == 0)
                 {
+                    IsLoadingLyrics = false;
                     NoTimedLyricsFound = true;
                     _noLyricsShownAt = DateTime.UtcNow;
                     CurrentLine = "Lyrics not found";
@@ -273,6 +273,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 NoTimedLyricsFound = false;
                 await ReanchorPlaybackAsync(song.IsPlaying);
                 await UpdateCurrentLineAsync();
+                IsLoadingLyrics = false;
             }
             catch (OperationCanceledException)
             {
@@ -449,12 +450,25 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 }
                 else
                 {
-                    CurrentLyricLine = null;
-                    CurrentWordIndex = -1;
-
                     if (_lyrics.Count > 0 && position.Value < _lyrics[0].Timestamp)
                     {
+                        var firstLine = _lyrics[0];
+                        if (WordByWordMode && firstLine.Words is null)
+                        {
+                            var estimated = EstimateWordInfos(firstLine, 0, _lyrics);
+                            CurrentLyricLine = firstLine with { Words = estimated };
+                        }
+                        else
+                        {
+                            CurrentLyricLine = firstLine;
+                        }
+                        CurrentWordIndex = -1;
                         CurrentLine = _lyrics[0].Text;
+                    }
+                    else
+                    {
+                        CurrentLyricLine = null;
+                        CurrentWordIndex = -1;
                     }
                 }
 
