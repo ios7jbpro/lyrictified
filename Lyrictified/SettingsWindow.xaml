@@ -339,6 +339,8 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
@@ -400,14 +402,14 @@
                               SelectedValuePath="DeviceName"
                               SelectionChanged="AppBarMonitorComboBox_OnSelectionChanged" />
 
-                    <TextBlock Grid.Row="3"
-                               Grid.Column="0"
-                               Margin="0,0,18,18"
-                               VerticalAlignment="Center"
-                               Foreground="#E5EDF5"
-                               FontSize="15"
-                               FontWeight="SemiBold"
-                               Text="Bar height" />
+<TextBlock Grid.Row="3"
+                                Grid.Column="0"
+                                Margin="0,0,18,18"
+                                VerticalAlignment="Center"
+                                Foreground="#E5EDF5"
+                                FontSize="15"
+                                FontWeight="SemiBold"
+                                Text="Bar height" />
                     <StackPanel Grid.Row="3"
                                 Grid.Column="1"
                                 Margin="0,0,0,18">
@@ -421,6 +423,43 @@
                                    FontSize="12"
                                    Text="Leave empty to use automatic mode height." />
                     </StackPanel>
+
+                    <TextBlock Grid.Row="4"
+                               Grid.Column="0"
+                               Margin="0,0,18,18"
+                               VerticalAlignment="Center"
+                               Foreground="#E5EDF5"
+                               FontSize="15"
+                               FontWeight="SemiBold"
+                               Text="Lyric alignment" />
+                    <ComboBox x:Name="LyricAlignmentComboBox"
+                              Grid.Row="4"
+                              Grid.Column="1"
+                              Margin="0,0,0,18"
+                              MinWidth="240"
+                              SelectionChanged="LyricAlignmentComboBox_OnSelectionChanged">
+                        <ComboBoxItem Tag="Left" Content="Left" />
+                        <ComboBoxItem Tag="Center" Content="Center" />
+                        <ComboBoxItem Tag="Right" Content="Right" />
+                    </ComboBox>
+
+                    <TextBlock Grid.Row="5"
+                               Grid.Column="0"
+                               Margin="0,0,18,18"
+                               VerticalAlignment="Center"
+                               Foreground="#E5EDF5"
+                               FontSize="15"
+                               FontWeight="SemiBold"
+                               Text="Show album art" />
+                    <ComboBox x:Name="ShowAlbumArtComboBox"
+                              Grid.Row="5"
+                              Grid.Column="1"
+                              Margin="0,0,0,18"
+                              MinWidth="240"
+                              SelectionChanged="ShowAlbumArtComboBox_OnSelectionChanged">
+                        <ComboBoxItem Content="Enabled" />
+                        <ComboBoxItem Content="Disabled" />
+                    </ComboBox>
                 </Grid>
             </TabItem>
 

@@ -30,6 +30,9 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private bool _isLoadingLyrics;
     private bool _noTimedLyricsFound;
     private bool _isPlaybackPaused;
+    private byte[]? _albumArt;
+    private string _songTitle = string.Empty;
+    private string _songArtist = string.Empty;
     private string _windowTitle = "Lyrictified";
     private string _statusText = "Waiting for a song...";
     private string _helperStatusHint = string.Empty;
@@ -104,6 +107,24 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         private set => SetField(ref _isPlaybackPaused, value);
     }
 
+    public byte[]? AlbumArt
+    {
+        get => _albumArt;
+        private set => SetField(ref _albumArt, value);
+    }
+
+    public string SongTitle
+    {
+        get => _songTitle;
+        private set => SetField(ref _songTitle, value);
+    }
+
+    public string SongArtist
+    {
+        get => _songArtist;
+        private set => SetField(ref _songArtist, value);
+    }
+
     public async Task InitializeAsync()
     {
         try
@@ -163,6 +184,9 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 StatusText = "Waiting for a song...";
                 CurrentLine = "Play something to show lyrics here.";
                 NextLine = string.Empty;
+                SongTitle = string.Empty;
+                SongArtist = string.Empty;
+                AlbumArt = null;
                 _lyrics = Array.Empty<LyricLine>();
                 SetNextRefreshInterval(IdleRefreshInterval);
                 return;
@@ -190,6 +214,9 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             IsLoadingLyrics = true;
             NoTimedLyricsFound = false;
             _lyrics = Array.Empty<LyricLine>();
+            SongTitle = song.Title;
+            SongArtist = song.Artist;
+            AlbumArt = song.AlbumArt;
 
             try
             {

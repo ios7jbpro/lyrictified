@@ -38,6 +38,13 @@ public partial class SettingsWindow : Window
 
             ShowNextLineComboBox.SelectedIndex = settings.ShowNextLine ? 1 : 0;
             CustomHeightTextBox.Text = settings.CustomBarHeight?.ToString() ?? string.Empty;
+            LyricAlignmentComboBox.SelectedIndex = settings.LyricAlignment switch
+            {
+                LyricAlignment.Left => 0,
+                LyricAlignment.Right => 2,
+                _ => 1
+            };
+            ShowAlbumArtComboBox.SelectedIndex = settings.ShowAlbumArt ? 0 : 1;
             TaskbarMaximumWidthTextBox.Text = settings.TaskbarMaximumWidth?.ToString() ?? string.Empty;
             LoadDetectedApps(settings);
 
@@ -101,6 +108,16 @@ public partial class SettingsWindow : Window
         RaiseSettingsChanged();
     }
 
+    private void LyricAlignmentComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        RaiseSettingsChanged();
+    }
+
+    private void ShowAlbumArtComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        RaiseSettingsChanged();
+    }
+
     private void TaskbarMaximumWidthTextBox_OnTextChanged(object sender, TextChangedEventArgs e)
     {
         UpdateTaskbarMaximumWidthHint();
@@ -129,6 +146,13 @@ public partial class SettingsWindow : Window
             TaskbarPreferredMonitorDeviceName = TaskbarMonitorComboBox.SelectedValue as string,
             CustomBarHeight = ParseCustomHeight(),
             TaskbarMaximumWidth = ParseTaskbarMaximumWidth(),
+            LyricAlignment = (LyricAlignmentComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() switch
+            {
+                "Left" => LyricAlignment.Left,
+                "Right" => LyricAlignment.Right,
+                _ => LyricAlignment.Center
+            },
+            ShowAlbumArt = ShowAlbumArtComboBox.SelectedIndex == 0,
             DetectedMediaApps = _detectedApps
                 .Select(app => new DetectedMediaApp(app.AppId, app.DisplayName))
                 .ToList(),
@@ -172,8 +196,7 @@ public partial class SettingsWindow : Window
         var automaticHeight = AppBarDisplayMode.GetAutomaticHeight(ShowNextLineComboBox.SelectedIndex == 1);
         if (int.TryParse(CustomHeightTextBox.Text, out var parsedHeight))
         {
-            var effectiveHeight = Math.Max(parsedHeight, automaticHeight);
-            BarHeightHintTextBlock.Text = $"Auto is {automaticHeight}px for this mode. Custom height is clamped to at least {effectiveHeight}px.";
+            BarHeightHintTextBlock.Text = $"Auto is {automaticHeight}px. Custom height minimum is {AppBarDisplayMode.MinimumCustomHeight}px.";
             return;
         }
 

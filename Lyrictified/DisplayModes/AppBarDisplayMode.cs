@@ -4,7 +4,7 @@ public static class AppBarDisplayMode
 {
     public const int DefaultHeight = 110;
     public const int ShowNextLineHeight = 136;
-    public const int MinimumCustomHeight = 72;
+    public const int MinimumCustomHeight = 32;
     public const double SingleLineStageHeight = 38;
     public const double ShowNextLineStageHeight = 76;
     public const double CurrentLyricFontSize = 30;
@@ -23,13 +23,12 @@ public static class AppBarDisplayMode
 
     public static int GetEffectiveHeight(bool showNextLine, int? customHeight)
     {
-        var automaticHeight = GetAutomaticHeight(showNextLine);
-        if (customHeight is not int height)
+        if (customHeight is int height && height > 0)
         {
-            return automaticHeight;
+            return Math.Max(height, MinimumCustomHeight);
         }
 
-        return Math.Max(Math.Max(height, automaticHeight), MinimumCustomHeight);
+        return GetAutomaticHeight(showNextLine);
     }
 
     public static double GetStageHeight(bool showNextLine, int effectiveHeight)

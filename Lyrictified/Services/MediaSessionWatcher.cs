@@ -281,12 +281,30 @@ public sealed class MediaSessionWatcher : IDisposable
         var playbackInfo = session.GetPlaybackInfo();
         var timeline = session.GetTimelineProperties();
 
+        byte[]? albumArt = null;
+        try
+        {
+            var thumbnail = properties.Thumbnail;
+            if (thumbnail is not null)
+            {
+                var stream = await thumbnail.OpenReadAsync();
+                using var ras = stream.AsStream();
+                using var ms = new MemoryStream();
+                await ras.CopyToAsync(ms);
+                albumArt = ms.ToArray();
+            }
+        }
+        catch
+        {
+        }
+
         return new SongInfo(
             string.IsNullOrWhiteSpace(properties.Title) ? "Unknown title" : properties.Title,
             string.IsNullOrWhiteSpace(properties.Artist) ? "Unknown artist" : properties.Artist,
             properties.AlbumTitle,
             timeline.EndTime,
-            playbackInfo.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing);
+            playbackInfo.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing,
+            albumArt);
     }
 
     public void Dispose()
