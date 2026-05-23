@@ -54,6 +54,14 @@ public partial class AppBarWindow : Window
     private bool _isPointerOverWindow;
     private SettingsWindow? _settingsWindow;
     private byte[]? _lastAlbumArtData;
+
+    private bool IsAlbumArtDifferent(byte[]? a, byte[]? b)
+    {
+        if (a is null && b is null) return false;
+        if (a is null || b is null) return true;
+        if (a.Length != b.Length) return true;
+        return !a.AsSpan().SequenceEqual(b);
+    }
     private string _lastProgressSongId = string.Empty;
     private TrayIcon? _trayIcon;
     private bool IsPreviewModeEnabled => _settings.ShowNextLine;
@@ -406,16 +414,11 @@ public partial class AppBarWindow : Window
         SongTimestampTextBlock.Text = FormatTimestamp(_viewModel.StatusText);
 
         var newArt = _viewModel.AlbumArt;
-        var artChanged = !ReferenceEquals(newArt, _lastAlbumArtData);
+        var artChanged = IsAlbumArtDifferent(newArt, _lastAlbumArtData);
         if (artChanged)
         {
             _lastAlbumArtData = newArt;
             AnimateAlbumArtTransition(newArt);
-        }
-
-        if (!artChanged)
-        {
-            AlbumArtPanel.Visibility = _settings.ShowAlbumArt ? Visibility.Visible : Visibility.Collapsed;
         }
     }
 
@@ -1522,15 +1525,16 @@ public partial class AppBarWindow : Window
 
     private void AnimateAlbumArtTransition(byte[]? newArt)
     {
-        AlbumArtPanel.Visibility = _settings.ShowAlbumArt ? Visibility.Visible : Visibility.Collapsed;
-
-        if (newArt is null || newArt.Length == 0)
+        if (!_settings.ShowAlbumArt)
         {
-            AlbumArtImage.Source = null;
-            AlbumArtOverlayImage.Source = null;
-            AlbumArtOverlayBorder.Opacity = 0;
+            AlbumArtPanel.Visibility = Visibility.Collapsed;
             return;
         }
+
+        AlbumArtPanel.Visibility = Visibility.Visible;
+
+        if (newArt is null || newArt.Length == 0)
+            return;
 
         try
         {
@@ -1541,8 +1545,16 @@ public partial class AppBarWindow : Window
             bitmap.EndInit();
             bitmap.Freeze();
 
+            AlbumArtImage.BeginAnimation(OpacityProperty, null);
             AlbumArtImage.Source = bitmap;
-            AlbumArtImage.Opacity = 1;
+            var fadeIn = new DoubleAnimation
+            {
+                From = 0,
+                To = 1,
+                Duration = TimeSpan.FromMilliseconds(200),
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+            };
+            AlbumArtImage.BeginAnimation(OpacityProperty, fadeIn);
             AlbumArtOverlayBorder.Opacity = 0;
             AlbumArtOverlayImage.Source = null;
         }

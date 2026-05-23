@@ -226,6 +226,10 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             if (sameSong)
             {
                 WindowTitle = song.DisplayTitle;
+                SongTitle = song.Title;
+                SongArtist = song.Artist;
+                if (song.AlbumArt is not null)
+                    AlbumArt = song.AlbumArt;
                 IsPlaybackPaused = !song.IsPlaying;
                 await ReanchorPlaybackAsync(song.IsPlaying);
                 await UpdateCurrentLineAsync();
