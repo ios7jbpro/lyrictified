@@ -795,6 +795,16 @@ public partial class AppBarWindow : Window
         var runningChars = 0;
         double? fillPos = null;
 
+        var lineStartTime = words[0].Timestamp;
+        var lastWordEndTime = words[^1].Timestamp + TimeSpan.FromMilliseconds(800);
+        if (words.Count >= 2)
+        {
+            var avgGap = words[^1].Timestamp - words[^2].Timestamp;
+            var naturalEnd = words[^1].Timestamp + (avgGap > TimeSpan.Zero ? avgGap : TimeSpan.FromMilliseconds(500));
+            var maxEnd = lineStartTime + TimeSpan.FromSeconds(4);
+            lastWordEndTime = naturalEnd < maxEnd ? naturalEnd : maxEnd;
+        }
+
         for (var i = 0; i < words.Count; i++)
         {
             var wordChars = words[i].Word.Length;
@@ -805,16 +815,13 @@ public partial class AppBarWindow : Window
             TimeSpan wordEndTime;
             if (i + 1 < words.Count)
             {
-                wordEndTime = words[i + 1].Timestamp;
-            }
-            else if (words.Count >= 2)
-            {
-                var avgGap = words[^1].Timestamp - words[^2].Timestamp;
-                wordEndTime = words[i].Timestamp + (avgGap > TimeSpan.Zero ? avgGap : TimeSpan.FromMilliseconds(500));
+                var naturalNext = words[i + 1].Timestamp;
+                var maxAllowed = lineStartTime + TimeSpan.FromSeconds(4);
+                wordEndTime = naturalNext < maxAllowed ? naturalNext : maxAllowed;
             }
             else
             {
-                wordEndTime = words[i].Timestamp + TimeSpan.FromMilliseconds(500);
+                wordEndTime = lastWordEndTime;
             }
 
             if (adjustedPos >= wordStartTime && adjustedPos < wordEndTime)

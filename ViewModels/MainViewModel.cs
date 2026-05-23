@@ -594,11 +594,13 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             ? allLines[lineIndex + 1].Timestamp
             : line.Timestamp + TimeSpan.FromSeconds(4);
 
-        var totalDuration = nextTimestamp - line.Timestamp;
-        if (totalDuration <= TimeSpan.Zero)
-            totalDuration = TimeSpan.FromSeconds(4);
+        var totalGap = nextTimestamp - line.Timestamp;
+        if (totalGap <= TimeSpan.Zero)
+            totalGap = TimeSpan.FromSeconds(4);
 
-        var wordDuration = totalDuration / split.Length;
+        var maxHighlightDuration = TimeSpan.FromSeconds(Math.Min(4.0, totalGap.TotalSeconds));
+        var visualHighlightDuration = totalGap > maxHighlightDuration ? maxHighlightDuration : totalGap;
+        var wordDuration = visualHighlightDuration / split.Length;
         var infos = new WordInfo[split.Length];
         for (var i = 0; i < split.Length; i++)
         {
