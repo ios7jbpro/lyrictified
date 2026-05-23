@@ -42,6 +42,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private LyricLine? _currentLyricLine;
     private int _currentWordIndex;
     private DateTime? _noLyricsShownAt;
+    private bool _wordByWordMode;
 
     public MainViewModel()
     {
@@ -58,6 +59,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         _mediaSessionWatcher.DetectedApp += OnDetectedApp;
 
         var settings = _appSettingsService.Load();
+        _wordByWordMode = settings.WordByWordMode;
         _mediaSessionWatcher.UpdateIgnoredAppIds(settings.IgnoredMediaAppIds);
     }
 
@@ -151,7 +153,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         private set => SetField(ref _currentWordIndex, value);
     }
 
-    public bool WordByWordMode => _appSettingsService.Load().WordByWordMode;
+    public bool WordByWordMode => _wordByWordMode;
 
     public async Task InitializeAsync()
     {
@@ -172,6 +174,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     public void UpdateSettings(AppSettings settings)
     {
+        _wordByWordMode = settings.WordByWordMode;
         _mediaSessionWatcher.UpdateIgnoredAppIds(settings.IgnoredMediaAppIds);
     }
 
@@ -223,6 +226,10 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             if (sameSong)
             {
                 WindowTitle = song.DisplayTitle;
+                SongTitle = song.Title;
+                SongArtist = song.Artist;
+                if (song.AlbumArt is not null)
+                    AlbumArt = song.AlbumArt;
                 IsPlaybackPaused = !song.IsPlaying;
                 await ReanchorPlaybackAsync(song.IsPlaying);
                 await UpdateCurrentLineAsync();

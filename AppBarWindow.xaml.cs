@@ -54,6 +54,14 @@ public partial class AppBarWindow : Window
     private bool _isPointerOverWindow;
     private SettingsWindow? _settingsWindow;
     private byte[]? _lastAlbumArtData;
+
+    private bool IsAlbumArtDifferent(byte[]? a, byte[]? b)
+    {
+        if (a is null && b is null) return false;
+        if (a is null || b is null) return true;
+        if (a.Length != b.Length) return true;
+        return !a.AsSpan().SequenceEqual(b);
+    }
     private string _lastProgressSongId = string.Empty;
     private TrayIcon? _trayIcon;
     private bool IsPreviewModeEnabled => _settings.ShowNextLine;
@@ -253,10 +261,15 @@ public partial class AppBarWindow : Window
             if (Dispatcher.CheckAccess())
             {
                 AnimatePlaybackStateChange(_viewModel.IsPlaybackPaused);
+                ApplyHideModeState();
             }
             else
             {
-                _ = Dispatcher.InvokeAsync(() => AnimatePlaybackStateChange(_viewModel.IsPlaybackPaused));
+                _ = Dispatcher.InvokeAsync(() =>
+                {
+                    AnimatePlaybackStateChange(_viewModel.IsPlaybackPaused);
+                    ApplyHideModeState();
+                });
             }
         }
 
@@ -401,16 +414,11 @@ public partial class AppBarWindow : Window
         SongTimestampTextBlock.Text = FormatTimestamp(_viewModel.StatusText);
 
         var newArt = _viewModel.AlbumArt;
-        var artChanged = !ReferenceEquals(newArt, _lastAlbumArtData);
+        var artChanged = IsAlbumArtDifferent(newArt, _lastAlbumArtData);
         if (artChanged)
         {
             _lastAlbumArtData = newArt;
             AnimateAlbumArtTransition(newArt);
-        }
-
-        if (!artChanged)
-        {
-            AlbumArtPanel.Visibility = _settings.ShowAlbumArt ? Visibility.Visible : Visibility.Collapsed;
         }
     }
 
@@ -1076,6 +1084,7 @@ public partial class AppBarWindow : Window
         OutgoingLyricTextBlock.BeginAnimation(TextBlock.FontSizeProperty, null);
         OutgoingLyricTranslateTransform.BeginAnimation(TranslateTransform.YProperty, null);
         OutgoingLyricTextBlock.Opacity = 0;
+        OutgoingLyricTextBlock.Inlines.Clear();
         OutgoingLyricTextBlock.Text = string.Empty;
         OutgoingLyricTranslateTransform.Y = 0;
 
@@ -1471,6 +1480,7 @@ public partial class AppBarWindow : Window
 
         if (position is null || duration <= TimeSpan.Zero)
         {
+            _progressTimer.Stop();
             return;
         }
 
@@ -1515,15 +1525,16 @@ public partial class AppBarWindow : Window
 
     private void AnimateAlbumArtTransition(byte[]? newArt)
     {
-        AlbumArtPanel.Visibility = _settings.ShowAlbumArt ? Visibility.Visible : Visibility.Collapsed;
-
-        if (newArt is null || newArt.Length == 0)
+        if (!_settings.ShowAlbumArt)
         {
-            AlbumArtImage.Source = null;
-            AlbumArtOverlayImage.Source = null;
-            AlbumArtOverlayBorder.Opacity = 0;
+            AlbumArtPanel.Visibility = Visibility.Collapsed;
             return;
         }
+
+        AlbumArtPanel.Visibility = Visibility.Visible;
+
+        if (newArt is null || newArt.Length == 0)
+            return;
 
         try
         {
@@ -1534,8 +1545,16 @@ public partial class AppBarWindow : Window
             bitmap.EndInit();
             bitmap.Freeze();
 
+            AlbumArtImage.BeginAnimation(OpacityProperty, null);
             AlbumArtImage.Source = bitmap;
-            AlbumArtImage.Opacity = 1;
+            var fadeIn = new DoubleAnimation
+            {
+                From = 0,
+                To = 1,
+                Duration = TimeSpan.FromMilliseconds(200),
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+            };
+            AlbumArtImage.BeginAnimation(OpacityProperty, fadeIn);
             AlbumArtOverlayBorder.Opacity = 0;
             AlbumArtOverlayImage.Source = null;
         }
@@ -1663,6 +1682,7 @@ public partial class AppBarWindow : Window
         }
         else
         {
+            StopWordAnim();
             IncomingLyricTextBlock.Inlines.Clear();
             IncomingLyricTextBlock.Text = _displayedLyricText;
             IncomingLyricTextBlock.FontSize = AppBarDisplayMode.CurrentLyricFontSize;
@@ -1837,6 +1857,7 @@ public partial class AppBarWindow : Window
         _appBarManager.SetHeight(GetEffectiveBarHeight(IsPreviewModeEnabled));
         _appBarManager.Reposition();
         ApplyAppearance();
+        ApplyHideModeState();
         ApplyNextLineLayout();
         ApplyDisplayModeState();
     }
