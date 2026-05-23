@@ -37,6 +37,7 @@ public partial class SettingsWindow : Window
             };
 
             ShowNextLineComboBox.SelectedIndex = settings.ShowNextLine ? 1 : 0;
+            KaraokeModeComboBox.SelectedIndex = settings.KaraokeMode ? 1 : 0;
             CustomHeightTextBox.Text = settings.CustomBarHeight?.ToString() ?? string.Empty;
             LyricAlignmentComboBox.SelectedIndex = settings.LyricAlignment switch
             {
@@ -89,6 +90,11 @@ public partial class SettingsWindow : Window
     private void ShowNextLineComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         UpdateBarHeightHint();
+        RaiseSettingsChanged();
+    }
+
+    private void KaraokeModeComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
         RaiseSettingsChanged();
     }
 
@@ -153,6 +159,7 @@ public partial class SettingsWindow : Window
                 _ => LyricAlignment.Center
             },
             ShowAlbumArt = ShowAlbumArtComboBox.SelectedIndex == 0,
+            KaraokeMode = KaraokeModeComboBox.SelectedIndex == 1,
             DetectedMediaApps = _detectedApps
                 .Select(app => new DetectedMediaApp(app.AppId, app.DisplayName))
                 .ToList(),

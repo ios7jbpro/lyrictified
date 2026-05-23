@@ -2,7 +2,7 @@ namespace Lyrictified.DisplayModes;
 
 public static class AppBarDisplayMode
 {
-    public const int DefaultHeight = 110;
+    public const int DefaultHeight = 80;
     public const int ShowNextLineHeight = 136;
     public const int MinimumCustomHeight = 32;
     public const double SingleLineStageHeight = 46;

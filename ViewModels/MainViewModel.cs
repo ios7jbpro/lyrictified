@@ -33,6 +33,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private byte[]? _albumArt;
     private string _songTitle = string.Empty;
     private string _songArtist = string.Empty;
+    private double _progress;
     private string _windowTitle = "Lyrictified";
     private string _statusText = "Waiting for a song...";
     private string _helperStatusHint = string.Empty;
@@ -123,6 +124,12 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         get => _songArtist;
         private set => SetField(ref _songArtist, value);
+    }
+
+    public double Progress
+    {
+        get => _progress;
+        private set => SetField(ref _progress, value);
     }
 
     public async Task InitializeAsync()
@@ -411,6 +418,15 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 StatusText = _currentSong.IsPlaying
                     ? $"{_currentSong.Artist} - {position.Value:mm\\:ss}"
                     : $"{_currentSong.Artist} - {position.Value:mm\\:ss} paused";
+
+                if (_currentSong.Duration > TimeSpan.Zero)
+                {
+                    Progress = Math.Clamp(position.Value.TotalMilliseconds / _currentSong.Duration.TotalMilliseconds, 0, 1);
+                }
+                else
+                {
+                    Progress = 0;
+                }
 
                 SetNextRefreshInterval(_currentSong.IsPlaying
                     ? GetNextRefreshInterval(position.Value, currentIndex)
