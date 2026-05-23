@@ -18,6 +18,10 @@ public sealed class AppSettings
 
     public int? TaskbarMaximumWidth { get; set; }
 
+    public LyricAlignment LyricAlignment { get; set; } = LyricAlignment.Center;
+
+    public bool ShowAlbumArt { get; set; } = true;
+
     public List<DetectedMediaApp> DetectedMediaApps { get; set; } = new();
 
     public List<string> IgnoredMediaAppIds { get; set; } = new();

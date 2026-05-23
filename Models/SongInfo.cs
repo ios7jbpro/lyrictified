@@ -5,7 +5,8 @@ public sealed record SongInfo(
     string Artist,
     string? Album,
     TimeSpan Duration,
-    bool IsPlaying)
+    bool IsPlaying,
+    byte[]? AlbumArt = null)
 {
     public string DisplayTitle => string.IsNullOrWhiteSpace(Artist)
         ? Title

@@ -108,6 +108,8 @@ public partial class AppBarWindow : Window
         _displayedNextLineText = _viewModel.NextLine;
         _lastKnownLoadingLyrics = _viewModel.IsLoadingLyrics;
         ApplyNextLineLayout();
+        UpdateAlbumArtAndCredit();
+        ApplyLyricAlignment();
         ApplyPlaybackStateVisual(immediate: true);
         ApplyLoadingState(immediate: true);
         ShowControls(immediate: true);
@@ -214,6 +216,20 @@ public partial class AppBarWindow : Window
                 _ = Dispatcher.InvokeAsync(() => AnimatePlaybackStateChange(_viewModel.IsPlaybackPaused));
             }
         }
+
+        if (e.PropertyName == nameof(MainViewModel.AlbumArt)
+            || e.PropertyName == nameof(MainViewModel.SongTitle)
+            || e.PropertyName == nameof(MainViewModel.SongArtist))
+        {
+            if (Dispatcher.CheckAccess())
+            {
+                UpdateAlbumArtAndCredit();
+            }
+            else
+            {
+                _ = Dispatcher.InvokeAsync(() => UpdateAlbumArtAndCredit());
+            }
+        }
     }
 
     private void ApplyAppearance()
@@ -281,6 +297,8 @@ public partial class AppBarWindow : Window
         IncomingLyricTextBlock.FontSize = GetCurrentLyricFontSize();
         OutgoingLyricTextBlock.FontSize = GetCurrentLyricFontSize();
         _appBarManager?.SetHeight(effectiveHeight);
+        ApplyDynamicScale(effectiveHeight);
+        ApplyLyricAlignment();
     }
 
     private void ApplyMonitorSetting()
@@ -320,6 +338,97 @@ public partial class AppBarWindow : Window
                 _lastMonitorWarningKey = warningKey;
             }
         }
+    }
+
+    private void UpdateAlbumArtAndCredit()
+    {
+        SongTitleTextBlock.Text = _viewModel.SongTitle;
+        SongArtistTextBlock.Text = _viewModel.SongArtist;
+
+        var albumArtData = _viewModel.AlbumArt;
+        if (albumArtData is not null && albumArtData.Length > 0)
+        {
+            try
+            {
+                var bitmap = new BitmapImage();
+                bitmap.BeginInit();
+                bitmap.StreamSource = new System.IO.MemoryStream(albumArtData);
+                bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                bitmap.EndInit();
+                bitmap.Freeze();
+                AlbumArtImage.Source = bitmap;
+            }
+            catch
+            {
+                AlbumArtImage.Source = null;
+            }
+        }
+        else
+        {
+            AlbumArtImage.Source = null;
+        }
+
+        AlbumArtPanel.Visibility = _settings.ShowAlbumArt ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void ApplyLyricAlignment()
+    {
+        var alignment = _settings.LyricAlignment;
+
+        var horizontalAlignment = alignment switch
+        {
+            LyricAlignment.Left => HorizontalAlignment.Left,
+            LyricAlignment.Right => HorizontalAlignment.Right,
+            _ => HorizontalAlignment.Stretch
+        };
+
+        var textAlignment = alignment switch
+        {
+            LyricAlignment.Left => TextAlignment.Left,
+            LyricAlignment.Right => TextAlignment.Right,
+            _ => TextAlignment.Center
+        };
+
+        IncomingLyricTextBlock.HorizontalAlignment = horizontalAlignment;
+        IncomingLyricTextBlock.TextAlignment = textAlignment;
+        OutgoingLyricTextBlock.HorizontalAlignment = horizontalAlignment;
+        OutgoingLyricTextBlock.TextAlignment = textAlignment;
+        PreviewLyricTextBlock.HorizontalAlignment = horizontalAlignment;
+        PreviewLyricTextBlock.TextAlignment = textAlignment;
+    }
+
+    private void ApplyDynamicScale(int effectiveHeight)
+    {
+        var autoHeight = AppBarDisplayMode.GetAutomaticHeight(IsPreviewModeEnabled);
+
+        if (effectiveHeight < autoHeight)
+        {
+            var scaleFactor = (double)effectiveHeight / autoHeight;
+            scaleFactor = Math.Max(scaleFactor, 0.4);
+
+            var artSize = Math.Max(32, 64 * scaleFactor);
+            AlbumArtBorder.Width = artSize;
+            AlbumArtBorder.Height = artSize;
+            SongCreditPanel.Visibility = effectiveHeight < 50 ? Visibility.Collapsed : Visibility.Visible;
+
+            var isCompact = effectiveHeight < 70;
+
+            SongTitleTextBlock.FontSize = isCompact ? 11 : 13;
+            SongArtistTextBlock.FontSize = isCompact ? 9 : 11;
+
+            LyricsContentPanel.LayoutTransform = new ScaleTransform(scaleFactor, scaleFactor);
+        }
+        else
+        {
+            AlbumArtBorder.Width = 64;
+            AlbumArtBorder.Height = 64;
+            SongCreditPanel.Visibility = Visibility.Visible;
+            SongTitleTextBlock.FontSize = 13;
+            SongArtistTextBlock.FontSize = 11;
+            LyricsContentPanel.LayoutTransform = null;
+        }
+
+        AlbumArtPanel.Visibility = _settings.ShowAlbumArt ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void UpdateMonitorControls()
@@ -1152,6 +1261,8 @@ public partial class AppBarWindow : Window
         OutgoingLyricTextBlock.Opacity = 0;
         PreviewLyricTextBlock.Text = _displayedNextLineText;
         ApplyNextLineLayout();
+        UpdateAlbumArtAndCredit();
+        ApplyLyricAlignment();
         ApplyDisplayModeState();
         ApplyPlaybackStateVisual(immediate: true);
         ApplyLoadingState(immediate: true);
@@ -1168,6 +1279,8 @@ public partial class AppBarWindow : Window
         persistedSettings.TaskbarPreferredMonitorDeviceName = incomingSettings.TaskbarPreferredMonitorDeviceName;
         persistedSettings.CustomBarHeight = incomingSettings.CustomBarHeight;
         persistedSettings.TaskbarMaximumWidth = incomingSettings.TaskbarMaximumWidth;
+        persistedSettings.LyricAlignment = incomingSettings.LyricAlignment;
+        persistedSettings.ShowAlbumArt = incomingSettings.ShowAlbumArt;
         persistedSettings.PreferredMonitorDeviceName = null;
         persistedSettings.DetectedMediaApps = MergeDetectedApps(
             incomingSettings.DetectedMediaApps,
