@@ -428,7 +428,7 @@ public partial class AppBarWindow : Window
             var scaleFactor = (double)effectiveHeight / autoHeight;
             scaleFactor = Math.Max(scaleFactor, 0.4);
 
-            var artSize = Math.Max(32, 76 * scaleFactor);
+            var artSize = Math.Max(28, 56 * scaleFactor);
             AlbumArtBorder.Width = artSize;
             AlbumArtBorder.Height = artSize;
             SongCreditPanel.Visibility = effectiveHeight < 50 ? Visibility.Collapsed : Visibility.Visible;
@@ -442,8 +442,8 @@ public partial class AppBarWindow : Window
         }
         else
         {
-            AlbumArtBorder.Width = 76;
-            AlbumArtBorder.Height = 76;
+            AlbumArtBorder.Width = 56;
+            AlbumArtBorder.Height = 56;
             SongCreditPanel.Visibility = Visibility.Visible;
             SongTitleTextBlock.FontSize = 13;
             SongArtistTextBlock.FontSize = 11;
@@ -956,67 +956,56 @@ public partial class AppBarWindow : Window
         IncomingLyricTranslateTransform.X = 0;
         IncomingLyricTranslateTransform.Y = 0;
 
+        var currentText = _displayedLyricText;
         var fadeOutCurrent = new DoubleAnimation
         {
             To = 0,
-            Duration = TimeSpan.FromMilliseconds(90),
+            Duration = TimeSpan.FromMilliseconds(200),
             EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
         };
 
         fadeOutCurrent.Completed += (_, _) =>
         {
-            IncomingLyricTextBlock.Text = "Couldn't find matching lyrics!";
+            var songTitle = _viewModel.SongTitle;
+            var displayText = string.IsNullOrWhiteSpace(songTitle) ? "No lyrics found" : songTitle;
+            IncomingLyricTextBlock.Text = displayText;
             IncomingLyricTextBlock.FontSize = GetCurrentLyricFontSize();
             IncomingLyricTranslateTransform.X = 0;
             IncomingLyricTranslateTransform.Y = 0;
 
-            var fadeInMessage = new DoubleAnimation
+            var fadeInTitle = new DoubleAnimation
             {
                 From = 0,
                 To = 1,
-                Duration = TimeSpan.FromMilliseconds(110),
-                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+                Duration = TimeSpan.FromMilliseconds(350),
+                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
             };
 
-            fadeInMessage.Completed += (_, _) =>
+            fadeInTitle.Completed += (_, _) =>
             {
-                var shakeAnimation = new DoubleAnimationUsingKeyFrames
+                var fadeOutTitle = new DoubleAnimation
                 {
-                    Duration = TimeSpan.FromMilliseconds(350)
-                };
-                shakeAnimation.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromPercent(0.0)));
-                shakeAnimation.KeyFrames.Add(new EasingDoubleKeyFrame(-8, KeyTime.FromPercent(0.14)));
-                shakeAnimation.KeyFrames.Add(new EasingDoubleKeyFrame(7, KeyTime.FromPercent(0.28)));
-                shakeAnimation.KeyFrames.Add(new EasingDoubleKeyFrame(-6, KeyTime.FromPercent(0.42)));
-                shakeAnimation.KeyFrames.Add(new EasingDoubleKeyFrame(5, KeyTime.FromPercent(0.56)));
-                shakeAnimation.KeyFrames.Add(new EasingDoubleKeyFrame(-3, KeyTime.FromPercent(0.72)));
-                shakeAnimation.KeyFrames.Add(new EasingDoubleKeyFrame(2, KeyTime.FromPercent(0.86)));
-                shakeAnimation.KeyFrames.Add(new EasingDoubleKeyFrame(0, KeyTime.FromPercent(1.0)));
-
-                var fadeOutMessage = new DoubleAnimation
-                {
-                    BeginTime = TimeSpan.FromMilliseconds(1350),
+                    BeginTime = TimeSpan.FromMilliseconds(2500),
                     To = 0,
-                    Duration = TimeSpan.FromMilliseconds(170),
+                    Duration = TimeSpan.FromMilliseconds(300),
                     EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
                 };
 
-        fadeOutMessage.Completed += (_, _) =>
-        {
-            _displayedLyricText = string.Empty;
-            IncomingLyricTextBlock.Text = string.Empty;
-            IncomingLyricTextBlock.Opacity = 0;
+                fadeOutTitle.Completed += (_, _) =>
+                {
+                    _displayedLyricText = string.Empty;
+                    IncomingLyricTextBlock.Text = string.Empty;
+                    IncomingLyricTextBlock.Opacity = 0;
                     IncomingLyricTranslateTransform.X = 0;
                     _isNotFoundAnimationRunning = false;
                     EndNoLyricsHideDeferral("animation completed");
                     ApplyHideModeState();
                 };
 
-                IncomingLyricTranslateTransform.BeginAnimation(TranslateTransform.XProperty, shakeAnimation);
-                IncomingLyricTextBlock.BeginAnimation(OpacityProperty, fadeOutMessage);
+                IncomingLyricTextBlock.BeginAnimation(OpacityProperty, fadeOutTitle);
             };
 
-            IncomingLyricTextBlock.BeginAnimation(OpacityProperty, fadeInMessage);
+            IncomingLyricTextBlock.BeginAnimation(OpacityProperty, fadeInTitle);
         };
 
         IncomingLyricTextBlock.BeginAnimation(OpacityProperty, fadeOutCurrent);
@@ -1161,7 +1150,27 @@ public partial class AppBarWindow : Window
 
     private void UpdateProgressBar()
     {
-        SongProgressBar.Value = _viewModel.Progress;
+        var progress = _viewModel.Progress;
+        var fillWidth = Math.Max(0, progress * ProgressBarTrack.ActualWidth);
+
+        ProgressBarFill.BeginAnimation(WidthProperty, null);
+        var targetWidth = double.IsNaN(fillWidth) || double.IsInfinity(fillWidth) ? 0 : fillWidth;
+
+        var currentWidth = ProgressBarFill.Width;
+        if (Math.Abs(currentWidth - targetWidth) < 1)
+        {
+            ProgressBarFill.Width = targetWidth;
+            return;
+        }
+
+        var animation = new DoubleAnimation
+        {
+            From = currentWidth,
+            To = targetWidth,
+            Duration = TimeSpan.FromMilliseconds(300),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+        };
+        ProgressBarFill.BeginAnimation(WidthProperty, animation);
     }
 
     private void UpdateHoverEffect(bool isHovering)

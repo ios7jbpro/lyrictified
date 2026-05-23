@@ -7,8 +7,8 @@ public static class AppBarDisplayMode
     public const int MinimumCustomHeight = 32;
     public const double SingleLineStageHeight = 46;
     public const double ShowNextLineStageHeight = 84;
-    public const double CurrentLyricFontSize = 30;
-    public const double PreviewLyricFontSize = 18;
+    public const double CurrentLyricFontSize = 34;
+    public const double PreviewLyricFontSize = 20;
     public const double PreviewLyricOpacity = 0.35;
     public const double PreviewRestY = 0;
     public const double PreviewEnterY = 8;
