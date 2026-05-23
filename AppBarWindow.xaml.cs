@@ -343,6 +343,17 @@ public partial class AppBarWindow : Window
         SongCreditPanel.Visibility = isBlackout ? Visibility.Collapsed : Visibility.Visible;
         ProgressBarTrack.Visibility = isBlackout ? Visibility.Collapsed : Visibility.Visible;
         LyricsContentPanel.Visibility = isBlackout ? Visibility.Collapsed : Visibility.Visible;
+        if (isBlackout)
+        {
+            AlbumArtPanel.BeginAnimation(OpacityProperty, null);
+            SongCreditPanel.BeginAnimation(OpacityProperty, null);
+            AlbumArtPanel.Opacity = 1;
+            SongCreditPanel.Opacity = 1;
+        }
+        else
+        {
+            UpdateSongInfoHoverOpacity();
+        }
         AnimateBorderVisibility(isBlackout);
         if (!_viewModel.IsLoadingLyrics)
         {
@@ -470,6 +481,73 @@ public partial class AppBarWindow : Window
         OutgoingLyricTextBlock.TextAlignment = textAlignment;
         PreviewLyricTextBlock.HorizontalAlignment = horizontalAlignment;
         PreviewLyricTextBlock.TextAlignment = textAlignment;
+
+        var colDefs = MainGrid.ColumnDefinitions;
+        colDefs.Clear();
+        colDefs.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) });
+        colDefs.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        colDefs.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) });
+
+        switch (alignment)
+        {
+            case LyricAlignment.Left:
+                Grid.SetColumn(LyricsGrid, 0);
+                Grid.SetColumnSpan(LyricsGrid, 2);
+                Grid.SetColumn(AlbumArtPanel, 2);
+                AlbumArtPanel.HorizontalAlignment = System.Windows.HorizontalAlignment.Right;
+                Grid.SetColumn(ControlButtonsPanel, 2);
+                ControlButtonsPanel.HorizontalAlignment = System.Windows.HorizontalAlignment.Right;
+                if (AlbumArtPanel.Children.IndexOf(AlbumArtBorder) < AlbumArtPanel.Children.IndexOf(SongCreditPanel))
+                {
+                    AlbumArtPanel.Children.Remove(AlbumArtBorder);
+                    AlbumArtPanel.Children.Add(AlbumArtBorder);
+                }
+                SongTitleTextBlock.TextAlignment = TextAlignment.Right;
+                SongArtistTextBlock.TextAlignment = TextAlignment.Right;
+                SongTimestampTextBlock.TextAlignment = TextAlignment.Right;
+                SongCreditPanel.Margin = new Thickness(0, 0, 4, 0);
+                AlbumArtBorder.Margin = new Thickness(0);
+                AlbumArtPanel.Margin = new Thickness(14, 0, 0, 0);
+                break;
+            case LyricAlignment.Right:
+                Grid.SetColumn(ControlButtonsPanel, 0);
+                ControlButtonsPanel.HorizontalAlignment = System.Windows.HorizontalAlignment.Left;
+                Grid.SetColumn(LyricsGrid, 1);
+                Grid.SetColumnSpan(LyricsGrid, 2);
+                Grid.SetColumn(AlbumArtPanel, 0);
+                AlbumArtPanel.HorizontalAlignment = System.Windows.HorizontalAlignment.Left;
+                if (AlbumArtPanel.Children.IndexOf(AlbumArtBorder) > AlbumArtPanel.Children.IndexOf(SongCreditPanel))
+                {
+                    AlbumArtPanel.Children.Remove(AlbumArtBorder);
+                    AlbumArtPanel.Children.Insert(0, AlbumArtBorder);
+                }
+                SongTitleTextBlock.TextAlignment = TextAlignment.Left;
+                SongArtistTextBlock.TextAlignment = TextAlignment.Left;
+                SongTimestampTextBlock.TextAlignment = TextAlignment.Left;
+                SongCreditPanel.Margin = new Thickness(4, 0, 0, 0);
+                AlbumArtBorder.Margin = new Thickness(0);
+                AlbumArtPanel.Margin = new Thickness(0, 0, 14, 0);
+                break;
+            default:
+                Grid.SetColumn(AlbumArtPanel, 0);
+                AlbumArtPanel.HorizontalAlignment = System.Windows.HorizontalAlignment.Left;
+                Grid.SetColumn(LyricsGrid, 1);
+                Grid.SetColumnSpan(LyricsGrid, 1);
+                Grid.SetColumn(ControlButtonsPanel, 2);
+                ControlButtonsPanel.HorizontalAlignment = System.Windows.HorizontalAlignment.Right;
+                if (AlbumArtPanel.Children.IndexOf(AlbumArtBorder) > AlbumArtPanel.Children.IndexOf(SongCreditPanel))
+                {
+                    AlbumArtPanel.Children.Remove(AlbumArtBorder);
+                    AlbumArtPanel.Children.Insert(0, AlbumArtBorder);
+                }
+                SongTitleTextBlock.TextAlignment = TextAlignment.Left;
+                SongArtistTextBlock.TextAlignment = TextAlignment.Left;
+                SongTimestampTextBlock.TextAlignment = TextAlignment.Left;
+                SongCreditPanel.Margin = new Thickness(4, 0, 0, 0);
+                AlbumArtBorder.Margin = new Thickness(0);
+                AlbumArtPanel.Margin = new Thickness(0, 0, 14, 0);
+                break;
+        }
     }
 
     private void ApplyDynamicScale(int effectiveHeight)
@@ -1374,16 +1452,19 @@ public partial class AppBarWindow : Window
         if (immediate)
         {
             ControlButtonsPanel.Opacity = 1;
-            return;
+        }
+        else
+        {
+            var animation = new DoubleAnimation
+            {
+                To = 1,
+                Duration = TimeSpan.FromMilliseconds(140),
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+            };
+            ControlButtonsPanel.BeginAnimation(OpacityProperty, animation);
         }
 
-        var animation = new DoubleAnimation
-        {
-            To = 1,
-            Duration = TimeSpan.FromMilliseconds(140),
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
-        };
-        ControlButtonsPanel.BeginAnimation(OpacityProperty, animation);
+        UpdateSongInfoHoverOpacity();
     }
 
     private void AnimateBorderVisibility(bool hideBorder)
@@ -1462,6 +1543,51 @@ public partial class AppBarWindow : Window
             }
         };
         ControlButtonsPanel.BeginAnimation(OpacityProperty, animation);
+
+        UpdateSongInfoHoverOpacity();
+    }
+
+    private void UpdateSongInfoHoverOpacity()
+    {
+        if (ShouldUseBlackoutMode())
+        {
+            return;
+        }
+
+        if (_settings.LyricAlignment == LyricAlignment.Center)
+        {
+            AlbumArtPanel.BeginAnimation(OpacityProperty, null);
+            SongCreditPanel.BeginAnimation(OpacityProperty, null);
+            AlbumArtPanel.Opacity = 1;
+            SongCreditPanel.Opacity = 1;
+            return;
+        }
+
+        var targetOpacity = _controlsVisible ? 0.2 : 1.0;
+        var duration = _controlsVisible ? 140 : 220;
+        var easing = _controlsVisible
+            ? (QuadraticEase)new QuadraticEase { EasingMode = EasingMode.EaseOut }
+            : new QuadraticEase { EasingMode = EasingMode.EaseIn };
+
+        AlbumArtPanel.BeginAnimation(OpacityProperty, null);
+        SongCreditPanel.BeginAnimation(OpacityProperty, null);
+
+        if (_controlsVisible)
+        {
+            AlbumArtPanel.Opacity = targetOpacity;
+            SongCreditPanel.Opacity = targetOpacity;
+        }
+        else
+        {
+            var anim = new DoubleAnimation
+            {
+                To = targetOpacity,
+                Duration = TimeSpan.FromMilliseconds(duration),
+                EasingFunction = easing
+            };
+            AlbumArtPanel.BeginAnimation(OpacityProperty, anim);
+            SongCreditPanel.BeginAnimation(OpacityProperty, anim);
+        }
     }
 
     private void ScheduleControlsFade()

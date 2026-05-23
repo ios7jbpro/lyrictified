@@ -62,7 +62,7 @@ CornerRadius="0"
                         Background="#1A2431"
                         BorderBrush="#365067"
                         BorderThickness="1">
-                    <Grid>
+<Grid x:Name="MainGrid">
                         <Image x:Name="AlbumArtImage"
                                Stretch="UniformToFill"
                                RenderOptions.BitmapScalingMode="HighQuality" />
@@ -104,7 +104,8 @@ CornerRadius="0"
                                MaxWidth="180" />
                 </StackPanel>
             </StackPanel>
-            <Grid Grid.Column="1"
+            <Grid x:Name="LyricsGrid"
+                  Grid.Column="1"
                   VerticalAlignment="Center"
                   ClipToBounds="True">
                 <Image x:Name="PauseIcon"
