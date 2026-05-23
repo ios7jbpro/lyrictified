@@ -253,10 +253,15 @@ public partial class AppBarWindow : Window
             if (Dispatcher.CheckAccess())
             {
                 AnimatePlaybackStateChange(_viewModel.IsPlaybackPaused);
+                ApplyHideModeState();
             }
             else
             {
-                _ = Dispatcher.InvokeAsync(() => AnimatePlaybackStateChange(_viewModel.IsPlaybackPaused));
+                _ = Dispatcher.InvokeAsync(() =>
+                {
+                    AnimatePlaybackStateChange(_viewModel.IsPlaybackPaused);
+                    ApplyHideModeState();
+                });
             }
         }
 
@@ -1076,6 +1081,7 @@ public partial class AppBarWindow : Window
         OutgoingLyricTextBlock.BeginAnimation(TextBlock.FontSizeProperty, null);
         OutgoingLyricTranslateTransform.BeginAnimation(TranslateTransform.YProperty, null);
         OutgoingLyricTextBlock.Opacity = 0;
+        OutgoingLyricTextBlock.Inlines.Clear();
         OutgoingLyricTextBlock.Text = string.Empty;
         OutgoingLyricTranslateTransform.Y = 0;
 
@@ -1471,6 +1477,7 @@ public partial class AppBarWindow : Window
 
         if (position is null || duration <= TimeSpan.Zero)
         {
+            _progressTimer.Stop();
             return;
         }
 
@@ -1663,6 +1670,7 @@ public partial class AppBarWindow : Window
         }
         else
         {
+            StopWordAnim();
             IncomingLyricTextBlock.Inlines.Clear();
             IncomingLyricTextBlock.Text = _displayedLyricText;
             IncomingLyricTextBlock.FontSize = AppBarDisplayMode.CurrentLyricFontSize;
@@ -1837,6 +1845,7 @@ public partial class AppBarWindow : Window
         _appBarManager.SetHeight(GetEffectiveBarHeight(IsPreviewModeEnabled));
         _appBarManager.Reposition();
         ApplyAppearance();
+        ApplyHideModeState();
         ApplyNextLineLayout();
         ApplyDisplayModeState();
     }
