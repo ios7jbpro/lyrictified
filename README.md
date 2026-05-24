@@ -2,6 +2,8 @@
 
 A Windows desktop app that displays real-time synced lyrics for whatever music is currently playing on your system. Works with any media player that integrates with Windows media controls (Spotify, YouTube Music, foobar2000, etc.).
 
+![Screenshot](screenshot.png)
+
 ## Features
 
 - Detects the currently playing song from any Windows media app via the SMTC API
