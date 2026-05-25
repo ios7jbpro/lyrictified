@@ -65,6 +65,7 @@ public partial class AppBarWindow : Window
     private string _lastProgressSongId = string.Empty;
     private TrayIcon? _trayIcon;
     private bool IsPreviewModeEnabled => _settings.ShowNextLine;
+    private bool IsTestMode => _settings.TestMode;
     private DispatcherTimer? _wordAnimTimer;
     private double[]? _wordCharOpacities;
     private DateTime _lastLineChangeTimestamp = DateTime.MinValue;
@@ -118,7 +119,16 @@ public partial class AppBarWindow : Window
         _appBarManager = new AppBarManager(this, AppBarDisplayMode.DefaultHeight);
         ApplyMonitorSetting();
         ApplyNextLineLayout();
-        ApplyDisplayModeState();
+
+        if (IsTestMode)
+        {
+            ApplyTestModeState();
+        }
+        else
+        {
+            ApplyDisplayModeState();
+        }
+
         ApplyAppearance();
         UpdateMonitorControls();
         ApplyHideModeState();
@@ -384,7 +394,10 @@ public partial class AppBarWindow : Window
         PreviewLyricTextBlock.Foreground = PreviewLyricBrush;
         IncomingLyricTextBlock.FontSize = GetCurrentLyricFontSize();
         OutgoingLyricTextBlock.FontSize = GetCurrentLyricFontSize();
-        _appBarManager?.SetHeight(effectiveHeight);
+        if (!IsTestMode)
+        {
+            _appBarManager?.SetHeight(effectiveHeight);
+        }
         ApplyDynamicScale(effectiveHeight);
         ApplyLyricAlignment();
     }
@@ -613,6 +626,27 @@ public partial class AppBarWindow : Window
     {
         if (_appBarManager is null)
         {
+            return;
+        }
+
+        if (IsTestMode)
+        {
+            var shouldHideWindow = _settings.HideMode == HideMode.Hide && _viewModel.NoTimedLyricsFound && !_viewModel.IsLoadingLyrics;
+            if (shouldHideWindow)
+            {
+                _controlsFadeTimer.Stop();
+                Hide();
+                return;
+            }
+
+            if (!IsVisible)
+            {
+                Show();
+            }
+
+            ApplyAppearance();
+            ApplyNextLineLayout();
+            ApplyTestModeState();
             return;
         }
 
@@ -954,10 +988,30 @@ public partial class AppBarWindow : Window
 
     private void ApplyDisplayModeState()
     {
+        if (IsTestMode)
+        {
+            ApplyTestModeState();
+            return;
+        }
+
+        _isTestModeActive = false;
+
         if (_appBarManager is null)
         {
             return;
         }
+
+        if (_appBarManager.IsAttached)
+        {
+            _appBarManager.Detach();
+        }
+
+        WindowStyle = WindowStyle.None;
+        ResizeMode = ResizeMode.NoResize;
+        ShowInTaskbar = false;
+        Topmost = true;
+        Background = System.Windows.Media.Brushes.Transparent;
+        SurfaceBorder.CornerRadius = new CornerRadius(0);
 
         if (!_appBarManager.IsAttached)
         {
@@ -966,6 +1020,32 @@ public partial class AppBarWindow : Window
 
         _appBarManager.SetHeight(GetEffectiveBarHeight(IsPreviewModeEnabled));
         _appBarManager.Reposition();
+    }
+
+    private bool _isTestModeActive;
+
+    private void ApplyTestModeState()
+    {
+        if (_appBarManager is not null && _appBarManager.IsAttached)
+        {
+            _appBarManager.Detach();
+        }
+
+        WindowStyle = WindowStyle.SingleBorderWindow;
+        ResizeMode = ResizeMode.CanResize;
+        ShowInTaskbar = true;
+        Topmost = false;
+        Background = System.Windows.Media.Brushes.Transparent;
+
+        SurfaceBorder.CornerRadius = new CornerRadius(8);
+
+        if (!_isTestModeActive)
+        {
+            _isTestModeActive = true;
+            var effectiveHeight = GetEffectiveBarHeight(IsPreviewModeEnabled);
+            Width = 1200;
+            Height = effectiveHeight;
+        }
     }
 
     private void HandleNextLineChanged(string newNextLine)
@@ -1876,8 +1956,15 @@ public partial class AppBarWindow : Window
         }
 
         ApplyAppearance();
-        _appBarManager?.SetHeight(GetEffectiveBarHeight(IsPreviewModeEnabled));
-        _appBarManager?.Reposition();
+        if (IsTestMode)
+        {
+            ApplyTestModeState();
+        }
+        else
+        {
+            _appBarManager?.SetHeight(GetEffectiveBarHeight(IsPreviewModeEnabled));
+            _appBarManager?.Reposition();
+        }
     }
 
     private AppSettings MergeSettings(AppSettings incomingSettings)
@@ -1893,6 +1980,7 @@ public partial class AppBarWindow : Window
         persistedSettings.LyricAlignment = incomingSettings.LyricAlignment;
         persistedSettings.ShowAlbumArt = incomingSettings.ShowAlbumArt;
         persistedSettings.WordByWordMode = incomingSettings.WordByWordMode;
+        persistedSettings.TestMode = incomingSettings.TestMode;
         persistedSettings.PreferredMonitorDeviceName = null;
         persistedSettings.DetectedMediaApps = MergeDetectedApps(
             incomingSettings.DetectedMediaApps,
@@ -2017,6 +2105,15 @@ public partial class AppBarWindow : Window
     internal void ShowFromTray()
     {
         Show();
+        if (IsTestMode)
+        {
+            ApplyTestModeState();
+            ApplyAppearance();
+            ApplyHideModeState();
+            ApplyNextLineLayout();
+            return;
+        }
+
         if (_appBarManager is null)
         {
             _appBarManager = new AppBarManager(this, AppBarDisplayMode.DefaultHeight);

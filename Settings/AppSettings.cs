@@ -24,6 +24,8 @@ public sealed class AppSettings
 
     public bool WordByWordMode { get; set; }
 
+    public bool TestMode { get; set; }
+
     public int MaxCacheSize { get; set; } = 25;
 
     public List<DetectedMediaApp> DetectedMediaApps { get; set; } = new();

@@ -431,6 +431,30 @@
 
                             <Border Style="{StaticResource CardStyle}">
                                 <StackPanel>
+                                    <TextBlock Text="Test Mode" Style="{StaticResource SectionTitleStyle}" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="Detach the bar from the screen edge and allow free resizing and repositioning." Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" FontWeight="Medium" />
+                                            <TextBlock Text="Useful for testing the bar at different sizes without it being locked to the top of the screen." Style="{StaticResource HintTextStyle}" />
+                                        </StackPanel>
+                                        <ComboBox x:Name="TestModeComboBox"
+                                                  Grid.Column="1"
+                                                  MinWidth="120"
+                                                  VerticalAlignment="Center"
+                                                  SelectionChanged="TestModeComboBox_OnSelectionChanged">
+                                            <ComboBoxItem Content="Disabled" />
+                                            <ComboBoxItem Content="Enabled" />
+                                        </ComboBox>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource CardStyle}">
+                                <StackPanel>
                                     <TextBlock Text="Display Monitor" Style="{StaticResource SectionTitleStyle}" />
                                     <TextBlock Text="Choose which monitor to display the bar on." Style="{StaticResource LabelStyle}" />
                                     <ComboBox x:Name="AppBarMonitorComboBox"

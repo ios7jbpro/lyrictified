@@ -57,6 +57,7 @@ public partial class SettingsWindow : Window
             };
             ShowAlbumArtComboBox.SelectedIndex = settings.ShowAlbumArt ? 0 : 1;
             WordByWordComboBox.SelectedIndex = settings.WordByWordMode ? 1 : 0;
+            TestModeComboBox.SelectedIndex = settings.TestMode ? 1 : 0;
             MaxCacheSizeTextBox.Text = settings.MaxCacheSize.ToString();
             TaskbarMaximumWidthTextBox.Text = settings.TaskbarMaximumWidth?.ToString() ?? string.Empty;
             LoadDetectedApps(settings);
@@ -136,6 +137,11 @@ public partial class SettingsWindow : Window
         RaiseSettingsChanged();
     }
 
+    private void TestModeComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        RaiseSettingsChanged();
+    }
+
     private void TaskbarMaximumWidthTextBox_OnTextChanged(object sender, TextChangedEventArgs e)
     {
         UpdateTaskbarMaximumWidthHint();
@@ -172,6 +178,7 @@ public partial class SettingsWindow : Window
             },
             ShowAlbumArt = ShowAlbumArtComboBox.SelectedIndex == 0,
             WordByWordMode = WordByWordComboBox.SelectedIndex == 1,
+            TestMode = TestModeComboBox.SelectedIndex == 1,
             MaxCacheSize = ParseMaxCacheSize(),
             DetectedMediaApps = _detectedApps
                 .Select(app => new DetectedMediaApp(app.AppId, app.DisplayName))
@@ -277,6 +284,7 @@ public partial class SettingsWindow : Window
         HideModeComboBox.IsEnabled = isAppBarMode;
         ShowNextLineComboBox.IsEnabled = isAppBarMode;
         CustomHeightTextBox.IsEnabled = isAppBarMode;
+        TestModeComboBox.IsEnabled = isAppBarMode;
     }
 
     private DisplayMode GetSelectedDisplayMode()
