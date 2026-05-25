@@ -68,4 +68,5 @@ Built with help from:
 - [OpenCode](https://opencode.ai/) with [GLM-5.1](https://modelscope.cn/models/ZhipuAI/GLM-5.1) and [Kiwi](https://lucidityai.app/)
 - [Google Antigravity](https://antigravity.google/product/antigravity)
 - [Claude Code](https://code.claude.com/docs/en/overview)
+- [Cursor](https://www.cursor.com/)
 - [cotunjr](https://github.com/cotunjr)
