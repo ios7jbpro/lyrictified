@@ -59,3 +59,13 @@ Settings/         App settings model and persistence
 Styling/          Window appearance management
 ViewModels/       MVVM view model driving the UI
 ```
+
+## Credits
+
+Built with help from:
+
+- [OpenAI Codex](https://openai.com/codex/)
+- [OpenCode](https://opencode.ai/) with [GLM-5.1](https://modelscope.cn/models/ZhipuAI/GLM-5.1) and [Kiwi](https://lucidityai.app/)
+- [Google Antigravity](https://antigravity.google/product/antigravity)
+- [Claude Code](https://code.claude.com/docs/en/overview)
+- [cotunjr](https://github.com/cotunjr)
