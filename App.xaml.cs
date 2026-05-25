@@ -21,9 +21,12 @@ public partial class App : Application
     {
         var settings = _appSettingsService.Load();
         var previousWindow = MainWindow;
-        Window nextWindow = settings.DisplayMode == DisplayMode.Taskbar
-            ? new TaskbarWindow()
-            : new AppBarWindow();
+        Window nextWindow = settings.DisplayMode switch
+        {
+            DisplayMode.Taskbar => new TaskbarWindow(),
+            DisplayMode.Windowed => new WindowedWindow(),
+            _ => new AppBarWindow()
+        };
 
         MainWindow = nextWindow;
         nextWindow.Show();

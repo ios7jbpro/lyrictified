@@ -503,9 +503,16 @@ public partial class TaskbarWindow : Window
         persistedSettings.AppBarPreferredMonitorDeviceName = incomingSettings.AppBarPreferredMonitorDeviceName;
         persistedSettings.TaskbarPreferredMonitorDeviceName = incomingSettings.TaskbarPreferredMonitorDeviceName;
         persistedSettings.CustomBarHeight = incomingSettings.CustomBarHeight;
+        persistedSettings.WindowedWidth = incomingSettings.WindowedWidth;
+        persistedSettings.WindowedHeight = incomingSettings.WindowedHeight;
         persistedSettings.TaskbarMaximumWidth = incomingSettings.TaskbarMaximumWidth;
         persistedSettings.LyricAlignment = incomingSettings.LyricAlignment;
         persistedSettings.ShowAlbumArt = incomingSettings.ShowAlbumArt;
+        persistedSettings.WindowedShowNextLine = incomingSettings.WindowedShowNextLine;
+        persistedSettings.WindowedLyricAlignment = incomingSettings.WindowedLyricAlignment;
+        persistedSettings.WindowedShowAlbumArt = incomingSettings.WindowedShowAlbumArt;
+        persistedSettings.WindowedWordByWordMode = incomingSettings.WindowedWordByWordMode;
+        persistedSettings.WindowedHideMode = incomingSettings.WindowedHideMode;
         persistedSettings.PreferredMonitorDeviceName = null;
         persistedSettings.DetectedMediaApps = MergeDetectedApps(
             incomingSettings.DetectedMediaApps,

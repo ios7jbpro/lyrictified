@@ -41,6 +41,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private string _nextLine = string.Empty;
     private LyricLine? _currentLyricLine;
     private int _currentWordIndex;
+    private int _currentLineIndex = -1;
     private DateTime? _noLyricsShownAt;
     private bool _wordByWordMode;
 
@@ -158,6 +159,14 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     public bool WordByWordMode => _wordByWordMode;
 
+    public IReadOnlyList<LyricLine> Lyrics => _lyrics;
+
+    public int CurrentLineIndex
+    {
+        get => _currentLineIndex;
+        private set => SetField(ref _currentLineIndex, value);
+    }
+
     public async Task InitializeAsync()
     {
         try
@@ -223,6 +232,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 SongArtist = string.Empty;
                 AlbumArt = null;
                 _lyrics = Array.Empty<LyricLine>();
+                CurrentLineIndex = -1;
+                OnPropertyChanged(nameof(Lyrics));
                 SetNextRefreshInterval(IdleRefreshInterval);
                 return;
             }
@@ -254,6 +265,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             NoTimedLyricsFound = false;
             _noLyricsShownAt = null;
             _lyrics = Array.Empty<LyricLine>();
+            CurrentLineIndex = -1;
+            OnPropertyChanged(nameof(Lyrics));
             SongTitle = song.Title;
             SongArtist = song.Artist;
             AlbumArt = song.AlbumArt;
@@ -267,12 +280,14 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 }
 
                 _lyrics = lyrics;
+                OnPropertyChanged(nameof(Lyrics));
                 var wordsTotal = lyrics.Count(l => l.Words?.Count > 0);
                 Logger.Log($"HandleSongAsync: {lyrics.Count} lines, {wordsTotal} with word data");
                 if (_lyrics.Count == 0)
                 {
                     IsLoadingLyrics = false;
                     NoTimedLyricsFound = true;
+                    CurrentLineIndex = -1;
                     _noLyricsShownAt = DateTime.UtcNow;
                     CurrentLine = "Lyrics not found";
                     NextLine = string.Empty;
@@ -434,6 +449,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 }
 
                 var currentIndex = FindCurrentLyricIndex(position.Value);
+                CurrentLineIndex = currentIndex;
                 var currentLyric = currentIndex >= 0 ? _lyrics[currentIndex] : null;
 
                 if (currentLyric is not null)
@@ -651,6 +667,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         CancelLyricsLoad();
         ResetPlaybackClock();
         _lyrics = Array.Empty<LyricLine>();
+        CurrentLineIndex = -1;
+        OnPropertyChanged(nameof(Lyrics));
         _currentSong = null;
         IsLoadingLyrics = false;
         NoTimedLyricsFound = false;
@@ -667,6 +685,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         ResetPlaybackClock();
         _lyrics = Array.Empty<LyricLine>();
+        CurrentLineIndex = -1;
+        OnPropertyChanged(nameof(Lyrics));
         IsLoadingLyrics = false;
         NoTimedLyricsFound = song is not null;
         _noLyricsShownAt = song is not null ? DateTime.UtcNow : null;
@@ -698,6 +718,11 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         }
 
         field = value;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
+    private void OnPropertyChanged(string propertyName)
+    {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 

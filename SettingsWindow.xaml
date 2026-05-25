@@ -277,6 +277,7 @@
                                       MinWidth="260"
                                       SelectionChanged="DisplayModeComboBox_OnSelectionChanged">
                                 <ComboBoxItem Tag="AppBar" Content="App bar (top of screen)" />
+                                <ComboBoxItem Tag="Windowed" Content="Windowed" />
                                 <ComboBoxItem Tag="Taskbar" Content="Taskbar" />
                             </ComboBox>
                         </StackPanel>
@@ -446,30 +447,6 @@
 
                     <Border Style="{StaticResource CardStyle}">
                         <StackPanel>
-                            <TextBlock Text="Test Mode" Style="{StaticResource SectionTitleStyle}" />
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0">
-                                    <TextBlock Text="Detach the bar from the screen edge and allow free resizing and repositioning." Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" FontWeight="Medium" />
-                                    <TextBlock Text="Useful for testing the bar at different sizes without it being locked to the top of the screen." Style="{StaticResource HintTextStyle}" />
-                                </StackPanel>
-                                <ComboBox x:Name="TestModeComboBox"
-                                          Grid.Column="1"
-                                          MinWidth="120"
-                                          VerticalAlignment="Center"
-                                          SelectionChanged="TestModeComboBox_OnSelectionChanged">
-                                    <ComboBoxItem Content="Disabled" />
-                                    <ComboBoxItem Content="Enabled" />
-                                </ComboBox>
-                            </Grid>
-                        </StackPanel>
-                    </Border>
-
-                    <Border Style="{StaticResource CardStyle}">
-                        <StackPanel>
                             <TextBlock Text="Display Monitor" Style="{StaticResource SectionTitleStyle}" />
                             <TextBlock Text="Choose which monitor to display the bar on." Style="{StaticResource LabelStyle}" />
                             <ComboBox x:Name="AppBarMonitorComboBox"
@@ -477,6 +454,110 @@
                                       DisplayMemberPath="DisplayName"
                                       SelectedValuePath="DeviceName"
                                       SelectionChanged="AppBarMonitorComboBox_OnSelectionChanged" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </TabItem>
+
+        <TabItem Header="Windowed">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Margin="4,8,4,4">
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="Lyric Display" Style="{StaticResource SectionTitleStyle}" />
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="Show next line" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" FontWeight="Medium" />
+                                    <TextBlock Text="Preview the upcoming lyric line below the current one." Style="{StaticResource HintTextStyle}" />
+                                </StackPanel>
+                                <ComboBox x:Name="WindowedShowNextLineComboBox"
+                                          Grid.Column="1"
+                                          MinWidth="120"
+                                          VerticalAlignment="Center"
+                                          SelectionChanged="WindowedShowNextLineComboBox_OnSelectionChanged">
+                                    <ComboBoxItem Content="Disabled" />
+                                    <ComboBoxItem Content="Enabled" />
+                                </ComboBox>
+                            </Grid>
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="Lyric alignment" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" FontWeight="Medium" />
+                                    <TextBlock Text="Position lyrics within the bar." Style="{StaticResource HintTextStyle}" />
+                                </StackPanel>
+                                <ComboBox x:Name="WindowedLyricAlignmentComboBox"
+                                          Grid.Column="1"
+                                          MinWidth="120"
+                                          VerticalAlignment="Center"
+                                          SelectionChanged="WindowedLyricAlignmentComboBox_OnSelectionChanged">
+                                    <ComboBoxItem Tag="Left" Content="Left" />
+                                    <ComboBoxItem Tag="Center" Content="Center" />
+                                    <ComboBoxItem Tag="Right" Content="Right" />
+                                </ComboBox>
+                            </Grid>
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="Show album art" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" FontWeight="Medium" />
+                                    <TextBlock Text="Display album artwork and song info on the left side." Style="{StaticResource HintTextStyle}" />
+                                </StackPanel>
+                                <ComboBox x:Name="WindowedShowAlbumArtComboBox"
+                                          Grid.Column="1"
+                                          MinWidth="120"
+                                          VerticalAlignment="Center"
+                                          SelectionChanged="WindowedShowAlbumArtComboBox_OnSelectionChanged">
+                                    <ComboBoxItem Content="Enabled" />
+                                    <ComboBoxItem Content="Disabled" />
+                                </ComboBox>
+                            </Grid>
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="Word-by-word lyrics" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" FontWeight="Medium" />
+                                    <TextBlock Text="Highlight each word as it is sung (requires LRC word timestamps)." Style="{StaticResource HintTextStyle}" />
+                                </StackPanel>
+                                <ComboBox x:Name="WindowedWordByWordComboBox"
+                                          Grid.Column="1"
+                                          MinWidth="120"
+                                          VerticalAlignment="Center"
+                                          SelectionChanged="WindowedWordByWordComboBox_OnSelectionChanged">
+                                    <ComboBoxItem Content="Disabled" />
+                                    <ComboBoxItem Content="Enabled" />
+                                </ComboBox>
+                            </Grid>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="Hide mode" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" FontWeight="Medium" />
+                                    <TextBlock Text="Control bar visibility when lyrics are not found." Style="{StaticResource HintTextStyle}" />
+                                </StackPanel>
+                                <ComboBox x:Name="WindowedHideModeComboBox"
+                                          Grid.Column="1"
+                                          MinWidth="120"
+                                          VerticalAlignment="Center"
+                                          SelectionChanged="WindowedHideModeComboBox_OnSelectionChanged">
+                                    <ComboBoxItem Tag="Nothing" Content="Nothing" />
+                                    <ComboBoxItem Tag="Blackout" Content="Blackout" />
+                                    <ComboBoxItem Tag="Hide" Content="Hide" />
+                                </ComboBox>
+                            </Grid>
                         </StackPanel>
                     </Border>
                 </StackPanel>

@@ -2,14 +2,21 @@ using System.Windows.Threading;
 
 namespace Lyrictified;
 
+internal interface ITrayIconHost
+{
+    void ShowFromTray();
+    void OpenSettingsFromTray();
+    void ExitApp();
+}
+
 internal sealed class TrayIcon : IDisposable
 {
     private readonly Dispatcher _dispatcher;
-    private readonly AppBarWindow _window;
+    private readonly ITrayIconHost _window;
     private System.Windows.Forms.NotifyIcon? _icon;
     private bool _disposed;
 
-    public TrayIcon(AppBarWindow window)
+    public TrayIcon(ITrayIconHost window)
     {
         _window = window;
         _dispatcher = Dispatcher.CurrentDispatcher;

@@ -31,15 +31,23 @@ public partial class SettingsWindow : Window
         LastSearchInfoTextBox.Text = string.IsNullOrWhiteSpace(info) ? "No search yet" : info;
     }
 
+    private AppSettings? _lastLoadedSettings;
+
     public void LoadSettings(AppSettings settings, IReadOnlyList<MonitorOption> monitors)
     {
         _isInitializing = true;
+        _lastLoadedSettings = settings;
         try
         {
             var appBarMonitor = settings.AppBarPreferredMonitorDeviceName ?? settings.PreferredMonitorDeviceName;
             var taskbarMonitor = settings.TaskbarPreferredMonitorDeviceName ?? settings.PreferredMonitorDeviceName;
 
-            DisplayModeComboBox.SelectedIndex = settings.DisplayMode == DisplayMode.Taskbar ? 1 : 0;
+            DisplayModeComboBox.SelectedIndex = settings.DisplayMode switch
+            {
+                DisplayMode.Windowed => 1,
+                DisplayMode.Taskbar => 2,
+                _ => 0
+            };
             HideModeComboBox.SelectedIndex = settings.HideMode switch
             {
                 HideMode.Blackout => 1,
@@ -57,8 +65,24 @@ public partial class SettingsWindow : Window
             };
             ShowAlbumArtComboBox.SelectedIndex = settings.ShowAlbumArt ? 0 : 1;
             WordByWordComboBox.SelectedIndex = settings.WordByWordMode ? 1 : 0;
-            TestModeComboBox.SelectedIndex = settings.TestMode ? 1 : 0;
             MaxCacheSizeTextBox.Text = settings.MaxCacheSize.ToString();
+
+            WindowedShowNextLineComboBox.SelectedIndex = settings.WindowedShowNextLine ? 1 : 0;
+            WindowedLyricAlignmentComboBox.SelectedIndex = settings.WindowedLyricAlignment switch
+            {
+                LyricAlignment.Left => 0,
+                LyricAlignment.Right => 2,
+                _ => 1
+            };
+            WindowedShowAlbumArtComboBox.SelectedIndex = settings.WindowedShowAlbumArt ? 0 : 1;
+            WindowedWordByWordComboBox.SelectedIndex = settings.WindowedWordByWordMode ? 1 : 0;
+            WindowedHideModeComboBox.SelectedIndex = settings.WindowedHideMode switch
+            {
+                HideMode.Blackout => 1,
+                HideMode.Hide => 2,
+                _ => 0
+            };
+
             TaskbarMaximumWidthTextBox.Text = settings.TaskbarMaximumWidth?.ToString() ?? string.Empty;
             LoadDetectedApps(settings);
 
@@ -116,6 +140,31 @@ public partial class SettingsWindow : Window
         RaiseSettingsChanged();
     }
 
+    private void WindowedShowNextLineComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        RaiseSettingsChanged();
+    }
+
+    private void WindowedLyricAlignmentComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        RaiseSettingsChanged();
+    }
+
+    private void WindowedShowAlbumArtComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        RaiseSettingsChanged();
+    }
+
+    private void WindowedWordByWordComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        RaiseSettingsChanged();
+    }
+
+    private void WindowedHideModeComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        RaiseSettingsChanged();
+    }
+
     private void CustomHeightTextBox_OnTextChanged(object sender, TextChangedEventArgs e)
     {
         UpdateBarHeightHint();
@@ -133,11 +182,6 @@ public partial class SettingsWindow : Window
     }
 
     private void WordByWordComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        RaiseSettingsChanged();
-    }
-
-    private void TestModeComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         RaiseSettingsChanged();
     }
@@ -178,8 +222,24 @@ public partial class SettingsWindow : Window
             },
             ShowAlbumArt = ShowAlbumArtComboBox.SelectedIndex == 0,
             WordByWordMode = WordByWordComboBox.SelectedIndex == 1,
-            TestMode = TestModeComboBox.SelectedIndex == 1,
+            WindowedShowNextLine = WindowedShowNextLineComboBox.SelectedIndex == 1,
+            WindowedLyricAlignment = (WindowedLyricAlignmentComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() switch
+            {
+                "Left" => LyricAlignment.Left,
+                "Right" => LyricAlignment.Right,
+                _ => LyricAlignment.Center
+            },
+            WindowedShowAlbumArt = WindowedShowAlbumArtComboBox.SelectedIndex == 0,
+            WindowedWordByWordMode = WindowedWordByWordComboBox.SelectedIndex == 1,
+            WindowedHideMode = (WindowedHideModeComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() switch
+            {
+                "Blackout" => HideMode.Blackout,
+                "Hide" => HideMode.Hide,
+                _ => HideMode.Nothing
+            },
             MaxCacheSize = ParseMaxCacheSize(),
+            WindowedWidth = _lastLoadedSettings?.WindowedWidth,
+            WindowedHeight = _lastLoadedSettings?.WindowedHeight,
             DetectedMediaApps = _detectedApps
                 .Select(app => new DetectedMediaApp(app.AppId, app.DisplayName))
                 .ToList(),
@@ -284,13 +344,13 @@ public partial class SettingsWindow : Window
         HideModeComboBox.IsEnabled = isAppBarMode;
         ShowNextLineComboBox.IsEnabled = isAppBarMode;
         CustomHeightTextBox.IsEnabled = isAppBarMode;
-        TestModeComboBox.IsEnabled = isAppBarMode;
     }
 
     private DisplayMode GetSelectedDisplayMode()
     {
         return (DisplayModeComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() switch
         {
+            "Windowed" => DisplayMode.Windowed,
             "Taskbar" => DisplayMode.Taskbar,
             _ => DisplayMode.AppBar
         };
