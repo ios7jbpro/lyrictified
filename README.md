@@ -8,9 +8,10 @@ A Windows desktop app that displays real-time synced lyrics for whatever music i
 
 - Detects the currently playing song from any Windows media app via the SMTC API
 - Fetches time-synced lyrics from [lrclib.net](https://lrclib.net) with a fallback to the [`syncedlyrics`](https://github.com/moehmeni/syncedlyrics) Python CLI (supports NetEase, Megalobiz, and more)
-- Two display modes:
-  - **AppBar** — a full-width bar attached to the top of a monitor
-  - **Taskbar** — a compact floating window positioned above the taskbar
+- Three display modes:
+  - **AppBar** - a full-width bar attached to the top of a monitor
+  - **Windowed** - a window that displays all lyrics, apple music-like
+  - **Taskbar** - a compact floating window positioned above the taskbar
 - Album artwork display with song title, artist, and timestamp
 - Smooth progress bar showing current playback position
 - Multi-monitor support with per-mode monitor selection
