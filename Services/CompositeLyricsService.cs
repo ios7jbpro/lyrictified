@@ -53,19 +53,19 @@ public sealed class CompositeLyricsService : IDisposable
 
         try
         {
-            Logger.Log("Trying local lyrics API");
+            Logger.Log("Trying Lyrictified Server API");
             var sw = Stopwatch.StartNew();
             var localLyrics = await _localLyricsService.GetLyricsAsync(song, cancellationToken);
             sw.Stop();
             if (localLyrics.Count > 0)
             {
-                Logger.Log($"local lyrics API: {localLyrics.Count} lines in {sw.ElapsedMilliseconds}ms");
-                _lastSearchInfo = $"{searchKey}\nSource: local lyrics API — {localLyrics.Count} lines ({sw.ElapsedMilliseconds}ms) — Accepted";
+                Logger.Log($"Lyrictified Server API: {localLyrics.Count} lines in {sw.ElapsedMilliseconds}ms");
+                _lastSearchInfo = $"{searchKey}\nSource: Lyrictified Server API — {localLyrics.Count} lines ({sw.ElapsedMilliseconds}ms) — Accepted";
                 _cacheService.Store(searchTitle, searchArtist, localLyrics, _maxCacheSize);
                 return localLyrics;
             }
-            Logger.Log($"local lyrics API: 0 lines in {sw.ElapsedMilliseconds}ms");
-            _lastSearchInfo = $"{searchKey}\nSource: local lyrics API — No synced lyrics found ({sw.ElapsedMilliseconds}ms) — Denied";
+            Logger.Log($"Lyrictified Server API: 0 lines in {sw.ElapsedMilliseconds}ms");
+            _lastSearchInfo = $"{searchKey}\nSource: Lyrictified Server API — No synced lyrics found ({sw.ElapsedMilliseconds}ms) — Denied";
         }
         catch (OperationCanceledException)
         {
@@ -73,8 +73,8 @@ public sealed class CompositeLyricsService : IDisposable
         }
         catch (Exception ex)
         {
-            Logger.Log($"local lyrics API failed: {ex.Message}");
-            _lastSearchInfo = $"{searchKey}\nSource: local lyrics API — Error: {ex.Message} — Denied";
+            Logger.Log($"Lyrictified Server API failed: {ex.Message}");
+            _lastSearchInfo = $"{searchKey}\nSource: Lyrictified Server API — Error: {ex.Message} — Denied";
         }
 
         try
