@@ -299,7 +299,8 @@
                                          MaxLength="3"
                                          PreviewTextInput="MaxCacheSizeTextBox_PreviewTextInput"
                                          DataObject.Pasting="MaxCacheSizeTextBox_Pasting"
-                                         TextChanged="MaxCacheSizeTextBox_OnTextChanged" />
+                                         KeyDown="MaxCacheSizeTextBox_OnKeyDown"
+                                         LostFocus="MaxCacheSizeTextBox_OnLostFocus" />
                                 <TextBlock Grid.Column="1"
                                            Text="songs max"
                                            VerticalAlignment="Center"

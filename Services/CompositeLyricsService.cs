@@ -5,6 +5,7 @@ namespace Lyrictified.Services;
 
 public sealed class CompositeLyricsService : IDisposable
 {
+    private readonly LocalLyricsService _localLyricsService;
     private readonly LrcLibLyricsService _lrcLibLyricsService;
     private readonly SyncedLyricsCliService _syncedLyricsCliService;
     private readonly LyricsCacheService _cacheService;
@@ -17,6 +18,7 @@ public sealed class CompositeLyricsService : IDisposable
 
     public CompositeLyricsService()
     {
+        _localLyricsService = new LocalLyricsService();
         _lrcLibLyricsService = new LrcLibLyricsService();
         _syncedLyricsCliService = new SyncedLyricsCliService();
         _cacheService = new LyricsCacheService();
@@ -25,10 +27,7 @@ public sealed class CompositeLyricsService : IDisposable
     public void SetMaxCacheSize(int maxSize)
     {
         _maxCacheSize = maxSize;
-        if (maxSize <= 0)
-        {
-            _cacheService.Clear();
-        }
+        _cacheService.Prune(maxSize);
     }
 
     public async Task<IReadOnlyList<LyricLine>> GetTimedLyricsAsync(SongInfo song, CancellationToken cancellationToken)
@@ -50,6 +49,32 @@ public sealed class CompositeLyricsService : IDisposable
                 _lastSearchInfo = $"{searchKey}\nResult: Cache hit — {cached.Count} lines";
                 return cached;
             }
+        }
+
+        try
+        {
+            Logger.Log("Trying local lyrics API");
+            var sw = Stopwatch.StartNew();
+            var localLyrics = await _localLyricsService.GetLyricsAsync(song, cancellationToken);
+            sw.Stop();
+            if (localLyrics.Count > 0)
+            {
+                Logger.Log($"local lyrics API: {localLyrics.Count} lines in {sw.ElapsedMilliseconds}ms");
+                _lastSearchInfo = $"{searchKey}\nSource: local lyrics API — {localLyrics.Count} lines ({sw.ElapsedMilliseconds}ms) — Accepted";
+                _cacheService.Store(searchTitle, searchArtist, localLyrics, _maxCacheSize);
+                return localLyrics;
+            }
+            Logger.Log($"local lyrics API: 0 lines in {sw.ElapsedMilliseconds}ms");
+            _lastSearchInfo = $"{searchKey}\nSource: local lyrics API — No synced lyrics found ({sw.ElapsedMilliseconds}ms) — Denied";
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Logger.Log($"local lyrics API failed: {ex.Message}");
+            _lastSearchInfo = $"{searchKey}\nSource: local lyrics API — Error: {ex.Message} — Denied";
         }
 
         try
@@ -109,6 +134,7 @@ public sealed class CompositeLyricsService : IDisposable
 
     public void Dispose()
     {
+        _localLyricsService.Dispose();
         _lrcLibLyricsService.Dispose();
     }
 }

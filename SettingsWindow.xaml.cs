@@ -303,8 +303,29 @@ public partial class SettingsWindow : Window
         }
     }
 
-    private void MaxCacheSizeTextBox_OnTextChanged(object sender, TextChangedEventArgs e)
+    private void MaxCacheSizeTextBox_OnKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
     {
+        if (e.Key != Key.Enter)
+        {
+            return;
+        }
+
+        CommitMaxCacheSize();
+        e.Handled = true;
+    }
+
+    private void MaxCacheSizeTextBox_OnLostFocus(object sender, RoutedEventArgs e)
+    {
+        CommitMaxCacheSize();
+    }
+
+    private void CommitMaxCacheSize()
+    {
+        if (string.IsNullOrWhiteSpace(MaxCacheSizeTextBox.Text))
+        {
+            MaxCacheSizeTextBox.Text = "0";
+        }
+
         RaiseSettingsChanged();
     }
 

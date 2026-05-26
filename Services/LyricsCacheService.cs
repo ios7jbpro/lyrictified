@@ -79,9 +79,22 @@ public sealed class LyricsCacheService
             var entry = new CacheEntry { Lines = lines, CachedAt = DateTime.UtcNow };
             var json = JsonSerializer.Serialize(entry, _jsonOptions);
             File.WriteAllText(path, json);
+            File.SetCreationTimeUtc(path, entry.CachedAt);
+            File.SetLastWriteTimeUtc(path, entry.CachedAt);
             Evict(maxCacheSize);
         }
         catch { }
+    }
+
+    public void Prune(int maxCacheSize)
+    {
+        if (maxCacheSize <= 0)
+        {
+            Clear();
+            return;
+        }
+
+        Evict(maxCacheSize);
     }
 
     public void Clear()
@@ -101,17 +114,42 @@ public sealed class LyricsCacheService
         try
         {
             var files = Directory.GetFiles(_cacheDirectory, "*.json")
-                .Select(f => new FileInfo(f))
-                .OrderByDescending(f => f.LastAccessTimeUtc)
+                .Select(GetCacheFileInfo)
+                .OrderByDescending(f => f.CachedAt)
                 .ToList();
 
             while (files.Count > maxCacheSize)
             {
-                try { files[^1].Delete(); } catch { }
+                try { File.Delete(files[^1].Path); } catch { }
                 files.RemoveAt(files.Count - 1);
             }
         }
         catch { }
+    }
+
+    private CacheFileInfo GetCacheFileInfo(string path)
+    {
+        try
+        {
+            var json = File.ReadAllText(path);
+            var entry = JsonSerializer.Deserialize<CacheEntry>(json, _jsonOptions);
+            if (entry is not null && entry.CachedAt != default)
+            {
+                return new CacheFileInfo(path, entry.CachedAt);
+            }
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            return new CacheFileInfo(path, File.GetCreationTimeUtc(path));
+        }
+        catch
+        {
+            return new CacheFileInfo(path, DateTime.MinValue);
+        }
     }
 
     private sealed class CacheEntry
@@ -119,4 +157,6 @@ public sealed class LyricsCacheService
         public IReadOnlyList<LyricLine> Lines { get; set; } = Array.Empty<LyricLine>();
         public DateTime CachedAt { get; set; }
     }
+
+    private sealed record CacheFileInfo(string Path, DateTime CachedAt);
 }
