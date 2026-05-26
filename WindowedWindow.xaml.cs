@@ -1191,6 +1191,7 @@ public partial class WindowedWindow : Window, ITrayIconHost
         persistedSettings.LyricAlignment = incomingSettings.LyricAlignment;
         persistedSettings.ShowAlbumArt = incomingSettings.ShowAlbumArt;
         persistedSettings.WordByWordMode = incomingSettings.WordByWordMode;
+        persistedSettings.MaxCacheSize = incomingSettings.MaxCacheSize;
         persistedSettings.WindowedShowNextLine = incomingSettings.WindowedShowNextLine;
         persistedSettings.WindowedLyricAlignment = incomingSettings.WindowedLyricAlignment;
         persistedSettings.WindowedShowAlbumArt = incomingSettings.WindowedShowAlbumArt;
