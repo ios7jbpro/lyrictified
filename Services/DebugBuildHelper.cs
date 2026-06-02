@@ -48,6 +48,7 @@ internal static class DebugBuildHelper
             if (auto is not null)
             {
                 result = auto;
+                App.IgnoreLocalCache = ShowCacheDialog(form);
                 form.DialogResult = System.Windows.Forms.DialogResult.OK;
                 form.Close();
                 return;
@@ -128,6 +129,7 @@ internal static class DebugBuildHelper
                     input += "/";
                 }
                 result = input;
+                App.IgnoreLocalCache = ShowCacheDialog(form);
                 form.DialogResult = System.Windows.Forms.DialogResult.OK;
                 form.Close();
             }
@@ -191,6 +193,65 @@ internal static class DebugBuildHelper
 
         form.ShowDialog();
         return result;
+    }
+
+    private static bool ShowCacheDialog(System.Windows.Forms.Form parent)
+    {
+        using var cacheForm = new System.Windows.Forms.Form
+        {
+            Text = "Cache Settings",
+            ClientSize = new System.Drawing.Size(460, 160),
+            StartPosition = System.Windows.Forms.FormStartPosition.CenterParent,
+            FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog,
+            MaximizeBox = false,
+            MinimizeBox = false,
+            BackColor = System.Drawing.Color.FromArgb(22, 27, 34),
+        };
+
+        var cacheLabel = new System.Windows.Forms.Label
+        {
+            Text = "Do you want to ignore/disable in-app local cache as well? If you do not, the app will ignore the server for already-cached lyrics.",
+            ForeColor = System.Drawing.Color.FromArgb(230, 237, 243),
+            BackColor = cacheForm.BackColor,
+            AutoSize = false,
+            Size = new System.Drawing.Size(420, 60),
+            Location = new System.Drawing.Point(20, 15),
+            Font = new System.Drawing.Font("Segoe UI", 9.5f),
+        };
+        cacheForm.Controls.Add(cacheLabel);
+
+        bool ignoreCache = false;
+
+        var btnYes = new System.Windows.Forms.Button
+        {
+            Text = "Yes",
+            Size = new System.Drawing.Size(80, 32),
+            Location = new System.Drawing.Point(130, 100),
+            ForeColor = System.Drawing.Color.FromArgb(230, 237, 243),
+            BackColor = System.Drawing.Color.FromArgb(28, 33, 40),
+            FlatStyle = System.Windows.Forms.FlatStyle.Flat,
+        };
+        btnYes.FlatAppearance.BorderColor = System.Drawing.Color.FromArgb(48, 54, 61);
+        btnYes.Click += (_, _) => { ignoreCache = true; cacheForm.DialogResult = System.Windows.Forms.DialogResult.OK; cacheForm.Close(); };
+        cacheForm.Controls.Add(btnYes);
+        cacheForm.AcceptButton = btnYes;
+
+        var btnNo = new System.Windows.Forms.Button
+        {
+            Text = "No",
+            Size = new System.Drawing.Size(80, 32),
+            Location = new System.Drawing.Point(240, 100),
+            ForeColor = System.Drawing.Color.FromArgb(230, 237, 243),
+            BackColor = System.Drawing.Color.FromArgb(28, 33, 40),
+            FlatStyle = System.Windows.Forms.FlatStyle.Flat,
+        };
+        btnNo.FlatAppearance.BorderColor = System.Drawing.Color.FromArgb(48, 54, 61);
+        btnNo.Click += (_, _) => { ignoreCache = false; cacheForm.DialogResult = System.Windows.Forms.DialogResult.OK; cacheForm.Close(); };
+        cacheForm.Controls.Add(btnNo);
+        cacheForm.CancelButton = btnNo;
+
+        cacheForm.ShowDialog(parent);
+        return ignoreCache;
     }
 }
 #endif

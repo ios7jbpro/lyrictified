@@ -9,6 +9,7 @@ namespace Lyrictified;
 public partial class App : Application
 {
     public static string LocalLyricsBaseAddress { get; set; } = "https://lyrictifiedserve.ios7.xyz/";
+    public static bool IgnoreLocalCache { get; set; }
 
     private readonly AppSettingsService _appSettingsService = new();
 

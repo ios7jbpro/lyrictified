@@ -40,7 +40,7 @@ public sealed class CompositeLyricsService : IDisposable
         var searchDuration = song.Duration > TimeSpan.Zero ? $"{(int)Math.Round(song.Duration.TotalSeconds)}s" : "unknown";
         var searchKey = $"Title=\"{searchTitle}\" Artist=\"{searchArtist}\" Album=\"{searchAlbum}\" Duration={searchDuration}";
 
-        if (_maxCacheSize > 0)
+        if (_maxCacheSize > 0 && !App.IgnoreLocalCache)
         {
             var cached = _cacheService.TryGet(searchTitle, searchArtist);
             if (cached is not null)
