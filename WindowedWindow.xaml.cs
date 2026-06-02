@@ -1130,9 +1130,9 @@ public partial class WindowedWindow : Window, ITrayIconHost
 
     private void UpdateMaximizeButtonContent()
     {
-        if (MaximizeButton is not null)
+        if (MaximizeButtonImage is not null)
         {
-            MaximizeButton.Content = WindowState == WindowState.Maximized ? "><" : "[]";
+            MaximizeButtonImage.Source = new BitmapImage(new Uri(Path.Combine(AppContext.BaseDirectory, "Assets", WindowState == WindowState.Maximized ? "restore.png" : "maximize.png"), UriKind.Absolute));
         }
     }
 

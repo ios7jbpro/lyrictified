@@ -82,34 +82,38 @@
                             Height="30"
                             Padding="0"
                             Click="MinimizeButton_OnClick"
-                            Background="#22000000"
-                            BorderBrush="#22FFFFFF"
-                            Foreground="#F5F7FA"
-                            BorderThickness="0"
-                            FontSize="14"
-                            Content="_" />
+                            Background="Transparent"
+                            BorderThickness="0">
+                        <Image Source="Assets/minimize.png"
+                               Width="10"
+                               Height="10"
+                               Stretch="Uniform" />
+                    </Button>
                     <Button x:Name="MaximizeButton"
                             Width="40"
                             Height="30"
                             Padding="0"
                             Click="MaximizeButton_OnClick"
-                            Background="#22000000"
-                            BorderBrush="#22FFFFFF"
-                            Foreground="#F5F7FA"
-                            BorderThickness="0"
-                            FontSize="13"
-                            Content="[]" />
+                            Background="Transparent"
+                            BorderThickness="0">
+                        <Image x:Name="MaximizeButtonImage"
+                               Source="Assets/maximize.png"
+                               Width="10"
+                               Height="10"
+                               Stretch="Uniform" />
+                    </Button>
                     <Button x:Name="CloseWindowButton"
                             Width="40"
                             Height="30"
                             Padding="0"
                             Click="CloseWindowButton_OnClick"
-                            Background="#22000000"
-                            BorderBrush="#22FFFFFF"
-                            Foreground="#F5F7FA"
-                            BorderThickness="0"
-                            FontSize="13"
-                            Content="X" />
+                            Background="Transparent"
+                            BorderThickness="0">
+                        <Image Source="Assets/close.png"
+                               Width="10"
+                               Height="10"
+                               Stretch="Uniform" />
+                    </Button>
                 </StackPanel>
             </Grid>
 
