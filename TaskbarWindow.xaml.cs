@@ -23,7 +23,13 @@ namespace Lyrictified;
 public partial class TaskbarWindow : Window, ITrayIconHost
 {
     private static readonly TimeSpan MonitorWarningDuration = TimeSpan.FromSeconds(4);
-    private static readonly WpfBrush LoadingTextBrush = new SolidColorBrush(MediaColor.FromRgb(150, 156, 164));
+    private static WpfBrush GetLoadingTextBrush()
+    {
+        var color = IsWindowsLightTheme()
+            ? MediaColor.FromRgb(100, 106, 114)
+            : MediaColor.FromRgb(150, 156, 164);
+        return new SolidColorBrush(color);
+    }
     private const uint EVENT_SYSTEM_FOREGROUND = 0x0003;
     private const uint WINEVENT_OUTOFCONTEXT = 0x0000;
 
@@ -187,6 +193,23 @@ public partial class TaskbarWindow : Window, ITrayIconHost
         }
     }
 
+    private static bool IsWindowsLightTheme()
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+            if (key?.GetValue("AppsUseLightTheme") is int value)
+            {
+                return value == 1;
+            }
+        }
+        catch
+        {
+            // Ignore registry read failures and default to dark theme behaviour.
+        }
+        return false;
+    }
+
     private void ApplyAppearance()
     {
         Background = WpfBrushes.Transparent;
@@ -195,8 +218,12 @@ public partial class TaskbarWindow : Window, ITrayIconHost
             : new SolidColorBrush(MediaColor.FromArgb(0, 0, 0, 0));
         if (!_viewModel.IsLoadingLyrics)
         {
-            IncomingLyricTextBlock.Foreground = new SolidColorBrush(MediaColor.FromRgb(245, 247, 250));
-            OutgoingLyricTextBlock.Foreground = new SolidColorBrush(MediaColor.FromRgb(245, 247, 250));
+            var lyricColor = IsWindowsLightTheme()
+                ? MediaColor.FromRgb(26, 26, 26)
+                : MediaColor.FromRgb(245, 247, 250);
+            var lyricBrush = new SolidColorBrush(lyricColor);
+            IncomingLyricTextBlock.Foreground = lyricBrush;
+            OutgoingLyricTextBlock.Foreground = lyricBrush;
         }
     }
 
@@ -324,8 +351,8 @@ public partial class TaskbarWindow : Window, ITrayIconHost
 
         if (isLoading)
         {
-            IncomingLyricTextBlock.Foreground = LoadingTextBrush;
-            OutgoingLyricTextBlock.Foreground = LoadingTextBrush;
+            IncomingLyricTextBlock.Foreground = GetLoadingTextBrush();
+            OutgoingLyricTextBlock.Foreground = GetLoadingTextBrush();
             LyricStage.Opacity = 0.58;
             LoadingOverlay.Visibility = Visibility.Visible;
 
