@@ -1,4 +1,4 @@
-<h1><img src="https://raw.githubusercontent.com/ios7jbpro/lyrictified/main/lyrictified-app.png" width="48" height="48" alt="Lyrictified app icon" style="vertical-align: middle; margin-right: 10px;"> Lyrictified</h1>
+<h1><img src="https://raw.githubusercontent.com/ios7jbpro/lyrictified/opencode-merge/lyrictified-app.png" width="48" height="48" alt="Lyrictified app icon" style="vertical-align: middle; margin-right: 10px;"> Lyrictified</h1>
 
 A Windows desktop app that displays real-time synced lyrics for whatever music is currently playing on your system. Works with any media player that integrates with Windows media controls (Spotify, YouTube Music, foobar2000, etc.).
 
