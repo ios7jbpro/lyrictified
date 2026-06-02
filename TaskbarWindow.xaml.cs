@@ -20,7 +20,7 @@ using WpfApplication = System.Windows.Application;
 
 namespace Lyrictified;
 
-public partial class TaskbarWindow : Window
+public partial class TaskbarWindow : Window, ITrayIconHost
 {
     private static readonly TimeSpan MonitorWarningDuration = TimeSpan.FromSeconds(4);
     private static readonly WpfBrush LoadingTextBrush = new SolidColorBrush(MediaColor.FromRgb(150, 156, 164));
@@ -38,6 +38,7 @@ public partial class TaskbarWindow : Window
     private string _displayedLyricText = string.Empty;
     private string? _lastMonitorWarningKey;
     private SettingsWindow? _settingsWindow;
+    private TrayIcon? _trayIcon;
 
     public TaskbarWindow()
     {
@@ -78,6 +79,7 @@ public partial class TaskbarWindow : Window
         PositionWindow();
         ApplyAppearance();
         EnsureTopmostOrder();
+        _trayIcon = new TrayIcon(this);
 
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
         SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
@@ -107,6 +109,7 @@ public partial class TaskbarWindow : Window
         _foregroundHookDelegate = null;
         _settingsWindow?.Close();
         _appBarManager?.Dispose();
+        _trayIcon?.Dispose();
         _viewModel.Dispose();
     }
 
@@ -678,4 +681,32 @@ public partial class TaskbarWindow : Window
         int idChild,
         uint dwEventThread,
         uint dwmsEventTime);
+
+    public void ShowFromTray()
+    {
+        Show();
+        Activate();
+        EnsureTopmostOrder();
+    }
+
+    public void OpenSettingsFromTray()
+    {
+        ShowFromTray();
+        OpenSettingsWindow();
+    }
+
+    public void ExitApp()
+    {
+        Close();
+    }
+
+    public DisplayMode CurrentDisplayMode => DisplayMode.Taskbar;
+
+    public void SwitchDisplayMode(DisplayMode mode)
+    {
+        if (_settings.DisplayMode == mode) return;
+        _settings.DisplayMode = mode;
+        _appSettingsService.Save(_settings);
+        ((App)WpfApplication.Current).RestartDisplayWindow();
+    }
 }

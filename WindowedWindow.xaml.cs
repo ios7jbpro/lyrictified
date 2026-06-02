@@ -1335,6 +1335,16 @@ public partial class WindowedWindow : Window, ITrayIconHost
         _settingsWindow.Activate();
     }
 
+    public DisplayMode CurrentDisplayMode => DisplayMode.Windowed;
+
+    public void SwitchDisplayMode(DisplayMode mode)
+    {
+        if (_settings.DisplayMode == mode) return;
+        _settings.DisplayMode = mode;
+        _appSettingsService.Save(_settings);
+        ((App)WpfApplication.Current).RestartDisplayWindow();
+    }
+
     public void ExitApp()
     {
         Close();

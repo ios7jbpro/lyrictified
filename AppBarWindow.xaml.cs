@@ -2012,7 +2012,7 @@ public partial class AppBarWindow : Window, ITrayIconHost
 
     private void CloseButton_OnClick(object sender, RoutedEventArgs e)
     {
-        Close();
+        HideToTray();
     }
 
     private void HideToTray()
@@ -2051,6 +2051,16 @@ public partial class AppBarWindow : Window, ITrayIconHost
     {
         ShowFromTray();
         SettingsButton_OnClick(this, new RoutedEventArgs());
+    }
+
+    public DisplayMode CurrentDisplayMode => DisplayMode.AppBar;
+
+    public void SwitchDisplayMode(DisplayMode mode)
+    {
+        if (_settings.DisplayMode == mode) return;
+        _settings.DisplayMode = mode;
+        _appSettingsService.Save(_settings);
+        ((App)WpfApplication.Current).RestartDisplayWindow();
     }
 
     private void BeginNoLyricsHideDeferral(string reason)
