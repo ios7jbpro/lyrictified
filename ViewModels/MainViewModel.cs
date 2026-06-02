@@ -44,6 +44,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private int _currentLineIndex = -1;
     private DateTime? _noLyricsShownAt;
     private bool _wordByWordMode;
+    private bool _forceLyricsRefresh;
 
     public MainViewModel()
     {
@@ -191,6 +192,15 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         _lyricsService.SetMaxCacheSize(settings.MaxCacheSize);
     }
 
+    public async Task ForceLyricsRefreshAsync()
+    {
+        if (_currentSong is null)
+            return;
+
+        _forceLyricsRefresh = true;
+        await HandleSongAsync(_currentSong);
+    }
+
     private async void OnSongChanged(object? sender, SongInfo? song)
     {
         try
@@ -214,7 +224,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         try
         {
-            var sameSong = IsSameSong(_currentSong, song);
+            var sameSong = IsSameSong(_currentSong, song) && !_forceLyricsRefresh;
+            _forceLyricsRefresh = false;
             _currentSong = song;
 
             if (song is null)

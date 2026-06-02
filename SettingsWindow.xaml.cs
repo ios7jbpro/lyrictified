@@ -20,6 +20,7 @@ public partial class SettingsWindow : Window
     }
 
     public event EventHandler<AppSettings>? SettingsChanged;
+    public event EventHandler? ForceLyricsRefreshRequested;
 
     public void UpdateLastSearchInfo(string info)
     {
@@ -404,6 +405,11 @@ public partial class SettingsWindow : Window
     private void DetectedAppIgnoreCheckBox_OnChanged(object sender, RoutedEventArgs e)
     {
         RaiseSettingsChanged();
+    }
+
+    private void ForceResearchButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        ForceLyricsRefreshRequested?.Invoke(this, EventArgs.Empty);
     }
 
     private sealed class DetectedAppRuleItem : INotifyPropertyChanged

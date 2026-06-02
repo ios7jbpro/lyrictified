@@ -325,6 +325,17 @@
                                      FontSize="11"
                                      FontFamily="Consolas"
                                      Text="No search yet" />
+#if DEBUG
+                            <Button x:Name="ForceResearchButton"
+                                    Content="Force re-search lyrics"
+                                    Margin="0,12,0,0"
+                                    Padding="12,6"
+                                    HorizontalAlignment="Left"
+                                    Background="#1C2128"
+                                    Foreground="#E6EDF3"
+                                    BorderBrush="#58A6FF"
+                                    Click="ForceResearchButton_OnClick" />
+#endif
                         </StackPanel>
                     </Border>
                 </StackPanel>

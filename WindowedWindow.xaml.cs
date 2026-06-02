@@ -1320,6 +1320,7 @@ public partial class WindowedWindow : Window, ITrayIconHost
         {
             _settingsWindow = new SettingsWindow { Owner = this };
             _settingsWindow.SettingsChanged += SettingsWindow_OnSettingsChanged;
+            _settingsWindow.ForceLyricsRefreshRequested += (_, _) => _ = _viewModel.ForceLyricsRefreshAsync();
             _settingsWindow.Closed += (_, _) => _settingsWindow = null;
             RefreshSettingsWindowOptions();
             _settingsWindow.Show();
