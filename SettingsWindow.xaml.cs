@@ -17,6 +17,9 @@ public partial class SettingsWindow : Window
     {
         InitializeComponent();
         DetectedAppsListBox.ItemsSource = _detectedApps;
+#if DEBUG
+        ForceResearchButton.Visibility = Visibility.Visible;
+#endif
     }
 
     public event EventHandler<AppSettings>? SettingsChanged;
