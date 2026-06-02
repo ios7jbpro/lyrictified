@@ -8,12 +8,25 @@ namespace Lyrictified;
 
 public partial class App : Application
 {
+    public static string LocalLyricsBaseAddress { get; set; } = "https://lyrictifiedserve.ios7.xyz/";
+
     private readonly AppSettingsService _appSettingsService = new();
 
     protected override void OnStartup(StartupEventArgs e)
     {
         Logger.Log("=== App started ===");
         base.OnStartup(e);
+
+#if DEBUG
+        var chosenBaseAddress = DebugBuildHelper.ShowDialog();
+        if (chosenBaseAddress is null)
+        {
+            Shutdown();
+            return;
+        }
+        LocalLyricsBaseAddress = chosenBaseAddress;
+#endif
+
         RestartDisplayWindow();
     }
 

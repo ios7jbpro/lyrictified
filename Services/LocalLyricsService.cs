@@ -13,7 +13,7 @@ public sealed class LocalLyricsService : IDisposable
     {
         _httpClient = new HttpClient
         {
-            BaseAddress = new Uri("https://lyrictifiedserve.ios7.xyz/"),
+            BaseAddress = new Uri(App.LocalLyricsBaseAddress),
             Timeout = TimeSpan.FromSeconds(3)
         };
         _httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("Lyrictified/0.1");
