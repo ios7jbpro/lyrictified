@@ -149,6 +149,7 @@ internal static class DebugBuildHelper
         btnPublic.Click += (_, _) =>
         {
             result = "https://lyrictifiedserve.ios7.xyz/";
+            App.IgnoreLocalCache = ShowCacheDialog(form);
             form.DialogResult = System.Windows.Forms.DialogResult.OK;
             form.Close();
         };
