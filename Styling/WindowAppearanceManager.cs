@@ -59,7 +59,8 @@ public sealed class WindowAppearanceManager
             SurfaceBackground: new SolidColorBrush(MediaColor.FromArgb(0x58, 0x08, 0x0C, 0x11)),
             SurfaceBorder: new SolidColorBrush(MediaColor.FromArgb(0x90, accent.R, accent.G, accent.B)),
             ButtonBackground: new SolidColorBrush(MediaColor.FromArgb(0x55, accent.R, accent.G, accent.B)),
-            ButtonBorder: new SolidColorBrush(MediaColor.FromArgb(0xA0, accent.R, accent.G, accent.B)));
+            ButtonBorder: new SolidColorBrush(MediaColor.FromArgb(0xA0, accent.R, accent.G, accent.B)),
+            ProgressBarBrush: new SolidColorBrush(accent));
     }
 
     private static AppearancePalette CreateFallbackPalette(MediaColor accent)
@@ -73,7 +74,8 @@ public sealed class WindowAppearanceManager
             SurfaceBackground: new SolidColorBrush(surface),
             SurfaceBorder: new SolidColorBrush(border),
             ButtonBackground: new SolidColorBrush(button),
-            ButtonBorder: new SolidColorBrush(Lighten(button, 0.16)));
+            ButtonBorder: new SolidColorBrush(Lighten(button, 0.16)),
+            ProgressBarBrush: new SolidColorBrush(accent));
     }
 
     private static MediaColor GetAccentBaseColor()
@@ -127,4 +129,5 @@ public sealed record AppearancePalette(
     MediaBrush SurfaceBackground,
     MediaBrush SurfaceBorder,
     MediaBrush ButtonBackground,
-    MediaBrush ButtonBorder);
+    MediaBrush ButtonBorder,
+    MediaBrush ProgressBarBrush);

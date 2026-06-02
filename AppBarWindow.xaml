@@ -265,7 +265,6 @@ CornerRadius="0"
                 <Border x:Name="ProgressBarFill"
                          HorizontalAlignment="Left"
                          Height="3"
-                         Background="#5BA3E6"
                          CornerRadius="1"
                          Width="0" />
             </Border>

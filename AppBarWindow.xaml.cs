@@ -329,6 +329,7 @@ public partial class AppBarWindow : Window, ITrayIconHost
             CloseButton.BorderBrush = palette.ButtonBorder;
             SwitchMonitorButton.Background = palette.ButtonBackground;
             SwitchMonitorButton.BorderBrush = palette.ButtonBorder;
+            ProgressBarFill.Background = palette.ProgressBarBrush;
         }
 
         if (isBlackout)

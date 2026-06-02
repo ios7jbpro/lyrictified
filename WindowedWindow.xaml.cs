@@ -756,6 +756,7 @@ public partial class WindowedWindow : Window, ITrayIconHost
             SurfaceBorder.BorderBrush = palette.SurfaceBorder;
             SettingsButton.Background = palette.ButtonBackground;
             SettingsButton.BorderBrush = palette.ButtonBorder;
+            ProgressBarFill.Background = palette.ProgressBarBrush;
             BackgroundAlbumArtImage.Visibility = Visibility.Visible;
             BackgroundDimOverlay.Visibility = Visibility.Visible;
             BackgroundFallbackBorder.Visibility = BackgroundAlbumArtImage.Source is null
