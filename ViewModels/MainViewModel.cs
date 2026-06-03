@@ -190,6 +190,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         _wordByWordMode = settings.WordByWordMode;
         _mediaSessionWatcher.UpdateIgnoredAppIds(settings.IgnoredMediaAppIds);
         _lyricsService.SetMaxCacheSize(settings.MaxCacheSize);
+        _lyricsService.ForcedSource = settings.DebugForceLyricsSource;
     }
 
     public async Task ForceLyricsRefreshAsync()
@@ -199,6 +200,48 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
         _forceLyricsRefresh = true;
         await HandleSongAsync(_currentSong);
+    }
+
+    public void ForceNoLyrics()
+    {
+        if (_currentSong is null)
+            return;
+
+        CancelLyricsLoad();
+        ResetPlaybackClock();
+        _lyrics = Array.Empty<LyricLine>();
+        CurrentLineIndex = -1;
+        OnPropertyChanged(nameof(Lyrics));
+        IsLoadingLyrics = false;
+        NoTimedLyricsFound = true;
+        _noLyricsShownAt = DateTime.UtcNow;
+        CurrentLine = "Lyrics not found";
+        NextLine = string.Empty;
+        StatusText = $"No synced lyrics found for {_currentSong.Artist}";
+        SetNextRefreshInterval(IdleRefreshInterval);
+    }
+
+    public void ForceSimulateLyrics()
+    {
+        if (_currentSong is null)
+            return;
+
+        CancelLyricsLoad();
+        ResetPlaybackClock();
+        var testLyrics = new List<LyricLine>();
+        for (var i = 1; i <= 100; i++)
+        {
+            testLyrics.Add(new LyricLine(TimeSpan.FromSeconds(i * 3), $"{i} - Test lyrics"));
+        }
+
+        _lyrics = testLyrics;
+        CurrentLineIndex = -1;
+        OnPropertyChanged(nameof(Lyrics));
+        IsLoadingLyrics = false;
+        NoTimedLyricsFound = false;
+        _noLyricsShownAt = null;
+        _ = ReanchorPlaybackAsync(_currentSong.IsPlaying);
+        _ = UpdateCurrentLineAsync();
     }
 
     private async void OnSongChanged(object? sender, SongInfo? song)

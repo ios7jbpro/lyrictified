@@ -845,6 +845,81 @@
                 </StackPanel>
             </ScrollViewer>
         </TabItem>
+
+        <TabItem x:Name="DebugTabItem" Header="Debug" Visibility="Collapsed">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Margin="4,8,4,4">
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="Debug Controls" Style="{StaticResource SectionTitleStyle}" />
+
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="Force simulate no lyrics" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" FontWeight="Medium" />
+                                    <TextBlock Text="Forces the app to show 'no lyrics found' state immediately." Style="{StaticResource HintTextStyle}" />
+                                </StackPanel>
+                                <Button x:Name="ForceNoLyricsButton"
+                                        Grid.Column="1"
+                                        Content="Trigger"
+                                        Margin="0"
+                                        Padding="12,6"
+                                        HorizontalAlignment="Left"
+                                        Background="#1C2128"
+                                        Foreground="#E6EDF3"
+                                        BorderBrush="#F85149"
+                                        Click="ForceNoLyricsButton_OnClick" />
+                            </Grid>
+
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="Force simulate lyrics" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" FontWeight="Medium" />
+                                    <TextBlock Text="Shows 100 fake lyric lines for testing display." Style="{StaticResource HintTextStyle}" />
+                                </StackPanel>
+                                <Button x:Name="ForceSimulateLyricsButton"
+                                        Grid.Column="1"
+                                        Content="Trigger"
+                                        Margin="0"
+                                        Padding="12,6"
+                                        HorizontalAlignment="Left"
+                                        Background="#1C2128"
+                                        Foreground="#E6EDF3"
+                                        BorderBrush="#58A6FF"
+                                        Click="ForceSimulateLyricsButton_OnClick" />
+                            </Grid>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="Force lyrics source" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" FontWeight="Medium" />
+                                    <TextBlock Text="Restrict lyrics search to a single source." Style="{StaticResource HintTextStyle}" />
+                                </StackPanel>
+                                <ComboBox x:Name="DebugForceLyricsSourceComboBox"
+                                          Grid.Column="1"
+                                          MinWidth="180"
+                                          VerticalAlignment="Center"
+                                          SelectionChanged="DebugForceLyricsSourceComboBox_OnSelectionChanged">
+                                    <ComboBoxItem Tag="" Content="Disable" />
+                                    <ComboBoxItem Tag="Local" Content="Lyrictified Server API" />
+                                    <ComboBoxItem Tag="LrcLib" Content="lrclib.net" />
+                                    <ComboBoxItem Tag="Synced" Content="syncedlyrics" />
+                                </ComboBox>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </TabItem>
             </TabControl>
         </Grid>
     </Border>

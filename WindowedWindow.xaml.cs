@@ -1140,8 +1140,9 @@ public partial class WindowedWindow : Window, ITrayIconHost
         persistedSettings.WindowedShowNextLine = incomingSettings.WindowedShowNextLine;
         persistedSettings.WindowedLyricAlignment = incomingSettings.WindowedLyricAlignment;
         persistedSettings.WindowedShowAlbumArt = incomingSettings.WindowedShowAlbumArt;
-        persistedSettings.WindowedWordByWordMode = incomingSettings.WindowedWordByWordMode;
-        persistedSettings.PreferredMonitorDeviceName = null;
+            persistedSettings.WindowedWordByWordMode = incomingSettings.WindowedWordByWordMode;
+            persistedSettings.DebugForceLyricsSource = incomingSettings.DebugForceLyricsSource;
+            persistedSettings.PreferredMonitorDeviceName = null;
         persistedSettings.DetectedMediaApps = MergeDetectedApps(incomingSettings.DetectedMediaApps, persistedSettings.DetectedMediaApps);
         persistedSettings.IgnoredMediaAppIds = MergeIgnoredMediaAppIds(
             incomingSettings.IgnoredMediaAppIds,
@@ -1250,6 +1251,8 @@ public partial class WindowedWindow : Window, ITrayIconHost
             _settingsWindow = new SettingsWindow { Owner = this };
             _settingsWindow.SettingsChanged += SettingsWindow_OnSettingsChanged;
             _settingsWindow.ForceLyricsRefreshRequested += (_, _) => _ = _viewModel.ForceLyricsRefreshAsync();
+            _settingsWindow.DebugForceNoLyricsRequested += (_, _) => _viewModel.ForceNoLyrics();
+            _settingsWindow.DebugForceSimulateLyricsRequested += (_, _) => _viewModel.ForceSimulateLyrics();
             _settingsWindow.Closed += (_, _) => _settingsWindow = null;
             RefreshSettingsWindowOptions();
             _settingsWindow.Show();

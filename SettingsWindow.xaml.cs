@@ -25,12 +25,17 @@ public partial class SettingsWindow : Window
         DetectedAppsListBox.ItemsSource = _detectedApps;
 #if DEBUG
         ForceResearchButton.Visibility = Visibility.Visible;
+        DebugTabItem.Visibility = Visibility.Visible;
+#else
+        DebugTabItem.Visibility = Visibility.Collapsed;
 #endif
         SourceInitialized += OnSourceInitialized;
     }
 
     public event EventHandler<AppSettings>? SettingsChanged;
     public event EventHandler? ForceLyricsRefreshRequested;
+    public event EventHandler? DebugForceNoLyricsRequested;
+    public event EventHandler? DebugForceSimulateLyricsRequested;
 
     public void UpdateLastSearchInfo(string info)
     {
@@ -89,6 +94,13 @@ public partial class SettingsWindow : Window
             WindowedWordByWordComboBox.SelectedIndex = settings.WindowedWordByWordMode ? 1 : 0;
 
             TaskbarMaximumWidthTextBox.Text = settings.TaskbarMaximumWidth?.ToString() ?? string.Empty;
+            DebugForceLyricsSourceComboBox.SelectedIndex = settings.DebugForceLyricsSource switch
+            {
+                "Local" => 1,
+                "LrcLib" => 2,
+                "Synced" => 3,
+                _ => 0
+            };
             LoadDetectedApps(settings);
 
             AppBarMonitorComboBox.ItemsSource = monitors;
@@ -232,6 +244,13 @@ public partial class SettingsWindow : Window
             WindowedShowAlbumArt = WindowedShowAlbumArtComboBox.SelectedIndex == 0,
             WindowedWordByWordMode = WindowedWordByWordComboBox.SelectedIndex == 1,
             MaxCacheSize = ParseMaxCacheSize(),
+            DebugForceLyricsSource = (DebugForceLyricsSourceComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() switch
+            {
+                "Local" => "Local",
+                "LrcLib" => "LrcLib",
+                "Synced" => "Synced",
+                _ => null
+            },
             WindowedWidth = _lastLoadedSettings?.WindowedWidth,
             WindowedHeight = _lastLoadedSettings?.WindowedHeight,
             DetectedMediaApps = _detectedApps
@@ -403,6 +422,21 @@ public partial class SettingsWindow : Window
     private void ForceResearchButton_OnClick(object sender, RoutedEventArgs e)
     {
         ForceLyricsRefreshRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void ForceNoLyricsButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        DebugForceNoLyricsRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void ForceSimulateLyricsButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        DebugForceSimulateLyricsRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void DebugForceLyricsSourceComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        RaiseSettingsChanged();
     }
 
     private void OnSourceInitialized(object? sender, EventArgs e)

@@ -43,4 +43,6 @@ public sealed class AppSettings
     public List<DetectedMediaApp> DetectedMediaApps { get; set; } = new();
 
     public List<string> IgnoredMediaAppIds { get; set; } = new();
+
+    public string? DebugForceLyricsSource { get; set; }
 }
