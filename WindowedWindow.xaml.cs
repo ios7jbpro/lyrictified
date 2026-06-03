@@ -66,7 +66,6 @@ public partial class WindowedWindow : Window, ITrayIconHost
         _viewModel.UpdateSettings(GetViewModelSettings());
         DataContext = _viewModel;
 
-        PauseIcon.Source = new BitmapImage(new Uri(Path.Combine(AppContext.BaseDirectory, "Assets", "pause.png"), UriKind.Absolute));
         LoadingSpinnerImage.Source = new BitmapImage(new Uri(Path.Combine(AppContext.BaseDirectory, "Assets", "loading.png"), UriKind.Absolute));
 
         _progressTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
@@ -88,7 +87,7 @@ public partial class WindowedWindow : Window, ITrayIconHost
         ApplyAppearance();
         ApplyNativeWindowFrame();
         ApplyLyricAlignment();
-        ApplyPlaybackStateVisual(immediate: true);
+        UpdatePlayPauseButtonImage();
 
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
         SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
@@ -199,10 +198,7 @@ public partial class WindowedWindow : Window, ITrayIconHost
                 });
                 break;
             case nameof(MainViewModel.IsPlaybackPaused):
-                OnUi(() =>
-                {
-                    ApplyPlaybackStateVisual();
-                });
+                OnUi(UpdatePlayPauseButtonImage);
                 break;
             case nameof(MainViewModel.AlbumArt):
             case nameof(MainViewModel.SongTitle):
@@ -830,22 +826,15 @@ public partial class WindowedWindow : Window, ITrayIconHost
         };
     }
 
-    private void ApplyPlaybackStateVisual(bool immediate = false)
+    private void UpdatePlayPauseButtonImage()
     {
-        var isPaused = _viewModel.IsPlaybackPaused;
-        PauseIcon.Visibility = isPaused ? Visibility.Visible : Visibility.Collapsed;
-        PauseIcon.BeginAnimation(OpacityProperty, null);
-        PauseIcon.Opacity = immediate ? (isPaused ? 0.85 : 0) : PauseIcon.Opacity;
+        var imageName = _viewModel.IsPlaybackPaused ? "play-player.png" : "pause-player.png";
+        PlayPauseButtonImage.Source = new BitmapImage(new Uri(Path.Combine(AppContext.BaseDirectory, "Assets", imageName), UriKind.Absolute));
+    }
 
-        if (!immediate)
-        {
-            PauseIcon.BeginAnimation(OpacityProperty, new DoubleAnimation
-            {
-                To = isPaused ? 0.85 : 0,
-                Duration = TimeSpan.FromMilliseconds(180),
-                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
-            });
-        }
+    private void PlayPauseButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        _ = _viewModel.TogglePlayPauseAsync();
     }
 
     private void ApplyLoadingState(bool immediate = false)
@@ -1127,7 +1116,7 @@ public partial class WindowedWindow : Window, ITrayIconHost
         ApplyLyricsVisibility(animated: false);
         UpdateAlbumArtAndCredit();
         ApplyLyricAlignment();
-        ApplyPlaybackStateVisual(immediate: true);
+        UpdatePlayPauseButtonImage();
         ApplyLoadingState(immediate: true);
         ApplyAppearance();
     }

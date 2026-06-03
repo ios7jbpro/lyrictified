@@ -737,6 +737,11 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 
+    public async Task TogglePlayPauseAsync()
+    {
+        await _mediaSessionWatcher.TogglePlayPauseAsync();
+    }
+
     public void Dispose()
     {
         _timer.Stop();

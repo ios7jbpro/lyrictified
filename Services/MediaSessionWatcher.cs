@@ -75,6 +75,31 @@ public sealed class MediaSessionWatcher : IDisposable
         return await ReadSongSafeAsync(_currentSession);
     }
 
+    public async Task TogglePlayPauseAsync()
+    {
+        if (_currentSession is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var playbackInfo = _currentSession.GetPlaybackInfo();
+            var isPlaying = playbackInfo.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing;
+            if (isPlaying)
+            {
+                await _currentSession.TryPauseAsync();
+            }
+            else
+            {
+                await _currentSession.TryPlayAsync();
+            }
+        }
+        catch
+        {
+        }
+    }
+
     private async void OnCurrentSessionChanged(GlobalSystemMediaTransportControlsSessionManager sender, CurrentSessionChangedEventArgs args)
     {
         try
