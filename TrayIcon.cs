@@ -48,6 +48,12 @@ internal sealed class TrayIcon : IDisposable
 
     private void OnTrayIconMouseClick(object? sender, System.Windows.Forms.MouseEventArgs e)
     {
+        if (e.Button == System.Windows.Forms.MouseButtons.Left)
+        {
+            _dispatcher.Invoke(() => _window.ShowFromTray());
+            return;
+        }
+
         if (e.Button != System.Windows.Forms.MouseButtons.Right)
         {
             return;
