@@ -1,11 +1,23 @@
 <Window x:Class="Lyrictified.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         Title="Lyrictified Settings"
         Width="860"
         Height="520"
+        WindowStyle="None"
+        ResizeMode="CanResize"
         WindowStartupLocation="CenterOwner"
-        Background="#0D1117">
+        Background="Transparent"
+        StateChanged="Window_OnStateChanged">
+    <shell:WindowChrome.WindowChrome>
+        <shell:WindowChrome CaptionHeight="40"
+                            CornerRadius="12"
+                            GlassFrameThickness="0"
+                            ResizeBorderThickness="6"
+                            UseAeroCaptionButtons="False" />
+    </shell:WindowChrome.WindowChrome>
+
     <Window.Resources>
         <SolidColorBrush x:Key="SurfaceBrush" Color="#161B22" />
         <SolidColorBrush x:Key="BorderBrush" Color="#30363D" />
@@ -239,11 +251,209 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <Style TargetType="ScrollBar">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Grid x:Name="Root">
+                            <Track x:Name="PART_Track"
+                                   IsDirectionReversed="True"
+                                   IsEnabled="{TemplateBinding IsEnabled}"
+                                   Grid.Row="1">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Command="ScrollBar.PageUpCommand"
+                                                  Background="Transparent"
+                                                  BorderThickness="0"
+                                                  Focusable="False"
+                                                  IsTabStop="False"
+                                                  Opacity="0" />
+                                </Track.DecreaseRepeatButton>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Command="ScrollBar.PageDownCommand"
+                                                  Background="Transparent"
+                                                  BorderThickness="0"
+                                                  Focusable="False"
+                                                  IsTabStop="False"
+                                                  Opacity="0" />
+                                </Track.IncreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb Background="#7A8FA3"
+                                           BorderThickness="0"
+                                           Cursor="Arrow"
+                                           Opacity="0.35"
+                                           SnapsToDevicePixels="True">
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Border Background="{TemplateBinding Background}"
+                                                        CornerRadius="4"
+                                                        SnapsToDevicePixels="True" />
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="Orientation" Value="Horizontal">
+                                <Setter TargetName="PART_Track" Property="IsDirectionReversed" Value="False" />
+                                <Setter TargetName="PART_Track" Property="Grid.Row" Value="0" />
+                                <Setter TargetName="Root" Property="LayoutTransform">
+                                    <Setter.Value>
+                                        <RotateTransform Angle="-90" />
+                                    </Setter.Value>
+                                </Setter>
+                                <Setter TargetName="PART_Track" Property="Height" Value="8" />
+                                <Setter TargetName="PART_Track" Property="Width" Value="Auto" />
+                            </Trigger>
+                            <Trigger Property="Orientation" Value="Vertical">
+                                <Setter TargetName="Root" Property="LayoutTransform">
+                                    <Setter.Value>
+                                        <RotateTransform Angle="0" />
+                                    </Setter.Value>
+                                </Setter>
+                                <Setter TargetName="PART_Track" Property="Width" Value="8" />
+                                <Setter TargetName="PART_Track" Property="Height" Value="Auto" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="PART_Track" Property="Width" Value="10" />
+                                <Setter Property="Background" Value="Transparent" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="PART_Track" Property="Opacity" Value="0" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="ScrollViewer">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollViewer">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <ScrollContentPresenter Grid.Column="0"
+                                                    Grid.Row="0"
+                                                    CanContentScroll="{TemplateBinding CanContentScroll}"
+                                                    Margin="{TemplateBinding Padding}"
+                                                    Content="{TemplateBinding Content}"
+                                                    ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                    CanHorizontallyScroll="False"
+                                                    CanVerticallyScroll="False" />
+                            <ScrollBar x:Name="PART_VerticalScrollBar"
+                                       Grid.Column="1"
+                                       Grid.Row="0"
+                                       Background="Transparent"
+                                       BorderThickness="0"
+                                       Margin="2,0,0,0"
+                                       Orientation="Vertical"
+                                       Value="{TemplateBinding VerticalOffset}"
+                                       Maximum="{TemplateBinding ScrollableHeight}"
+                                       ViewportSize="{TemplateBinding ViewportHeight}"
+                                       Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}" />
+                            <ScrollBar x:Name="PART_HorizontalScrollBar"
+                                       Grid.Column="0"
+                                       Grid.Row="1"
+                                       Background="Transparent"
+                                       BorderThickness="0"
+                                       Margin="0,2,0,0"
+                                       Orientation="Horizontal"
+                                       Value="{TemplateBinding HorizontalOffset}"
+                                       Maximum="{TemplateBinding ScrollableWidth}"
+                                       ViewportSize="{TemplateBinding ViewportWidth}"
+                                       Visibility="{TemplateBinding ComputedHorizontalScrollBarVisibility}" />
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
-    <TabControl x:Name="SettingsTabControl"
-                TabStripPlacement="Left"
-                Margin="16">
+    <Border x:Name="SurfaceBorder"
+            Background="#66101A25"
+            BorderBrush="#55FFFFFF"
+            BorderThickness="1"
+            CornerRadius="12"
+            ClipToBounds="True"
+            Padding="0">
+        <Grid x:Name="MainGrid"
+              Margin="18,10">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="36" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <Grid x:Name="TitleBarGrid"
+                  Grid.Row="0"
+                  Margin="-8,-4,-8,4">
+                <TextBlock Text="Lyrictified Settings"
+                           VerticalAlignment="Center"
+                           Margin="10,0,128,0"
+                           Foreground="#DDE9F4"
+                           FontSize="12"
+                           FontWeight="SemiBold"
+                           TextTrimming="CharacterEllipsis"
+                           IsHitTestVisible="False" />
+
+                <StackPanel HorizontalAlignment="Right"
+                            VerticalAlignment="Top"
+                            Orientation="Horizontal"
+                            shell:WindowChrome.IsHitTestVisibleInChrome="True">
+                    <Button x:Name="MinimizeButton"
+                            Width="40"
+                            Height="30"
+                            Padding="0"
+                            Click="MinimizeButton_OnClick"
+                            Background="Transparent"
+                            BorderThickness="0">
+                        <Image Source="Assets/minimize.png"
+                               Width="10"
+                               Height="10"
+                               Stretch="Uniform" />
+                    </Button>
+                    <Button x:Name="MaximizeButton"
+                            Width="40"
+                            Height="30"
+                            Padding="0"
+                            Click="MaximizeButton_OnClick"
+                            Background="Transparent"
+                            BorderThickness="0">
+                        <Image x:Name="MaximizeButtonImage"
+                               Source="Assets/maximize.png"
+                               Width="10"
+                               Height="10"
+                               Stretch="Uniform" />
+                    </Button>
+                    <Button x:Name="CloseWindowButton"
+                            Width="40"
+                            Height="30"
+                            Padding="0"
+                            Click="CloseWindowButton_OnClick"
+                            Background="Transparent"
+                            BorderThickness="0">
+                        <Image Source="Assets/close.png"
+                               Width="10"
+                               Height="10"
+                               Stretch="Uniform" />
+                    </Button>
+                </StackPanel>
+            </Grid>
+
+            <TabControl x:Name="SettingsTabControl"
+                        Grid.Row="1"
+                        TabStripPlacement="Left"
+                        Margin="0">
         <TabControl.Template>
             <ControlTemplate TargetType="TabControl">
                 <Grid>
@@ -635,5 +845,7 @@
                 </StackPanel>
             </ScrollViewer>
         </TabItem>
-    </TabControl>
+            </TabControl>
+        </Grid>
+    </Border>
 </Window>

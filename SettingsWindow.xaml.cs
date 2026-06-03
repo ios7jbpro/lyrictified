@@ -1,10 +1,15 @@
+using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
+using System.Windows.Media.Imaging;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using Lyrictified.DisplayModes;
 using Lyrictified.Settings;
+using Lyrictified.Styling;
 
 namespace Lyrictified;
 
@@ -12,6 +17,7 @@ public partial class SettingsWindow : Window
 {
     private readonly ObservableCollection<DetectedAppRuleItem> _detectedApps = new();
     private bool _isInitializing;
+    private WindowAppearanceManager? _appearanceManager;
 
     public SettingsWindow()
     {
@@ -20,6 +26,7 @@ public partial class SettingsWindow : Window
 #if DEBUG
         ForceResearchButton.Visibility = Visibility.Visible;
 #endif
+        SourceInitialized += OnSourceInitialized;
     }
 
     public event EventHandler<AppSettings>? SettingsChanged;
@@ -397,6 +404,81 @@ public partial class SettingsWindow : Window
     {
         ForceLyricsRefreshRequested?.Invoke(this, EventArgs.Empty);
     }
+
+    private void OnSourceInitialized(object? sender, EventArgs e)
+    {
+        _appearanceManager = new WindowAppearanceManager(this);
+        ApplyAppearance();
+        ApplyNativeWindowFrame();
+    }
+
+    private void ApplyAppearance()
+    {
+        if (_appearanceManager is null)
+        {
+            return;
+        }
+
+        var palette = _appearanceManager.Apply();
+        Background = palette.WindowBackground;
+        SurfaceBorder.Background = palette.SurfaceBackground;
+        SurfaceBorder.BorderBrush = palette.SurfaceBorder;
+        SurfaceBorder.BorderThickness = new Thickness(0, 0, 0, 1);
+    }
+
+    private void ApplyNativeWindowFrame()
+    {
+        if (!OperatingSystem.IsWindowsVersionAtLeast(10, 0, 22000))
+        {
+            return;
+        }
+
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        var cornerPreference = 2;
+        _ = DwmSetWindowAttribute(hwnd, 33, ref cornerPreference, Marshal.SizeOf<int>());
+
+        var borderColor = 0x006E6254;
+        _ = DwmSetWindowAttribute(hwnd, 34, ref borderColor, Marshal.SizeOf<int>());
+    }
+
+    private void MinimizeButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        WindowState = WindowState.Minimized;
+    }
+
+    private void MaximizeButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        WindowState = WindowState == WindowState.Maximized
+            ? WindowState.Normal
+            : WindowState.Maximized;
+        UpdateMaximizeButtonContent();
+    }
+
+    private void CloseWindowButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        Close();
+    }
+
+    private void Window_OnStateChanged(object? sender, EventArgs e)
+    {
+        UpdateMaximizeButtonContent();
+    }
+
+    private void UpdateMaximizeButtonContent()
+    {
+        if (MaximizeButtonImage is not null)
+        {
+            MaximizeButtonImage.Source = new BitmapImage(new Uri(Path.Combine(AppContext.BaseDirectory, "Assets", WindowState == WindowState.Maximized ? "restore.png" : "maximize.png"), UriKind.Absolute));
+        }
+    }
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
 
     private sealed class DetectedAppRuleItem : INotifyPropertyChanged
     {
