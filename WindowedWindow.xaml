@@ -129,18 +129,7 @@
                     <StackPanel x:Name="LyricsListPanel"
                                 Margin="40,20,40,20" />
                 </ScrollViewer>
-                <Image x:Name="PauseIcon"
-                       Width="28"
-                       Height="28"
-                       Margin="0,0,14,0"
-                       HorizontalAlignment="Left"
-                       VerticalAlignment="Center"
-                       Opacity="0"
-                       Source="Assets/pause.png"
-                       Stretch="Uniform"
-                       Visibility="Collapsed"
-                       IsHitTestVisible="False"
-                       Panel.ZIndex="3" />
+
                 <Grid x:Name="LoadingOverlay"
                       VerticalAlignment="Center"
                       HorizontalAlignment="Center"
@@ -171,15 +160,21 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
 
-                <Border x:Name="PauseSpacer"
-                        Grid.Column="0"
-                        Width="0"
-                        VerticalAlignment="Stretch" />
-
                 <StackPanel x:Name="AlbumArtPanel"
                             Grid.Column="0"
                             Orientation="Horizontal"
                             VerticalAlignment="Center">
+                    <Image x:Name="PauseIcon"
+                           Width="28"
+                           Height="28"
+                           Margin="0,0,8,0"
+                           HorizontalAlignment="Left"
+                           VerticalAlignment="Center"
+                           Opacity="0"
+                           Source="Assets/pause.png"
+                           Stretch="Uniform"
+                           Visibility="Collapsed"
+                           IsHitTestVisible="False" />
                     <Border x:Name="AlbumArtBorder"
                             Width="32"
                             Height="32"
