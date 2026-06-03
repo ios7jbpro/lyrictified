@@ -150,7 +150,7 @@ public sealed class LocalLyricsService : IDisposable
             }
         }
 
-        return LrcLibLyricsService.ParseSyncedLyrics(trimmed);
+        return ParseTimedLyrics(trimmed);
     }
 
     private static IEnumerable<string> BuildLyricsEndpoints(string payload)
@@ -219,6 +219,8 @@ public sealed class LocalLyricsService : IDisposable
             endpoints.Add($"lyric?id={escapedId}");
             endpoints.Add($"lrc/{escapedId}");
             endpoints.Add($"lrc?id={escapedId}");
+            endpoints.Add($"ttml/{escapedId}");
+            endpoints.Add($"ttml?id={escapedId}");
             endpoints.Add($"raw/{escapedId}");
             endpoints.Add($"raw?id={escapedId}");
         }
@@ -257,6 +259,7 @@ public sealed class LocalLyricsService : IDisposable
         endpoints.Add($"lyrics?relativePath={escapedQueryValue}");
         endpoints.Add($"lyric?path={escapedQueryValue}");
         endpoints.Add($"lrc?path={escapedQueryValue}");
+        endpoints.Add($"ttml?path={escapedQueryValue}");
         endpoints.Add($"raw?path={escapedQueryValue}");
         endpoints.Add($"file?path={escapedQueryValue}");
     }
@@ -281,7 +284,7 @@ public sealed class LocalLyricsService : IDisposable
         switch (element.ValueKind)
         {
             case JsonValueKind.String:
-                return LrcLibLyricsService.ParseSyncedLyrics(element.GetString() ?? string.Empty);
+                return ParseTimedLyrics(element.GetString() ?? string.Empty);
             case JsonValueKind.Array:
                 foreach (var item in element.EnumerateArray())
                 {
@@ -298,7 +301,7 @@ public sealed class LocalLyricsService : IDisposable
                     return Array.Empty<LyricLine>();
                 }
 
-                foreach (var propertyName in new[] { "syncedLyrics", "synced_lyrics", "lyrics", "lrc", "text", "body" })
+                foreach (var propertyName in new[] { "syncedLyrics", "synced_lyrics", "ttml", "lyrics", "lrc", "text", "body" })
                 {
                     if (element.TryGetProperty(propertyName, out var lyricElement))
                     {
@@ -325,6 +328,12 @@ public sealed class LocalLyricsService : IDisposable
         }
 
         return Array.Empty<LyricLine>();
+    }
+
+    internal static IReadOnlyList<LyricLine> ParseTimedLyrics(string lyrics)
+    {
+        var ttml = TtmlLyricsParser.Parse(lyrics);
+        return ttml.Count > 0 ? ttml : LrcLibLyricsService.ParseSyncedLyrics(lyrics);
     }
 
     private static bool IsInstrumental(JsonElement element)

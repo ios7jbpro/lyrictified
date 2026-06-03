@@ -190,7 +190,7 @@ public sealed class SyncedLyricsCliService
             }
 
             Logger.Log($"TryRunCommand: stdout ({output.Length} chars): {output[..Math.Min(output.Length, 500)].Replace("\n", "\\n").Replace("\r", "")}");
-            return LrcLibLyricsService.ParseSyncedLyrics(output);
+            return LocalLyricsService.ParseTimedLyrics(output);
         }
         catch (OperationCanceledException)
         {
