@@ -80,12 +80,6 @@ public partial class SettingsWindow : Window
             };
             WindowedShowAlbumArtComboBox.SelectedIndex = settings.WindowedShowAlbumArt ? 0 : 1;
             WindowedWordByWordComboBox.SelectedIndex = settings.WindowedWordByWordMode ? 1 : 0;
-            WindowedHideModeComboBox.SelectedIndex = settings.WindowedHideMode switch
-            {
-                HideMode.Blackout => 1,
-                HideMode.Hide => 2,
-                _ => 0
-            };
 
             TaskbarMaximumWidthTextBox.Text = settings.TaskbarMaximumWidth?.ToString() ?? string.Empty;
             LoadDetectedApps(settings);
@@ -164,11 +158,6 @@ public partial class SettingsWindow : Window
         RaiseSettingsChanged();
     }
 
-    private void WindowedHideModeComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        RaiseSettingsChanged();
-    }
-
     private void CustomHeightTextBox_OnTextChanged(object sender, TextChangedEventArgs e)
     {
         UpdateBarHeightHint();
@@ -235,12 +224,6 @@ public partial class SettingsWindow : Window
             },
             WindowedShowAlbumArt = WindowedShowAlbumArtComboBox.SelectedIndex == 0,
             WindowedWordByWordMode = WindowedWordByWordComboBox.SelectedIndex == 1,
-            WindowedHideMode = (WindowedHideModeComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() switch
-            {
-                "Blackout" => HideMode.Blackout,
-                "Hide" => HideMode.Hide,
-                _ => HideMode.Nothing
-            },
             MaxCacheSize = ParseMaxCacheSize(),
             WindowedWidth = _lastLoadedSettings?.WindowedWidth,
             WindowedHeight = _lastLoadedSettings?.WindowedHeight,

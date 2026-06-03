@@ -31,14 +31,11 @@ public partial class WindowedWindow : Window, ITrayIconHost
     private const int DWMWCP_ROUND = 2;
     private const int DwmSubtleBorderColor = 0x006E6254;
 
-    private static readonly TimeSpan NoLyricsHideDeferralDuration = TimeSpan.FromMilliseconds(2600);
-    private static readonly WpfBrush BlackoutBrush = new SolidColorBrush(Colors.Black);
     private static readonly WpfBrush ActiveLyricBrush = new SolidColorBrush(MediaColor.FromRgb(245, 247, 250));
     private static readonly WpfBrush InactiveLyricBrush = new SolidColorBrush(MediaColor.FromRgb(126, 140, 155));
     private static readonly WpfBrush LoadingTextBrush = new SolidColorBrush(MediaColor.FromRgb(150, 156, 164));
 
     private readonly AppSettingsService _appSettingsService = new();
-    private readonly DispatcherTimer _deferredHideTimer;
     private readonly DispatcherTimer _progressTimer;
     private readonly MainViewModel _viewModel;
     private readonly List<TextBlock> _lyricTextBlocks = new();
@@ -47,8 +44,6 @@ public partial class WindowedWindow : Window, ITrayIconHost
     private AppBarManager? _monitorHelper;
     private AppSettings _settings;
     private byte[]? _lastAlbumArtData;
-    private bool _isBorderHiddenForBlackout;
-    private bool _isDeferringNoLyricsHideMode;
     private bool _isPointerOverWindow;
     private bool _isSizeInitialized;
     private int _lastHighlightedLineIndex = -1;
@@ -74,9 +69,6 @@ public partial class WindowedWindow : Window, ITrayIconHost
         PauseIcon.Source = new BitmapImage(new Uri(Path.Combine(AppContext.BaseDirectory, "Assets", "pause.png"), UriKind.Absolute));
         LoadingSpinnerImage.Source = new BitmapImage(new Uri(Path.Combine(AppContext.BaseDirectory, "Assets", "loading.png"), UriKind.Absolute));
 
-        _deferredHideTimer = new DispatcherTimer { Interval = NoLyricsHideDeferralDuration };
-        _deferredHideTimer.Tick += DeferredHideTimer_OnTick;
-
         _progressTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
         _progressTimer.Tick += ProgressTimer_OnTick;
 
@@ -96,7 +88,6 @@ public partial class WindowedWindow : Window, ITrayIconHost
         ApplyAppearance();
         ApplyNativeWindowFrame();
         ApplyLyricAlignment();
-        ApplyHideModeState();
         ApplyPlaybackStateVisual(immediate: true);
 
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
@@ -106,6 +97,7 @@ public partial class WindowedWindow : Window, ITrayIconHost
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         RebuildLyricsList();
+        ApplyLyricsVisibility(animated: false);
         UpdateAlbumArtAndCredit();
         UpdateProgressBar();
         ApplyLoadingState(immediate: true);
@@ -115,8 +107,6 @@ public partial class WindowedWindow : Window, ITrayIconHost
     private void OnClosing(object? sender, CancelEventArgs e)
     {
         SaveWindowSize();
-        _deferredHideTimer.Stop();
-        _deferredHideTimer.Tick -= DeferredHideTimer_OnTick;
         _progressTimer.Stop();
         _progressTimer.Tick -= ProgressTimer_OnTick;
         StopWordAnim();
@@ -176,7 +166,11 @@ public partial class WindowedWindow : Window, ITrayIconHost
         switch (e.PropertyName)
         {
             case nameof(MainViewModel.Lyrics):
-                OnUi(RebuildLyricsList);
+                OnUi(() =>
+                {
+                    RebuildLyricsList();
+                    ApplyLyricsVisibility();
+                });
                 break;
             case nameof(MainViewModel.CurrentLine):
             case nameof(MainViewModel.CurrentLineIndex):
@@ -198,13 +192,8 @@ public partial class WindowedWindow : Window, ITrayIconHost
             case nameof(MainViewModel.NoTimedLyricsFound):
                 OnUi(() =>
                 {
-                    if (!_viewModel.IsLoadingLyrics && _viewModel.NoTimedLyricsFound)
-                    {
-                        BeginNoLyricsHideDeferral();
-                    }
-
                     RebuildLyricsList();
-                    ApplyHideModeState();
+                    ApplyLyricsVisibility();
                     ApplyLoadingState();
                     UpdateLastSearchInfo();
                 });
@@ -213,7 +202,6 @@ public partial class WindowedWindow : Window, ITrayIconHost
                 OnUi(() =>
                 {
                     ApplyPlaybackStateVisual();
-                    ApplyHideModeState();
                 });
                 break;
             case nameof(MainViewModel.AlbumArt):
@@ -264,8 +252,9 @@ public partial class WindowedWindow : Window, ITrayIconHost
             LineHeight = 34,
             Margin = new Thickness(0, 7, 0, 7),
             Opacity = 0.48,
+            HorizontalAlignment = GetHorizontalAlignment(),
             RenderTransform = CreateLyricTransform(),
-            RenderTransformOrigin = new System.Windows.Point(0.5, 0.5),
+            RenderTransformOrigin = GetRenderTransformOrigin(),
             TextAlignment = GetTextAlignment(),
             TextTrimming = TextTrimming.CharacterEllipsis,
             TextWrapping = TextWrapping.Wrap
@@ -736,40 +725,46 @@ public partial class WindowedWindow : Window, ITrayIconHost
             return;
         }
 
-        var isBlackout = ShouldUseBlackoutMode();
-        if (isBlackout)
+        var palette = _appearanceManager.Apply();
+        Background = palette.WindowBackground;
+        SurfaceBorder.Background = System.Windows.Media.Brushes.Transparent;
+        SurfaceBorder.BorderBrush = palette.SurfaceBorder;
+        SurfaceBorder.BorderThickness = new Thickness(0, 0, 0, 1);
+        SettingsButton.Background = palette.ButtonBackground;
+        SettingsButton.BorderBrush = palette.ButtonBorder;
+        ProgressBarFill.Background = palette.ProgressBarBrush;
+        BackgroundAlbumArtImage.Visibility = Visibility.Visible;
+        BackgroundDimOverlay.Visibility = Visibility.Visible;
+        BackgroundFallbackBorder.Visibility = BackgroundAlbumArtImage.Source is null
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        AlbumArtPanel.Visibility = _settings.WindowedShowAlbumArt ? Visibility.Visible : Visibility.Collapsed;
+        SongCreditPanel.Visibility = Visibility.Visible;
+        ProgressBarTrack.Visibility = Visibility.Visible;
+        LyricsGrid.Visibility = Visibility.Visible;
+        ApplyNativeWindowFrame();
+    }
+
+    private void ApplyLyricsVisibility(bool animated = true)
+    {
+        var shouldShow = _viewModel.IsLoadingLyrics || !_viewModel.NoTimedLyricsFound;
+        var targetOpacity = shouldShow ? 1.0 : 0.0;
+
+        LyricsScrollViewer.BeginAnimation(OpacityProperty, null);
+
+        if (!animated)
         {
-            Background = BlackoutBrush;
-            SurfaceBorder.Background = BlackoutBrush;
-            SurfaceBorder.BorderBrush = BlackoutBrush;
-            SettingsButton.Background = BlackoutBrush;
-            SettingsButton.BorderBrush = BlackoutBrush;
-            BackgroundAlbumArtImage.Visibility = Visibility.Collapsed;
-            BackgroundDimOverlay.Visibility = Visibility.Collapsed;
-            BackgroundFallbackBorder.Visibility = Visibility.Collapsed;
-        }
-        else
-        {
-            var palette = _appearanceManager.Apply();
-            Background = palette.WindowBackground;
-            SurfaceBorder.Background = System.Windows.Media.Brushes.Transparent;
-            SurfaceBorder.BorderBrush = palette.SurfaceBorder;
-            SettingsButton.Background = palette.ButtonBackground;
-            SettingsButton.BorderBrush = palette.ButtonBorder;
-            ProgressBarFill.Background = palette.ProgressBarBrush;
-            BackgroundAlbumArtImage.Visibility = Visibility.Visible;
-            BackgroundDimOverlay.Visibility = Visibility.Visible;
-            BackgroundFallbackBorder.Visibility = BackgroundAlbumArtImage.Source is null
-                ? Visibility.Visible
-                : Visibility.Collapsed;
+            LyricsScrollViewer.Opacity = targetOpacity;
+            return;
         }
 
-        AlbumArtPanel.Visibility = isBlackout || !_settings.WindowedShowAlbumArt ? Visibility.Collapsed : Visibility.Visible;
-        SongCreditPanel.Visibility = isBlackout ? Visibility.Collapsed : Visibility.Visible;
-        ProgressBarTrack.Visibility = isBlackout ? Visibility.Collapsed : Visibility.Visible;
-        LyricsGrid.Visibility = isBlackout ? Visibility.Collapsed : Visibility.Visible;
-        AnimateBorderVisibility(isBlackout);
-        ApplyNativeWindowFrame();
+        LyricsScrollViewer.BeginAnimation(OpacityProperty, new DoubleAnimation
+        {
+            To = targetOpacity,
+            Duration = TimeSpan.FromMilliseconds(300),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+        });
     }
 
     private void ApplyNativeWindowFrame()
@@ -795,10 +790,34 @@ public partial class WindowedWindow : Window, ITrayIconHost
     private void ApplyLyricAlignment()
     {
         var textAlignment = GetTextAlignment();
+        var horizontalAlignment = GetHorizontalAlignment();
+        var renderTransformOrigin = GetRenderTransformOrigin();
         foreach (var textBlock in _lyricTextBlocks)
         {
             textBlock.TextAlignment = textAlignment;
+            textBlock.HorizontalAlignment = horizontalAlignment;
+            textBlock.RenderTransformOrigin = renderTransformOrigin;
         }
+    }
+
+    private System.Windows.HorizontalAlignment GetHorizontalAlignment()
+    {
+        return _settings.WindowedLyricAlignment switch
+        {
+            LyricAlignment.Left => System.Windows.HorizontalAlignment.Left,
+            LyricAlignment.Right => System.Windows.HorizontalAlignment.Right,
+            _ => System.Windows.HorizontalAlignment.Stretch
+        };
+    }
+
+    private System.Windows.Point GetRenderTransformOrigin()
+    {
+        return _settings.WindowedLyricAlignment switch
+        {
+            LyricAlignment.Left => new System.Windows.Point(0, 0.5),
+            LyricAlignment.Right => new System.Windows.Point(1, 0.5),
+            _ => new System.Windows.Point(0.5, 0.5)
+        };
     }
 
     private TextAlignment GetTextAlignment()
@@ -809,45 +828,6 @@ public partial class WindowedWindow : Window, ITrayIconHost
             LyricAlignment.Right => TextAlignment.Right,
             _ => TextAlignment.Center
         };
-    }
-
-    private void ApplyHideModeState()
-    {
-        if (_isDeferringNoLyricsHideMode)
-        {
-            if (!IsVisible)
-            {
-                Show();
-            }
-
-            ApplyAppearance();
-            return;
-        }
-
-        var shouldHide = _settings.WindowedHideMode == HideMode.Hide
-            && _viewModel.NoTimedLyricsFound
-            && !_viewModel.IsLoadingLyrics;
-
-        if (shouldHide)
-        {
-            Hide();
-            return;
-        }
-
-        if (!IsVisible)
-        {
-            Show();
-        }
-
-        ApplyAppearance();
-    }
-
-    private bool ShouldUseBlackoutMode()
-    {
-        return !_isDeferringNoLyricsHideMode
-            && _settings.WindowedHideMode == HideMode.Blackout
-            && _viewModel.NoTimedLyricsFound
-            && !_viewModel.IsLoadingLyrics;
     }
 
     private void ApplyPlaybackStateVisual(bool immediate = false)
@@ -946,7 +926,7 @@ public partial class WindowedWindow : Window, ITrayIconHost
             bitmap.Freeze();
 
             UpdateAlbumArtBackground(bitmap);
-            if (!_settings.WindowedShowAlbumArt || ShouldUseBlackoutMode())
+            if (!_settings.WindowedShowAlbumArt)
             {
                 AlbumArtPanel.Visibility = Visibility.Collapsed;
                 return;
@@ -965,7 +945,7 @@ public partial class WindowedWindow : Window, ITrayIconHost
     private void UpdateAlbumArtBackground(ImageSource? source)
     {
         BackgroundAlbumArtImage.Source = source;
-        var hasArt = source is not null && !ShouldUseBlackoutMode();
+        var hasArt = source is not null;
         BackgroundAlbumArtImage.Opacity = hasArt ? 1 : 0;
         BackgroundFallbackBorder.Visibility = hasArt ? Visibility.Collapsed : Visibility.Visible;
     }
@@ -1033,26 +1013,6 @@ public partial class WindowedWindow : Window, ITrayIconHost
         _appSettingsService.Save(_settings);
     }
 
-    private void AnimateBorderVisibility(bool hideBorder)
-    {
-        if (_isBorderHiddenForBlackout == hideBorder)
-        {
-            return;
-        }
-
-        _isBorderHiddenForBlackout = hideBorder;
-        SurfaceBorder.BeginAnimation(Border.BorderThicknessProperty, null);
-        SurfaceBorder.BeginAnimation(Border.BorderThicknessProperty, new ThicknessAnimation
-        {
-            To = hideBorder ? new Thickness(0) : new Thickness(0, 0, 0, 1),
-            Duration = TimeSpan.FromMilliseconds(180),
-            EasingFunction = new QuadraticEase
-            {
-                EasingMode = hideBorder ? EasingMode.EaseIn : EasingMode.EaseOut
-            }
-        });
-    }
-
     private void Window_OnMouseEnter(object sender, System.Windows.Input.MouseEventArgs e)
     {
         _isPointerOverWindow = true;
@@ -1075,11 +1035,6 @@ public partial class WindowedWindow : Window, ITrayIconHost
 
     private void UpdateHoverEffect(bool isHovering)
     {
-        if (ShouldUseBlackoutMode())
-        {
-            return;
-        }
-
         var targetBgColor = isHovering ? MediaColor.FromArgb(140, 16, 26, 37) : MediaColor.FromArgb(102, 16, 26, 37);
         var targetBorderColor = isHovering ? MediaColor.FromArgb(160, 48, 70, 92) : MediaColor.FromArgb(138, 48, 70, 92);
         var duration = isHovering ? 150 : 250;
@@ -1169,11 +1124,11 @@ public partial class WindowedWindow : Window, ITrayIconHost
         }
 
         RebuildLyricsList();
+        ApplyLyricsVisibility(animated: false);
         UpdateAlbumArtAndCredit();
         ApplyLyricAlignment();
         ApplyPlaybackStateVisual(immediate: true);
         ApplyLoadingState(immediate: true);
-        ApplyHideModeState();
         ApplyAppearance();
     }
 
@@ -1197,7 +1152,6 @@ public partial class WindowedWindow : Window, ITrayIconHost
         persistedSettings.WindowedLyricAlignment = incomingSettings.WindowedLyricAlignment;
         persistedSettings.WindowedShowAlbumArt = incomingSettings.WindowedShowAlbumArt;
         persistedSettings.WindowedWordByWordMode = incomingSettings.WindowedWordByWordMode;
-        persistedSettings.WindowedHideMode = incomingSettings.WindowedHideMode;
         persistedSettings.PreferredMonitorDeviceName = null;
         persistedSettings.DetectedMediaApps = MergeDetectedApps(incomingSettings.DetectedMediaApps, persistedSettings.DetectedMediaApps);
         persistedSettings.IgnoredMediaAppIds = MergeIgnoredMediaAppIds(
@@ -1278,20 +1232,6 @@ public partial class WindowedWindow : Window, ITrayIconHost
         return copy;
     }
 
-    private void BeginNoLyricsHideDeferral()
-    {
-        _isDeferringNoLyricsHideMode = true;
-        _deferredHideTimer.Stop();
-        _deferredHideTimer.Start();
-    }
-
-    private void DeferredHideTimer_OnTick(object? sender, EventArgs e)
-    {
-        _deferredHideTimer.Stop();
-        _isDeferringNoLyricsHideMode = false;
-        ApplyHideModeState();
-    }
-
     private void UpdateLastSearchInfo()
     {
         _settingsWindow?.UpdateLastSearchInfo(_viewModel.LastSearchInfo);
@@ -1309,7 +1249,6 @@ public partial class WindowedWindow : Window, ITrayIconHost
         WindowState = WindowState.Normal;
         Activate();
         ApplyAppearance();
-        ApplyHideModeState();
         CenterCurrentLyric(animated: false);
     }
 

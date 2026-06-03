@@ -550,25 +550,6 @@
                                     <ComboBoxItem Content="Enabled" />
                                 </ComboBox>
                             </Grid>
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0">
-                                    <TextBlock Text="Hide mode" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" FontWeight="Medium" />
-                                    <TextBlock Text="Control bar visibility when lyrics are not found." Style="{StaticResource HintTextStyle}" />
-                                </StackPanel>
-                                <ComboBox x:Name="WindowedHideModeComboBox"
-                                          Grid.Column="1"
-                                          MinWidth="120"
-                                          VerticalAlignment="Center"
-                                          SelectionChanged="WindowedHideModeComboBox_OnSelectionChanged">
-                                    <ComboBoxItem Tag="Nothing" Content="Nothing" />
-                                    <ComboBoxItem Tag="Blackout" Content="Blackout" />
-                                    <ComboBoxItem Tag="Hide" Content="Hide" />
-                                </ComboBox>
-                            </Grid>
                         </StackPanel>
                     </Border>
                 </StackPanel>

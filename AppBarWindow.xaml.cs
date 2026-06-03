@@ -1902,7 +1902,6 @@ public partial class AppBarWindow : Window, ITrayIconHost
         persistedSettings.WindowedLyricAlignment = incomingSettings.WindowedLyricAlignment;
         persistedSettings.WindowedShowAlbumArt = incomingSettings.WindowedShowAlbumArt;
         persistedSettings.WindowedWordByWordMode = incomingSettings.WindowedWordByWordMode;
-        persistedSettings.WindowedHideMode = incomingSettings.WindowedHideMode;
         persistedSettings.PreferredMonitorDeviceName = null;
         persistedSettings.DetectedMediaApps = MergeDetectedApps(
             incomingSettings.DetectedMediaApps,
