@@ -519,34 +519,6 @@
                             </Grid>
                         </StackPanel>
                     </Border>
-                    <Border Style="{StaticResource CardStyle}">
-                        <StackPanel>
-                            <TextBlock Text="Last Lyrics Search" Style="{StaticResource SectionTitleStyle}" />
-                            <TextBlock Text="Shows the most recent search query and result. Useful for debugging which song data was sent." Style="{StaticResource LabelStyle}" />
-                            <TextBox x:Name="LastSearchInfoTextBox"
-                                     IsReadOnly="True"
-                                     Margin="0,8,0,0"
-                                     TextWrapping="Wrap"
-                                     MaxHeight="120"
-                                     VerticalScrollBarVisibility="Auto"
-                                     Background="#0A0E14"
-                                     Foreground="#9DB1C4"
-                                     BorderBrush="#365067"
-                                     FontSize="11"
-                                     FontFamily="Consolas"
-                                     Text="No search yet" />
-                            <Button x:Name="ForceResearchButton"
-                                    Content="Force re-search lyrics"
-                                    Margin="0,12,0,0"
-                                    Padding="12,6"
-                                    HorizontalAlignment="Left"
-                                    Background="#1C2128"
-                                    Foreground="#E6EDF3"
-                                    BorderBrush="#58A6FF"
-                                    Click="ForceResearchButton_OnClick"
-                                    Visibility="Collapsed" />
-                        </StackPanel>
-                    </Border>
                 </StackPanel>
             </ScrollViewer>
         </TabItem>
@@ -915,6 +887,34 @@
                                     <ComboBoxItem Tag="Synced" Content="syncedlyrics" />
                                 </ComboBox>
                             </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="Last Lyrics Search" Style="{StaticResource SectionTitleStyle}" />
+                            <TextBlock Text="Shows the most recent search query and result. Useful for debugging which song data was sent." Style="{StaticResource LabelStyle}" />
+                            <TextBox x:Name="LastSearchInfoTextBox"
+                                     IsReadOnly="True"
+                                     Margin="0,8,0,0"
+                                     TextWrapping="Wrap"
+                                     MaxHeight="120"
+                                     VerticalScrollBarVisibility="Auto"
+                                     Background="#0A0E14"
+                                     Foreground="#9DB1C4"
+                                     BorderBrush="#365067"
+                                     FontSize="11"
+                                     FontFamily="Consolas"
+                                     Text="No search yet" />
+                            <Button x:Name="ForceResearchButton"
+                                    Content="Force re-search lyrics"
+                                    Margin="0,12,0,0"
+                                    Padding="12,6"
+                                    HorizontalAlignment="Left"
+                                    Background="#1C2128"
+                                    Foreground="#E6EDF3"
+                                    BorderBrush="#58A6FF"
+                                    Click="ForceResearchButton_OnClick" />
                         </StackPanel>
                     </Border>
                 </StackPanel>

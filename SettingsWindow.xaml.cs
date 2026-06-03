@@ -24,7 +24,6 @@ public partial class SettingsWindow : Window
         InitializeComponent();
         DetectedAppsListBox.ItemsSource = _detectedApps;
 #if DEBUG
-        ForceResearchButton.Visibility = Visibility.Visible;
         DebugTabItem.Visibility = Visibility.Visible;
 #else
         DebugTabItem.Visibility = Visibility.Collapsed;
