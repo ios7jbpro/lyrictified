@@ -9,6 +9,7 @@ using System.Windows.Threading;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using Lyrictified.DisplayModes;
+using Lyrictified.Interop;
 using Lyrictified.Settings;
 using Lyrictified.Styling;
 
@@ -473,6 +474,7 @@ public partial class SettingsWindow : Window
     private void OnSourceInitialized(object? sender, EventArgs e)
     {
         _appearanceManager = new WindowAppearanceManager(this);
+        WindowMaximizeBounds.Attach(this);
         ApplyAppearance();
         ApplyNativeWindowFrame();
     }

@@ -82,6 +82,7 @@ public partial class WindowedWindow : Window, ITrayIconHost
         _appearanceManager = new WindowAppearanceManager(this);
         _monitorHelper = new AppBarManager(this, AppBarDisplayMode.DefaultHeight);
         _trayIcon = new TrayIcon(this);
+        WindowMaximizeBounds.Attach(this);
 
         ApplyInitialSize();
         ApplyAppearance();
