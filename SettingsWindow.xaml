@@ -648,14 +648,14 @@
                     <Border Style="{StaticResource CardStyle}">
                         <StackPanel>
                             <TextBlock Text="Bar Height" Style="{StaticResource SectionTitleStyle}" />
-                            <TextBlock Text="Custom pixel height. Leave empty for automatic sizing (80px default, 136px with next line)." Style="{StaticResource LabelStyle}" />
+                            <TextBlock Text="Custom pixel height. Leave empty for automatic sizing (100px default, 115px with next line)." Style="{StaticResource LabelStyle}" />
                             <TextBox x:Name="CustomHeightTextBox"
                                      MinWidth="260"
                                      MaxWidth="260"
                                      TextChanged="CustomHeightTextBox_OnTextChanged" />
                             <TextBlock x:Name="BarHeightHintTextBlock"
                                        Style="{StaticResource HintTextStyle}"
-                                       Text="Leave empty to use the automatic 80px height for this mode." />
+                                       Text="Leave empty to use the automatic 100px height for this mode." />
                         </StackPanel>
                     </Border>
 

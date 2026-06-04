@@ -17,7 +17,7 @@ A Windows desktop app that displays real-time synced lyrics for whatever music i
 - Multi-monitor support with per-mode monitor selection
 - Optional next-line preview
 - Lyric alignment (Left, Center, Right)
-- Configurable bar height (minimum 32px, default 80px)
+- Configurable bar height (minimum 32px, default 100px)
 - Graceful no-lyrics state (fades in song title instead of error animation)
 - Per-app ignore lists to exclude specific media sources
 - Settings persisted to `%LOCALAPPDATA%\Lyrictified\settings.json`

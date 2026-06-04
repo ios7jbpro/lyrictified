@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using Lyrictified.DisplayModes;
@@ -15,13 +16,20 @@ namespace Lyrictified;
 
 public partial class SettingsWindow : Window
 {
+    private static readonly TimeSpan TextSettingsChangeDelay = TimeSpan.FromMilliseconds(600);
     private readonly ObservableCollection<DetectedAppRuleItem> _detectedApps = new();
+    private readonly DispatcherTimer _textSettingsChangedTimer;
     private bool _isInitializing;
     private WindowAppearanceManager? _appearanceManager;
 
     public SettingsWindow()
     {
         InitializeComponent();
+        _textSettingsChangedTimer = new DispatcherTimer
+        {
+            Interval = TextSettingsChangeDelay
+        };
+        _textSettingsChangedTimer.Tick += TextSettingsChangedTimer_OnTick;
         DetectedAppsListBox.ItemsSource = _detectedApps;
 #if DEBUG
         DebugTabItem.Visibility = Visibility.Visible;
@@ -180,7 +188,7 @@ public partial class SettingsWindow : Window
     private void CustomHeightTextBox_OnTextChanged(object sender, TextChangedEventArgs e)
     {
         UpdateBarHeightHint();
-        RaiseSettingsChanged();
+        RaiseTextSettingsChanged();
     }
 
     private void LyricAlignmentComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -201,7 +209,7 @@ public partial class SettingsWindow : Window
     private void TaskbarMaximumWidthTextBox_OnTextChanged(object sender, TextChangedEventArgs e)
     {
         UpdateTaskbarMaximumWidthHint();
-        RaiseSettingsChanged();
+        RaiseTextSettingsChanged();
     }
 
     private void AutostartWithWindowsCheckBox_OnChanged(object sender, RoutedEventArgs e)
@@ -269,6 +277,23 @@ public partial class SettingsWindow : Window
         };
 
         SettingsChanged?.Invoke(this, settings);
+    }
+
+    private void RaiseTextSettingsChanged()
+    {
+        if (_isInitializing)
+        {
+            return;
+        }
+
+        _textSettingsChangedTimer.Stop();
+        _textSettingsChangedTimer.Start();
+    }
+
+    private void TextSettingsChangedTimer_OnTick(object? sender, EventArgs e)
+    {
+        _textSettingsChangedTimer.Stop();
+        RaiseSettingsChanged();
     }
 
     private int? ParseCustomHeight()
