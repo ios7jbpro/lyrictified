@@ -136,11 +136,6 @@ public sealed class LrcLibLyricsService : IDisposable
                 };
 
                 var text = match.Groups[4].Value.Trim();
-                if (string.IsNullOrWhiteSpace(text))
-                {
-                    continue;
-                }
-
                 var baseTimestamp = new TimeSpan(0, 0, minutes, seconds, milliseconds);
 
                 IReadOnlyList<WordInfo>? words = null;

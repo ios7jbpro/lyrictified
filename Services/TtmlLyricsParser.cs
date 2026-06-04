@@ -37,11 +37,6 @@ internal static class TtmlLyricsParser
                 }
 
                 var text = NormalizeText(paragraph.Value);
-                if (string.IsNullOrWhiteSpace(text))
-                {
-                    continue;
-                }
-
                 var words = ParseWords(paragraph);
                 lines.Add(new LyricLine(timestamp.Value, text, words.Count > 0 ? words : null));
             }
