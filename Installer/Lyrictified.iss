@@ -50,3 +50,23 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\Lyrictified.exe"; Tasks: desk
 
 [Run]
 Filename: "{app}\Lyrictified.exe"; Description: "{cm:LaunchProgram,{#StringChange(AppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+procedure KillRunningApp();
+var
+  ResultCode: Integer;
+begin
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/IM "Lyrictified.exe" /F /T', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;
+
+function InitializeSetup(): Boolean;
+begin
+  KillRunningApp();
+  Result := True;
+end;
+
+function InitializeUninstall(): Boolean;
+begin
+  KillRunningApp();
+  Result := True;
+end;
