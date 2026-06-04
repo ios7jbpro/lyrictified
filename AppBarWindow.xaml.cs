@@ -123,6 +123,7 @@ public partial class AppBarWindow : Window, ITrayIconHost
         UpdateMonitorControls();
         ApplyHideModeState();
         ApplyPlaybackStateVisual(immediate: true);
+        WorkspaceVisibilityManager.PinToAllWorkspaces(this);
 
         _trayIcon = new TrayIcon(this);
 
@@ -2029,6 +2030,7 @@ public partial class AppBarWindow : Window, ITrayIconHost
     public void ShowFromTray()
     {
         Show();
+        WorkspaceVisibilityManager.PinToAllWorkspaces(this);
         if (_appBarManager is null)
         {
             _appBarManager = new AppBarManager(this, AppBarDisplayMode.DefaultHeight);

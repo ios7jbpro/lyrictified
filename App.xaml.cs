@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Windows;
 using Application = System.Windows.Application;
 using Lyrictified.Services;
@@ -8,6 +9,7 @@ namespace Lyrictified;
 
 public partial class App : Application
 {
+    public const string AppUserModelId = "Lyrictified.App";
     public static string LocalLyricsBaseAddress { get; set; } = "https://lyrictifiedserve.ios7.xyz/";
     public static bool IgnoreLocalCache { get; set; }
 
@@ -16,6 +18,7 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         Logger.Log("=== App started ===");
+        TrySetAppUserModelId();
         base.OnStartup(e);
 
 #if DEBUG
@@ -30,6 +33,22 @@ public partial class App : Application
 
         RestartDisplayWindow();
     }
+
+    private static void TrySetAppUserModelId()
+    {
+        try
+        {
+            var hr = SetCurrentProcessExplicitAppUserModelID(AppUserModelId);
+            Logger.Log($"Set AppUserModelID '{AppUserModelId}': hr=0x{hr:X8}");
+        }
+        catch (Exception ex)
+        {
+            Logger.Log($"Set AppUserModelID failed: {ex}");
+        }
+    }
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern int SetCurrentProcessExplicitAppUserModelID(string appID);
 
     public void RestartDisplayWindow()
     {

@@ -85,6 +85,7 @@ public partial class TaskbarWindow : Window, ITrayIconHost
         PositionWindow();
         ApplyAppearance();
         EnsureTopmostOrder();
+        WorkspaceVisibilityManager.PinToAllWorkspaces(this);
         _trayIcon = new TrayIcon(this);
 
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
@@ -715,6 +716,7 @@ public partial class TaskbarWindow : Window, ITrayIconHost
     public void ShowFromTray()
     {
         Show();
+        WorkspaceVisibilityManager.PinToAllWorkspaces(this);
         Activate();
         EnsureTopmostOrder();
     }
