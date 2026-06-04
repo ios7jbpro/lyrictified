@@ -543,6 +543,7 @@ public partial class TaskbarWindow : Window, ITrayIconHost
         persistedSettings.LyricAlignment = incomingSettings.LyricAlignment;
         persistedSettings.ShowAlbumArt = incomingSettings.ShowAlbumArt;
         persistedSettings.WordByWordMode = incomingSettings.WordByWordMode;
+        persistedSettings.AutostartWithWindows = incomingSettings.AutostartWithWindows;
         persistedSettings.MaxCacheSize = incomingSettings.MaxCacheSize;
         persistedSettings.WindowedShowNextLine = incomingSettings.WindowedShowNextLine;
         persistedSettings.WindowedLyricAlignment = incomingSettings.WindowedLyricAlignment;

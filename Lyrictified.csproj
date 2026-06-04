@@ -10,6 +10,13 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <InnoSetupCompiler Condition="'$(InnoSetupCompiler)' == '' and Exists('C:\Program Files (x86)\Inno Setup 6\ISCC.exe')">C:\Program Files (x86)\Inno Setup 6\ISCC.exe</InnoSetupCompiler>
+    <InnoSetupCompiler Condition="'$(InnoSetupCompiler)' == '' and Exists('C:\Program Files\Inno Setup 6\ISCC.exe')">C:\Program Files\Inno Setup 6\ISCC.exe</InnoSetupCompiler>
+    <InstallerOutputDir>$(MSBuildProjectDirectory)\Build-outputs</InstallerOutputDir>
+    <InstallerScript>$(MSBuildProjectDirectory)\Installer\Lyrictified.iss</InstallerScript>
+  </PropertyGroup>
+
   <ItemGroup>
     <Content Include="Assets\app.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -39,4 +46,18 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
+
+  <Target Name="BuildInnoSetupInstaller"
+          AfterTargets="Build"
+          Condition="'$(DesignTimeBuild)' != 'true' and '$(SkipInstallerBuild)' != 'true'">
+    <MakeDir Directories="$(InstallerOutputDir)" />
+    <Warning Condition="'$(InnoSetupCompiler)' == ''"
+             Text="Inno Setup 6 compiler was not found. Install Inno Setup 6 or set InnoSetupCompiler to the full path of ISCC.exe. Skipping installer package." />
+    <Message Condition="'$(InnoSetupCompiler)' != ''"
+             Text="Building $(Configuration) installer into $(InstallerOutputDir)"
+             Importance="High" />
+    <Exec Condition="'$(InnoSetupCompiler)' != ''"
+          EnvironmentVariables="LYRICTIFIED_APP_NAME=$(AssemblyName);LYRICTIFIED_APP_VERSION=$(Version);LYRICTIFIED_APP_PUBLISHER=$(Company);LYRICTIFIED_SOURCE_DIR=$(TargetDir.TrimEnd('\'));LYRICTIFIED_OUTPUT_DIR=$(InstallerOutputDir);LYRICTIFIED_CONFIGURATION=$(Configuration)"
+          Command="&quot;$(InnoSetupCompiler)&quot; /Qp &quot;$(InstallerScript)&quot;" />
+  </Target>
 </Project>

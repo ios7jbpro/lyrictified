@@ -1,6 +1,7 @@
 # Build output
 **/bin/
 **/obj/
+Build-outputs/
 .dotnet-home/
 
 # Visual Studio / Rider

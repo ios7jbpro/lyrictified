@@ -40,6 +40,8 @@ public sealed class AppSettings
 
     public int MaxCacheSize { get; set; } = 25;
 
+    public bool AutostartWithWindows { get; set; }
+
     public List<DetectedMediaApp> DetectedMediaApps { get; set; } = new();
 
     public List<string> IgnoredMediaAppIds { get; set; } = new();

@@ -81,6 +81,7 @@ public partial class SettingsWindow : Window
             ShowAlbumArtComboBox.SelectedIndex = settings.ShowAlbumArt ? 0 : 1;
             WordByWordComboBox.SelectedIndex = settings.WordByWordMode ? 1 : 0;
             MaxCacheSizeTextBox.Text = settings.MaxCacheSize.ToString();
+            AutostartWithWindowsCheckBox.IsChecked = settings.AutostartWithWindows;
 
             WindowedShowNextLineComboBox.SelectedIndex = settings.WindowedShowNextLine ? 1 : 0;
             WindowedLyricAlignmentComboBox.SelectedIndex = settings.WindowedLyricAlignment switch
@@ -203,6 +204,11 @@ public partial class SettingsWindow : Window
         RaiseSettingsChanged();
     }
 
+    private void AutostartWithWindowsCheckBox_OnChanged(object sender, RoutedEventArgs e)
+    {
+        RaiseSettingsChanged();
+    }
+
     private void RaiseSettingsChanged()
     {
         if (_isInitializing)
@@ -233,6 +239,7 @@ public partial class SettingsWindow : Window
             },
             ShowAlbumArt = ShowAlbumArtComboBox.SelectedIndex == 0,
             WordByWordMode = WordByWordComboBox.SelectedIndex == 1,
+            AutostartWithWindows = AutostartWithWindowsCheckBox.IsChecked == true,
             WindowedShowNextLine = WindowedShowNextLineComboBox.SelectedIndex == 1,
             WindowedLyricAlignment = (WindowedLyricAlignmentComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() switch
             {

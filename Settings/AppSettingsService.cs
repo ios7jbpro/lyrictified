@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using Lyrictified.Services;
 
 namespace Lyrictified.Settings;
 
@@ -33,6 +34,7 @@ public sealed class AppSettingsService
         Directory.CreateDirectory(SettingsDirectory);
         var json = JsonSerializer.Serialize(settings, _serializerOptions);
         File.WriteAllText(SettingsPath, json);
+        WindowsAutostartService.Apply(settings.AutostartWithWindows);
     }
 
     private static string SettingsDirectory => Path.Combine(

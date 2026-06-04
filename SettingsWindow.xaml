@@ -519,6 +519,27 @@
                             </Grid>
                         </StackPanel>
                     </Border>
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="Windows Startup" Style="{StaticResource SectionTitleStyle}" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="Autostart with Windows" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" FontWeight="Medium" />
+                                    <TextBlock Text="Launch Lyrictified automatically when you sign in." Style="{StaticResource HintTextStyle}" />
+                                </StackPanel>
+                                <CheckBox x:Name="AutostartWithWindowsCheckBox"
+                                          Grid.Column="1"
+                                          Style="{StaticResource ToggleSwitchStyle}"
+                                          VerticalAlignment="Center"
+                                          Checked="AutostartWithWindowsCheckBox_OnChanged"
+                                          Unchecked="AutostartWithWindowsCheckBox_OnChanged" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </ScrollViewer>
         </TabItem>

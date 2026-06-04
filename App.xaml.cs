@@ -31,6 +31,7 @@ public partial class App : Application
         LocalLyricsBaseAddress = chosenBaseAddress;
 #endif
 
+        WindowsAutostartService.Apply(_appSettingsService.Load().AutostartWithWindows);
         RestartDisplayWindow();
     }
 
