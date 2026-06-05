@@ -35,7 +35,22 @@ public partial class AppBarWindow : Window, ITrayIconHost
     private static readonly WpfBrush BlackoutBrush = new SolidColorBrush(Colors.Black);
     private static readonly WpfBrush PreviewLyricBrush = new SolidColorBrush(MediaColor.FromRgb(245, 247, 250));
     private static readonly WpfBrush LoadingTextBrush = new SolidColorBrush(MediaColor.FromRgb(150, 156, 164));
-    
+
+    private static readonly WpfBrush LightForegroundBrush = new SolidColorBrush(MediaColor.FromRgb(245, 247, 250));
+    private static readonly WpfBrush DarkForegroundBrush = new SolidColorBrush(MediaColor.FromRgb(26, 26, 26));
+    private static readonly WpfBrush LightPreviewBrush = new SolidColorBrush(MediaColor.FromRgb(245, 247, 250));
+    private static readonly WpfBrush DarkPreviewBrush = new SolidColorBrush(MediaColor.FromRgb(100, 100, 100));
+    private static readonly WpfBrush LightSongArtistBrush = new SolidColorBrush(MediaColor.FromRgb(157, 177, 196));
+    private static readonly WpfBrush DarkSongArtistBrush = new SolidColorBrush(MediaColor.FromRgb(100, 100, 100));
+    private static readonly WpfBrush LightSongTimestampBrush = new SolidColorBrush(MediaColor.FromRgb(122, 143, 163));
+    private static readonly WpfBrush DarkSongTimestampBrush = new SolidColorBrush(MediaColor.FromRgb(120, 120, 120));
+    private static readonly WpfBrush LightButtonForegroundBrush = new SolidColorBrush(MediaColor.FromRgb(245, 247, 250));
+    private static readonly WpfBrush DarkButtonForegroundBrush = new SolidColorBrush(MediaColor.FromRgb(26, 26, 26));
+    private static readonly WpfBrush LightPauseIconBrush = new SolidColorBrush(MediaColor.FromRgb(245, 247, 250));
+    private static readonly WpfBrush DarkPauseIconBrush = new SolidColorBrush(MediaColor.FromRgb(26, 26, 26));
+
+    private bool _exactModeIsBrightBackground;
+
     private readonly MainViewModel _viewModel;
     private readonly DispatcherTimer _controlsFadeTimer;
     private readonly DispatcherTimer _monitorWarningTimer;
@@ -100,7 +115,6 @@ public partial class AppBarWindow : Window, ITrayIconHost
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         DataContext = _viewModel;
 
-        PauseIcon.Source = new BitmapImage(new Uri(System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "pause.png"), UriKind.Absolute));
         LoadingSpinnerImage.Source = new BitmapImage(new Uri(System.IO.Path.Combine(AppContext.BaseDirectory, "Assets", "loading.png"), UriKind.Absolute));
 
         _controlsFadeTimer = new DispatcherTimer
@@ -423,7 +437,21 @@ public partial class AppBarWindow : Window, ITrayIconHost
         {
             var palette = _appearanceManager.Apply();
 
-            if (_settings.AppBarAdaptToContent)
+            if (_settings.AppBarAdaptMode == AppBarAdaptMode.Disabled)
+            {
+                StopAdaptiveBackground();
+                Background = palette.WindowBackground;
+                SurfaceBorder.Background = palette.SurfaceBackground;
+                SurfaceBorder.BorderBrush = palette.SurfaceBorder;
+                SettingsButton.Background = palette.ButtonBackground;
+                SettingsButton.BorderBrush = palette.ButtonBorder;
+                CloseButton.Background = palette.ButtonBackground;
+                CloseButton.BorderBrush = palette.ButtonBorder;
+                SwitchMonitorButton.Background = palette.ButtonBackground;
+                SwitchMonitorButton.BorderBrush = palette.ButtonBorder;
+                ProgressBarFill.Background = palette.ProgressBarBrush;
+            }
+            else
             {
                 Background = palette.WindowBackground;
                 SettingsButton.Background = palette.ButtonBackground;
@@ -445,20 +473,6 @@ public partial class AppBarWindow : Window, ITrayIconHost
 
                 StartAdaptiveBackground();
             }
-            else
-            {
-                StopAdaptiveBackground();
-                Background = palette.WindowBackground;
-                SurfaceBorder.Background = palette.SurfaceBackground;
-                SurfaceBorder.BorderBrush = palette.SurfaceBorder;
-                SettingsButton.Background = palette.ButtonBackground;
-                SettingsButton.BorderBrush = palette.ButtonBorder;
-                CloseButton.Background = palette.ButtonBackground;
-                CloseButton.BorderBrush = palette.ButtonBorder;
-                SwitchMonitorButton.Background = palette.ButtonBackground;
-                SwitchMonitorButton.BorderBrush = palette.ButtonBorder;
-                ProgressBarFill.Background = palette.ProgressBarBrush;
-            }
         }
 
         AlbumArtPanel.Visibility = isBlackout ? Visibility.Collapsed : (_settings.ShowAlbumArt ? Visibility.Visible : Visibility.Collapsed);
@@ -479,13 +493,38 @@ public partial class AppBarWindow : Window, ITrayIconHost
         AnimateBorderVisibility(hideBorder);
         if (!_viewModel.IsLoadingLyrics)
         {
-            var isActiveBrush = new SolidColorBrush(MediaColor.FromRgb(245, 247, 250));
-            IncomingLyricTextBlock.Foreground = isActiveBrush;
-            OutgoingLyricTextBlock.Foreground = isActiveBrush;
-            PreviewLyricTextBlock.Foreground = PreviewLyricBrush;
-            TtmlPrimaryLyricTextBlock.Foreground = isActiveBrush;
-            TtmlSecondaryLyricTextBlock.Foreground = PreviewLyricBrush;
+            ApplyForegroundColors();
         }
+    }
+
+    private void ApplyForegroundColors()
+    {
+        var isExactBright = _settings.AppBarAdaptMode == AppBarAdaptMode.Exact && _exactModeIsBrightBackground;
+        var activeBrush = isExactBright ? DarkForegroundBrush : LightForegroundBrush;
+        var previewBrush = isExactBright ? DarkPreviewBrush : PreviewLyricBrush;
+        var songArtistBrush = isExactBright ? DarkSongArtistBrush : LightSongArtistBrush;
+        var songTimestampBrush = isExactBright ? DarkSongTimestampBrush : LightSongTimestampBrush;
+        var buttonForegroundBrush = isExactBright ? DarkButtonForegroundBrush : LightButtonForegroundBrush;
+        var pauseIconBrush = isExactBright ? DarkPauseIconBrush : LightPauseIconBrush;
+
+        IncomingLyricTextBlock.Foreground = activeBrush;
+        OutgoingLyricTextBlock.Foreground = activeBrush;
+        PreviewLyricTextBlock.Foreground = previewBrush;
+        TtmlPrimaryLyricTextBlock.Foreground = activeBrush;
+        TtmlSecondaryLyricTextBlock.Foreground = previewBrush;
+
+        SongTitleTextBlock.Foreground = activeBrush;
+        SongArtistTextBlock.Foreground = songArtistBrush;
+        SongTimestampTextBlock.Foreground = songTimestampBrush;
+
+        SettingsButton.Foreground = buttonForegroundBrush;
+        CloseButton.Foreground = buttonForegroundBrush;
+        SwitchMonitorButton.Foreground = buttonForegroundBrush;
+
+        if (PauseBar1 is not null)
+            PauseBar1.Fill = pauseIconBrush;
+        if (PauseBar2 is not null)
+            PauseBar2.Fill = pauseIconBrush;
     }
 
     private void ApplyNextLineLayout()
@@ -503,7 +542,7 @@ public partial class AppBarWindow : Window, ITrayIconHost
         PreviewLyricTextBlock.FontSize = AppBarDisplayMode.PreviewLyricFontSize;
         PreviewLyricTranslateTransform.Y = AppBarDisplayMode.PreviewRestY;
         PreviewLyricTextBlock.Opacity = enabled && !string.IsNullOrWhiteSpace(_displayedNextLineText) ? AppBarDisplayMode.PreviewLyricOpacity : 0;
-        PreviewLyricTextBlock.Foreground = PreviewLyricBrush;
+        ApplyForegroundColors();
         IncomingLyricTextBlock.FontSize = GetCurrentLyricFontSize();
         OutgoingLyricTextBlock.FontSize = GetCurrentLyricFontSize();
         TtmlLyricStage.Height = LyricStage.Height;
@@ -1913,7 +1952,7 @@ public partial class AppBarWindow : Window, ITrayIconHost
 
     private void UpdateHoverEffect(bool isHovering)
     {
-        if (ShouldUseBlackoutMode() || _settings.AppBarAdaptToContent)
+        if (ShouldUseBlackoutMode() || _settings.AppBarAdaptMode != AppBarAdaptMode.Disabled)
         {
             return;
         }
@@ -1963,7 +2002,7 @@ public partial class AppBarWindow : Window, ITrayIconHost
 
     private void AdaptToContentTimer_OnTick(object? sender, EventArgs e)
     {
-        if (!IsVisible || ShouldUseBlackoutMode() || !_settings.AppBarAdaptToContent)
+        if (!IsVisible || ShouldUseBlackoutMode() || _settings.AppBarAdaptMode == AppBarAdaptMode.Disabled)
         {
             return;
         }
@@ -2029,16 +2068,32 @@ public partial class AppBarWindow : Window, ITrayIconHost
                 factor = 1.0;
             }
 
-            var finalR = (byte)Math.Clamp(avgR * factor, 0, 255);
-            var finalG = (byte)Math.Clamp(avgG * factor, 0, 255);
-            var finalB = (byte)Math.Clamp(avgB * factor, 0, 255);
+            if (_settings.AppBarAdaptMode == AppBarAdaptMode.Exact)
+            {
+                var exactR = (byte)Math.Clamp(avgR, 0, 255);
+                var exactG = (byte)Math.Clamp(avgG, 0, 255);
+                var exactB = (byte)Math.Clamp(avgB, 0, 255);
 
-            var topColor = MediaColor.FromArgb(185, finalR, finalG, finalB);
-            var bottomColor = MediaColor.FromArgb(225, (byte)(finalR * 0.85), (byte)(finalG * 0.85), (byte)(finalB * 0.85));
+                var isBright = 0.299 * exactR + 0.587 * exactG + 0.114 * exactB > 160;
+                if (isBright != _exactModeIsBrightBackground)
+                {
+                    _exactModeIsBrightBackground = isBright;
+                    ApplyForegroundColors();
+                }
 
-            var brush = new System.Windows.Media.LinearGradientBrush(topColor, bottomColor, 90.0);
+                SurfaceBorder.Background = new SolidColorBrush(MediaColor.FromRgb(exactR, exactG, exactB));
+            }
+            else
+            {
+                var finalR = (byte)Math.Clamp(avgR * factor, 0, 255);
+                var finalG = (byte)Math.Clamp(avgG * factor, 0, 255);
+                var finalB = (byte)Math.Clamp(avgB * factor, 0, 255);
 
-            SurfaceBorder.Background = brush;
+                var topColor = MediaColor.FromArgb(185, finalR, finalG, finalB);
+                var bottomColor = MediaColor.FromArgb(225, (byte)(finalR * 0.85), (byte)(finalG * 0.85), (byte)(finalB * 0.85));
+
+                SurfaceBorder.Background = new System.Windows.Media.LinearGradientBrush(topColor, bottomColor, 90.0);
+            }
         }
         catch
         {
@@ -2263,7 +2318,7 @@ public partial class AppBarWindow : Window, ITrayIconHost
         persistedSettings.LyricAlignment = incomingSettings.LyricAlignment;
         persistedSettings.ShowAlbumArt = incomingSettings.ShowAlbumArt;
         persistedSettings.AppBarShowProgressBar = incomingSettings.AppBarShowProgressBar;
-        persistedSettings.AppBarAdaptToContent = incomingSettings.AppBarAdaptToContent;
+        persistedSettings.AppBarAdaptMode = incomingSettings.AppBarAdaptMode;
         persistedSettings.AppBarAdaptThreshold = incomingSettings.AppBarAdaptThreshold;
         persistedSettings.WordByWordMode = incomingSettings.WordByWordMode;
         persistedSettings.DisplayTtmlLyrics = incomingSettings.DisplayTtmlLyrics;

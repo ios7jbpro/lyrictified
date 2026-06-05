@@ -36,7 +36,17 @@ public sealed class AppSettings
 
     public bool AppBarShowProgressBar { get; set; } = true;
 
-    public bool AppBarAdaptToContent { get; set; }
+    public AppBarAdaptMode AppBarAdaptMode { get; set; } = AppBarAdaptMode.Disabled;
+
+    [System.Text.Json.Serialization.JsonPropertyName("AppBarAdaptToContent")]
+    public bool? LegacyAppBarAdaptToContent
+    {
+        set
+        {
+            if (value == true && AppBarAdaptMode == AppBarAdaptMode.Disabled)
+                AppBarAdaptMode = AppBarAdaptMode.Adapt;
+        }
+    }
 
     public int AppBarAdaptThreshold { get; set; } = 130;
 

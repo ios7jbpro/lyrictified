@@ -54,19 +54,22 @@ CornerRadius="0"
                      Grid.Column="0"
                      Width="0"
                      VerticalAlignment="Stretch" />
-<Image x:Name="PauseIcon"
-                   Grid.ColumnSpan="4"
-                   Width="28"
-                   Height="28"
-                   Margin="0,0,14,0"
-                   HorizontalAlignment="Left"
-                   VerticalAlignment="Center"
-                   Opacity="0"
-                   Source="Assets/pause.png"
-                   Stretch="Uniform"
-                   Visibility="Collapsed"
-                   IsHitTestVisible="False"
-                   Panel.ZIndex="3" />
+<Viewbox x:Name="PauseIcon"
+                 Grid.ColumnSpan="4"
+                 Width="28"
+                 Height="28"
+                 Margin="0,0,14,0"
+                 HorizontalAlignment="Left"
+                 VerticalAlignment="Center"
+                 Opacity="0"
+                 Visibility="Collapsed"
+                 IsHitTestVisible="False"
+                 Panel.ZIndex="3">
+    <Canvas Width="28" Height="28">
+        <Rectangle x:Name="PauseBar1" Width="7" Height="20" Canvas.Left="6" Canvas.Top="4" RadiusX="2" RadiusY="2" Fill="#F5F7FA" />
+        <Rectangle x:Name="PauseBar2" Width="7" Height="20" Canvas.Left="16" Canvas.Top="4" RadiusX="2" RadiusY="2" Fill="#F5F7FA" />
+    </Canvas>
+</Viewbox>
 <StackPanel x:Name="AlbumArtPanel"
                          Grid.Column="1"
                          Orientation="Horizontal"

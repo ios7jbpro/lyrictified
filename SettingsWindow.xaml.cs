@@ -89,7 +89,12 @@ public partial class SettingsWindow : Window
             };
             ShowAlbumArtComboBox.SelectedIndex = settings.ShowAlbumArt ? 0 : 1;
             AppBarShowProgressBarComboBox.SelectedIndex = settings.AppBarShowProgressBar ? 0 : 1;
-            AppBarAdaptToContentComboBox.SelectedIndex = settings.AppBarAdaptToContent ? 0 : 1;
+            AppBarAdaptModeComboBox.SelectedIndex = settings.AppBarAdaptMode switch
+            {
+                AppBarAdaptMode.Adapt => 1,
+                AppBarAdaptMode.Exact => 2,
+                _ => 0
+            };
             AppBarAdaptThresholdSlider.Value = Math.Clamp(settings.AppBarAdaptThreshold, 0, 255);
             AppBarAdaptThresholdValueTextBlock.Text = AppBarAdaptThresholdSlider.Value.ToString("F0");
             WordByWordComboBox.SelectedIndex = settings.WordByWordMode ? 1 : 0;
@@ -242,7 +247,7 @@ public partial class SettingsWindow : Window
         RaiseSettingsChanged();
     }
 
-    private void AppBarAdaptToContentComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void AppBarAdaptModeComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         UpdateAdaptThresholdVisibility();
         RaiseSettingsChanged();
@@ -309,7 +314,12 @@ public partial class SettingsWindow : Window
             },
             ShowAlbumArt = ShowAlbumArtComboBox.SelectedIndex == 0,
             AppBarShowProgressBar = AppBarShowProgressBarComboBox.SelectedIndex == 0,
-            AppBarAdaptToContent = AppBarAdaptToContentComboBox.SelectedIndex == 0,
+            AppBarAdaptMode = AppBarAdaptModeComboBox.SelectedIndex switch
+            {
+                1 => AppBarAdaptMode.Adapt,
+                2 => AppBarAdaptMode.Exact,
+                _ => AppBarAdaptMode.Disabled
+            },
             AppBarAdaptThreshold = (int)AppBarAdaptThresholdSlider.Value,
             WordByWordMode = WordByWordComboBox.SelectedIndex == 1,
             DisplayTtmlLyrics = DisplayTtmlLyricsComboBox.SelectedIndex == 1,
@@ -477,18 +487,18 @@ public partial class SettingsWindow : Window
         ShowNextLineComboBox.IsEnabled = isAppBarMode;
         CustomHeightTextBox.IsEnabled = isAppBarMode;
         AppBarShowProgressBarComboBox.IsEnabled = isAppBarMode;
-        AppBarAdaptToContentComboBox.IsEnabled = isAppBarMode;
+        AppBarAdaptModeComboBox.IsEnabled = isAppBarMode;
         UpdateAdaptThresholdVisibility();
     }
 
     private void UpdateAdaptThresholdVisibility()
     {
-        if (AppBarAdaptThresholdGrid is null || AppBarAdaptToContentComboBox is null)
+        if (AppBarAdaptThresholdGrid is null || AppBarAdaptModeComboBox is null)
         {
             return;
         }
 
-        var visible = AppBarAdaptToContentComboBox.SelectedIndex == 0;
+        var visible = AppBarAdaptModeComboBox.SelectedIndex == 1;
         AppBarAdaptThresholdGrid.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
     }
 

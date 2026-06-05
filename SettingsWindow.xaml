@@ -650,13 +650,14 @@
                                     <TextBlock Text="Adapt to content" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" FontWeight="Medium" />
                                     <TextBlock Text="Sample the screen behind the bar every few seconds to create a blurred, gradient-like background." Style="{StaticResource HintTextStyle}" />
                                 </StackPanel>
-                                <ComboBox x:Name="AppBarAdaptToContentComboBox"
+                                <ComboBox x:Name="AppBarAdaptModeComboBox"
                                           Grid.Column="1"
                                           MinWidth="120"
                                           VerticalAlignment="Center"
-                                          SelectionChanged="AppBarAdaptToContentComboBox_OnSelectionChanged">
-                                    <ComboBoxItem Content="Enabled" />
+                                          SelectionChanged="AppBarAdaptModeComboBox_OnSelectionChanged">
                                     <ComboBoxItem Content="Disabled" />
+                                    <ComboBoxItem Content="Adapt" />
+                                    <ComboBoxItem Content="Adapt w/exact" />
                                 </ComboBox>
                             </Grid>
                             <Grid x:Name="AppBarAdaptThresholdGrid" Margin="0,0,0,12" Visibility="Collapsed">
