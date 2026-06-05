@@ -69,6 +69,14 @@ public partial class WindowedWindow : Window, ITrayIconHost
         && !_viewModel.IsLoadingLyrics
         && !_viewModel.NoTimedLyricsFound;
 
+    private bool IsCleanedLrcActive => !IsTtmlLayoutActive && _viewModel.CleanedLrcLyrics.Count > 0;
+
+    private IReadOnlyList<LyricLine> GetEffectiveLyrics() =>
+        IsCleanedLrcActive ? _viewModel.CleanedLrcLyrics : _viewModel.Lyrics;
+
+    private int GetEffectiveCurrentIndex() =>
+        IsCleanedLrcActive ? _viewModel.CleanedLrcCurrentLineIndex : _viewModel.CurrentLineIndex;
+
     public WindowedWindow()
     {
         InitializeComponent();
@@ -277,8 +285,11 @@ public partial class WindowedWindow : Window, ITrayIconHost
         _lyricTextBlocks.Clear();
         _lyricVisualStates.Clear();
         _lastHighlightedLineIndex = -1;
+        _wordAnimatedTextBlock = null;
+        _wordAnimatedLineText = string.Empty;
+        StopWordAnim();
 
-        var lyrics = _viewModel.Lyrics;
+        var lyrics = GetEffectiveLyrics();
         if (lyrics.Count == 0)
         {
             AddStatusLine(_viewModel.CurrentLine);
@@ -771,12 +782,13 @@ public partial class WindowedWindow : Window, ITrayIconHost
 
     private void RefreshOptionalPreviewLine()
     {
-        if (_viewModel.Lyrics.Count == 0 || _settings.WindowedShowNextLine)
+        var lyrics = GetEffectiveLyrics();
+        if (lyrics.Count == 0 || _settings.WindowedShowNextLine)
         {
             return;
         }
 
-        var currentIndex = _viewModel.CurrentLineIndex;
+        var currentIndex = GetEffectiveCurrentIndex();
         if (currentIndex >= 0 && currentIndex + 1 < _lyricTextBlocks.Count)
         {
             _lyricTextBlocks[currentIndex + 1].Opacity = 0.2;
@@ -790,9 +802,11 @@ public partial class WindowedWindow : Window, ITrayIconHost
             return;
         }
 
-        var currentIndex = _viewModel.Lyrics.Count == 0
+        var effectiveLyrics = GetEffectiveLyrics();
+        var effectiveIndex = GetEffectiveCurrentIndex();
+        var currentIndex = effectiveLyrics.Count == 0
             ? 0
-            : Math.Clamp(_viewModel.CurrentLineIndex, 0, _lyricTextBlocks.Count - 1);
+            : Math.Clamp(effectiveIndex, 0, _lyricTextBlocks.Count - 1);
         var lineChanged = currentIndex != _lastHighlightedLineIndex;
         if (animated && !lineChanged)
         {
@@ -809,10 +823,10 @@ public partial class WindowedWindow : Window, ITrayIconHost
         {
             var distance = Math.Abs(i - currentIndex);
             var textBlock = _lyricTextBlocks[i];
-            if (_viewModel.Lyrics.Count > i && i != currentIndex && textBlock.Inlines.Count > 0)
+            if (effectiveLyrics.Count > i && i != currentIndex && textBlock.Inlines.Count > 0)
             {
                 textBlock.Inlines.Clear();
-                textBlock.Text = _viewModel.Lyrics[i].Text;
+                textBlock.Text = effectiveLyrics[i].Text;
             }
 
             textBlock.Foreground = distance == 0 ? ActiveLyricBrush : InactiveLyricBrush;
@@ -938,11 +952,27 @@ public partial class WindowedWindow : Window, ITrayIconHost
             || _viewModel.CurrentLyricLine?.Words is not { Count: > 0 } words)
         {
             StopWordAnim();
+            _wordAnimatedTextBlock = null;
+            _wordAnimatedLineText = string.Empty;
             return;
         }
 
         var textBlock = _lyricTextBlocks[currentIndex];
         var lineText = _viewModel.CurrentLyricLine.Text;
+
+        if (IsCleanedLrcActive)
+        {
+            var effectiveLyrics = _viewModel.CleanedLrcLyrics;
+            if (currentIndex >= effectiveLyrics.Count
+                || !string.Equals(lineText, effectiveLyrics[currentIndex].Text, StringComparison.Ordinal))
+            {
+                StopWordAnim();
+                _wordAnimatedTextBlock = null;
+                _wordAnimatedLineText = string.Empty;
+                return;
+            }
+        }
+
         if (!resetInlines
             && ReferenceEquals(textBlock, _wordAnimatedTextBlock)
             && string.Equals(_wordAnimatedLineText, lineText, StringComparison.Ordinal)
@@ -1307,9 +1337,11 @@ public partial class WindowedWindow : Window, ITrayIconHost
             return;
         }
 
-        var currentIndex = _viewModel.Lyrics.Count == 0
+        var effectiveLyrics = GetEffectiveLyrics();
+        var effectiveIndex = GetEffectiveCurrentIndex();
+        var currentIndex = effectiveLyrics.Count == 0
             ? 0
-            : Math.Clamp(_viewModel.CurrentLineIndex, 0, _lyricTextBlocks.Count - 1);
+            : Math.Clamp(effectiveIndex, 0, _lyricTextBlocks.Count - 1);
 
         _ = Dispatcher.InvokeAsync(() =>
         {

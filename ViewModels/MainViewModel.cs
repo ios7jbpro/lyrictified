@@ -49,6 +49,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private bool _hasTtmlLyrics;
     private IReadOnlyList<LyricLine> _cleanedLrcLyrics = Array.Empty<LyricLine>();
     private string _taskbarCurrentLine = string.Empty;
+    private int _cleanedLrcCurrentLineIndex = -1;
 
     public MainViewModel()
     {
@@ -188,6 +189,12 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         private set => SetField(ref _taskbarCurrentLine, value);
     }
 
+    public int CleanedLrcCurrentLineIndex
+    {
+        get => _cleanedLrcCurrentLineIndex;
+        private set => SetField(ref _cleanedLrcCurrentLineIndex, value);
+    }
+
     public IReadOnlyList<LyricLine> Lyrics => _lyrics;
 
     public int CurrentLineIndex
@@ -242,6 +249,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         CleanedLrcLyrics = Array.Empty<LyricLine>();
         ActiveLyricLines = Array.Empty<LyricLine>();
         CurrentLineIndex = -1;
+        CleanedLrcCurrentLineIndex = -1;
         OnPropertyChanged(nameof(Lyrics));
         IsLoadingLyrics = false;
         NoTimedLyricsFound = true;
@@ -271,6 +279,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         CleanedLrcLyrics = Array.Empty<LyricLine>();
         ActiveLyricLines = Array.Empty<LyricLine>();
         CurrentLineIndex = -1;
+        CleanedLrcCurrentLineIndex = -1;
         OnPropertyChanged(nameof(Lyrics));
         IsLoadingLyrics = false;
         NoTimedLyricsFound = false;
@@ -326,6 +335,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 CleanedLrcLyrics = Array.Empty<LyricLine>();
                 ActiveLyricLines = Array.Empty<LyricLine>();
                 CurrentLineIndex = -1;
+                CleanedLrcCurrentLineIndex = -1;
                 OnPropertyChanged(nameof(Lyrics));
                 SetNextRefreshInterval(IdleRefreshInterval);
                 return;
@@ -363,6 +373,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             CleanedLrcLyrics = Array.Empty<LyricLine>();
             ActiveLyricLines = Array.Empty<LyricLine>();
             CurrentLineIndex = -1;
+            CleanedLrcCurrentLineIndex = -1;
             OnPropertyChanged(nameof(Lyrics));
             SongTitle = song.Title;
             SongArtist = song.Artist;
@@ -387,6 +398,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                     IsLoadingLyrics = false;
                     NoTimedLyricsFound = true;
                     CurrentLineIndex = -1;
+                    CleanedLrcCurrentLineIndex = -1;
                     ActiveLyricLines = Array.Empty<LyricLine>();
                     _noLyricsShownAt = DateTime.UtcNow;
                     CurrentLine = "Lyrics not found";
@@ -551,6 +563,17 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
                 var currentIndex = FindCurrentLyricIndex(position.Value);
                 CurrentLineIndex = currentIndex;
+
+                if (_cleanedLrcLyrics.Count > 0)
+                {
+                    var cleanedIndex = FindCurrentLyricIndex(_cleanedLrcLyrics, position.Value);
+                    CleanedLrcCurrentLineIndex = cleanedIndex >= 0 ? cleanedIndex : -1;
+                }
+                else
+                {
+                    CleanedLrcCurrentLineIndex = -1;
+                }
+
                 var activeLyrics = GetActiveLyricLines(position.Value, currentIndex);
                 SetActiveLyricLines(activeLyrics);
                 var currentLyric = activeLyrics.Count > 0
@@ -851,6 +874,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         CleanedLrcLyrics = Array.Empty<LyricLine>();
         ActiveLyricLines = Array.Empty<LyricLine>();
         CurrentLineIndex = -1;
+        CleanedLrcCurrentLineIndex = -1;
         OnPropertyChanged(nameof(Lyrics));
         _currentSong = null;
         IsLoadingLyrics = false;
@@ -873,6 +897,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         CleanedLrcLyrics = Array.Empty<LyricLine>();
         ActiveLyricLines = Array.Empty<LyricLine>();
         CurrentLineIndex = -1;
+        CleanedLrcCurrentLineIndex = -1;
         OnPropertyChanged(nameof(Lyrics));
         IsLoadingLyrics = false;
         NoTimedLyricsFound = song is not null;
