@@ -169,6 +169,34 @@ CornerRadius="0"
                             </TextBlock.RenderTransform>
                         </TextBlock>
                     </Grid>
+                    <Grid x:Name="TtmlLyricStage"
+                          ClipToBounds="True"
+                          VerticalAlignment="Center"
+                          Visibility="Collapsed">
+                        <TextBlock x:Name="TtmlPrimaryLyricTextBlock"
+                                   Foreground="#F5F7FA"
+                                   FontSize="34"
+                                   FontWeight="SemiBold"
+                                   TextTrimming="CharacterEllipsis"
+                                   Opacity="1"
+                                   VerticalAlignment="Top">
+                            <TextBlock.RenderTransform>
+                                <TranslateTransform x:Name="TtmlPrimaryLyricTranslateTransform" Y="0" />
+                            </TextBlock.RenderTransform>
+                        </TextBlock>
+                        <TextBlock x:Name="TtmlSecondaryLyricTextBlock"
+                                   Margin="0,42,0,0"
+                                   Foreground="#F5F7FA"
+                                   FontSize="20"
+                                   FontWeight="SemiBold"
+                                   TextTrimming="CharacterEllipsis"
+                                   Opacity="0.78"
+                                   VerticalAlignment="Top">
+                            <TextBlock.RenderTransform>
+                                <TranslateTransform x:Name="TtmlSecondaryLyricTranslateTransform" Y="0" />
+                            </TextBlock.RenderTransform>
+                        </TextBlock>
+                    </Grid>
                 </StackPanel>
                 <Grid x:Name="LoadingOverlay"
                       VerticalAlignment="Center"

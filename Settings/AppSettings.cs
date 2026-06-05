@@ -38,6 +38,8 @@ public sealed class AppSettings
 
     public bool WindowedWordByWordMode { get; set; }
 
+    public bool DisplayTtmlLyrics { get; set; }
+
     public int MaxCacheSize { get; set; } = 25;
 
     public bool AutostartWithWindows { get; set; }

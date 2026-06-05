@@ -40,11 +40,13 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private string _currentLine = "Play something to show lyrics here.";
     private string _nextLine = string.Empty;
     private LyricLine? _currentLyricLine;
+    private IReadOnlyList<LyricLine> _activeLyricLines = Array.Empty<LyricLine>();
     private int _currentWordIndex;
     private int _currentLineIndex = -1;
     private DateTime? _noLyricsShownAt;
     private bool _wordByWordMode;
     private bool _forceLyricsRefresh;
+    private bool _hasTtmlLyrics;
 
     public MainViewModel()
     {
@@ -152,6 +154,12 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         private set => SetField(ref _currentLyricLine, value);
     }
 
+    public IReadOnlyList<LyricLine> ActiveLyricLines
+    {
+        get => _activeLyricLines;
+        private set => SetField(ref _activeLyricLines, value);
+    }
+
     public int CurrentWordIndex
     {
         get => _currentWordIndex;
@@ -159,6 +167,12 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     }
 
     public bool WordByWordMode => _wordByWordMode;
+
+    public bool HasTtmlLyrics
+    {
+        get => _hasTtmlLyrics;
+        private set => SetField(ref _hasTtmlLyrics, value);
+    }
 
     public IReadOnlyList<LyricLine> Lyrics => _lyrics;
 
@@ -210,6 +224,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         CancelLyricsLoad();
         ResetPlaybackClock();
         _lyrics = Array.Empty<LyricLine>();
+        HasTtmlLyrics = false;
+        ActiveLyricLines = Array.Empty<LyricLine>();
         CurrentLineIndex = -1;
         OnPropertyChanged(nameof(Lyrics));
         IsLoadingLyrics = false;
@@ -235,6 +251,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         }
 
         _lyrics = testLyrics;
+        HasTtmlLyrics = false;
+        ActiveLyricLines = Array.Empty<LyricLine>();
         CurrentLineIndex = -1;
         OnPropertyChanged(nameof(Lyrics));
         IsLoadingLyrics = false;
@@ -286,6 +304,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 SongArtist = string.Empty;
                 AlbumArt = null;
                 _lyrics = Array.Empty<LyricLine>();
+                HasTtmlLyrics = false;
+                ActiveLyricLines = Array.Empty<LyricLine>();
                 CurrentLineIndex = -1;
                 OnPropertyChanged(nameof(Lyrics));
                 SetNextRefreshInterval(IdleRefreshInterval);
@@ -319,6 +339,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             NoTimedLyricsFound = false;
             _noLyricsShownAt = null;
             _lyrics = Array.Empty<LyricLine>();
+            HasTtmlLyrics = false;
+            ActiveLyricLines = Array.Empty<LyricLine>();
             CurrentLineIndex = -1;
             OnPropertyChanged(nameof(Lyrics));
             SongTitle = song.Title;
@@ -334,6 +356,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 }
 
                 _lyrics = lyrics;
+                HasTtmlLyrics = lyrics.Any(line => line.IsTtml);
                 OnPropertyChanged(nameof(Lyrics));
                 var wordsTotal = lyrics.Count(l => l.Words?.Count > 0);
                 Logger.Log($"HandleSongAsync: {lyrics.Count} lines, {wordsTotal} with word data");
@@ -342,6 +365,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                     IsLoadingLyrics = false;
                     NoTimedLyricsFound = true;
                     CurrentLineIndex = -1;
+                    ActiveLyricLines = Array.Empty<LyricLine>();
                     _noLyricsShownAt = DateTime.UtcNow;
                     CurrentLine = "Lyrics not found";
                     NextLine = string.Empty;
@@ -504,7 +528,13 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
                 var currentIndex = FindCurrentLyricIndex(position.Value);
                 CurrentLineIndex = currentIndex;
-                var currentLyric = currentIndex >= 0 ? _lyrics[currentIndex] : null;
+                var activeLyrics = GetActiveLyricLines(position.Value, currentIndex);
+                ActiveLyricLines = activeLyrics;
+                var currentLyric = activeLyrics.Count > 0
+                    ? activeLyrics[^1]
+                    : currentIndex >= 0
+                        ? _lyrics[currentIndex]
+                        : null;
 
                 if (currentLyric is not null)
                 {
@@ -527,7 +557,9 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                         CurrentWordIndex = -1;
                     }
 
-                    CurrentLine = currentLyric.Text;
+                    CurrentLine = activeLyrics.Count > 1
+                        ? string.Join(Environment.NewLine, activeLyrics.Select(line => line.Text))
+                        : currentLyric.Text;
                 }
                 else
                 {
@@ -549,6 +581,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                     else
                     {
                         CurrentLyricLine = null;
+                        ActiveLyricLines = Array.Empty<LyricLine>();
                         CurrentWordIndex = -1;
                     }
                 }
@@ -638,6 +671,31 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         return result;
     }
 
+    private IReadOnlyList<LyricLine> GetActiveLyricLines(TimeSpan position, int currentIndex)
+    {
+        if (currentIndex < 0)
+        {
+            return Array.Empty<LyricLine>();
+        }
+
+        var active = new List<LyricLine>();
+        for (var i = 0; i <= currentIndex; i++)
+        {
+            var line = _lyrics[i];
+            if (line.Timestamp > position)
+            {
+                continue;
+            }
+
+            if (i == currentIndex || (line.EndTime is { } endTime && endTime > position))
+            {
+                active.Add(line);
+            }
+        }
+
+        return active;
+    }
+
     internal static int FindCurrentWordIndex(IReadOnlyList<WordInfo> words, TimeSpan position)
     {
         if (words.Count == 0)
@@ -721,6 +779,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         CancelLyricsLoad();
         ResetPlaybackClock();
         _lyrics = Array.Empty<LyricLine>();
+        HasTtmlLyrics = false;
+        ActiveLyricLines = Array.Empty<LyricLine>();
         CurrentLineIndex = -1;
         OnPropertyChanged(nameof(Lyrics));
         _currentSong = null;
@@ -739,6 +799,8 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     {
         ResetPlaybackClock();
         _lyrics = Array.Empty<LyricLine>();
+        HasTtmlLyrics = false;
+        ActiveLyricLines = Array.Empty<LyricLine>();
         CurrentLineIndex = -1;
         OnPropertyChanged(nameof(Lyrics));
         IsLoadingLyrics = false;

@@ -89,6 +89,7 @@ public partial class SettingsWindow : Window
             };
             ShowAlbumArtComboBox.SelectedIndex = settings.ShowAlbumArt ? 0 : 1;
             WordByWordComboBox.SelectedIndex = settings.WordByWordMode ? 1 : 0;
+            DisplayTtmlLyricsComboBox.SelectedIndex = settings.DisplayTtmlLyrics ? 1 : 0;
             MaxCacheSizeTextBox.Text = settings.MaxCacheSize.ToString();
             AutostartWithWindowsCheckBox.IsChecked = settings.AutostartWithWindows;
 
@@ -207,6 +208,11 @@ public partial class SettingsWindow : Window
         RaiseSettingsChanged();
     }
 
+    private void DisplayTtmlLyricsComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        RaiseSettingsChanged();
+    }
+
     private void TaskbarMaximumWidthTextBox_OnTextChanged(object sender, TextChangedEventArgs e)
     {
         UpdateTaskbarMaximumWidthHint();
@@ -248,6 +254,7 @@ public partial class SettingsWindow : Window
             },
             ShowAlbumArt = ShowAlbumArtComboBox.SelectedIndex == 0,
             WordByWordMode = WordByWordComboBox.SelectedIndex == 1,
+            DisplayTtmlLyrics = DisplayTtmlLyricsComboBox.SelectedIndex == 1,
             AutostartWithWindows = AutostartWithWindowsCheckBox.IsChecked == true,
             WindowedShowNextLine = WindowedShowNextLineComboBox.SelectedIndex == 1,
             WindowedLyricAlignment = (WindowedLyricAlignmentComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() switch

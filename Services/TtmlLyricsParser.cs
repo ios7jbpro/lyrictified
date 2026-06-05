@@ -20,29 +20,64 @@ internal static class TtmlLyricsParser
         try
         {
             var document = XDocument.Parse(ttml, LoadOptions.PreserveWhitespace);
-            var lines = new List<LyricLine>();
+            var lines = new List<ParsedLine>();
+            var order = 0;
 
             foreach (var paragraph in document.Descendants().Where(e => e.Name.LocalName == "p"))
             {
                 var timestamp = GetTiming(paragraph, "begin");
-                if (timestamp is null
-                    && paragraph.Descendants().FirstOrDefault(e => e.Name.LocalName == "span") is { } firstSpan)
+                var endTime = GetTiming(paragraph, "end");
+                var mainWords = ParseWords(paragraph, includeBackground: false);
+                if (timestamp is null && mainWords.FirstOrDefault() is { } firstWord)
                 {
-                    timestamp = GetTiming(firstSpan, "begin");
+                    timestamp = firstWord.Timestamp;
                 }
 
-                if (timestamp is null)
+                if (timestamp is not null)
                 {
-                    continue;
+                    var text = NormalizeText(GetText(paragraph, includeBackground: false));
+                    if (!string.IsNullOrWhiteSpace(text))
+                    {
+                        lines.Add(new ParsedLine(
+                            new LyricLine(timestamp.Value, text, mainWords.Count > 0 ? mainWords : null, endTime, IsTtml: true),
+                            order++));
+                    }
                 }
 
-                var text = NormalizeText(paragraph.Value);
-                var words = ParseWords(paragraph);
-                lines.Add(new LyricLine(timestamp.Value, text, words.Count > 0 ? words : null));
+                foreach (var backgroundSpan in paragraph
+                    .Descendants()
+                    .Where(e => e.Name.LocalName == "span" && IsBackgroundRole(e)))
+                {
+                    var backgroundTimestamp = GetTiming(backgroundSpan, "begin")
+                        ?? ParseWords(backgroundSpan, includeBackground: true).FirstOrDefault()?.Timestamp;
+                    if (backgroundTimestamp is null)
+                    {
+                        continue;
+                    }
+
+                    var text = NormalizeText(GetText(backgroundSpan, includeBackground: true));
+                    if (string.IsNullOrWhiteSpace(text))
+                    {
+                        continue;
+                    }
+
+                    var words = ParseWords(backgroundSpan, includeBackground: true);
+                    lines.Add(new ParsedLine(
+                        new LyricLine(
+                            backgroundTimestamp.Value,
+                            text,
+                            words.Count > 0 ? words : null,
+                            GetTiming(backgroundSpan, "end") ?? GetLastWordEnd(words) ?? endTime,
+                            IsTtml: true,
+                            IsBackground: true),
+                        order++));
+                }
             }
 
             return lines
-                .OrderBy(line => line.Timestamp)
+                .OrderBy(line => line.Line.Timestamp)
+                .ThenBy(line => line.Order)
+                .Select(line => line.Line)
                 .ToArray();
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -52,21 +87,66 @@ internal static class TtmlLyricsParser
         }
     }
 
-    private static IReadOnlyList<WordInfo> ParseWords(XElement paragraph)
+    private static IReadOnlyList<WordInfo> ParseWords(XElement paragraph, bool includeBackground)
     {
         var words = new List<WordInfo>();
 
         foreach (var span in paragraph.Descendants().Where(e => e.Name.LocalName == "span"))
         {
+            if (span.Elements().Any(e => e.Name.LocalName == "span"))
+            {
+                continue;
+            }
+
+            if (!includeBackground && IsInBackgroundRole(span))
+            {
+                continue;
+            }
+
             var timestamp = GetTiming(span, "begin");
             var text = NormalizeText(span.Value);
             if (timestamp is not null && !string.IsNullOrWhiteSpace(text))
             {
-                words.Add(new WordInfo(timestamp.Value, text));
+                words.Add(new WordInfo(timestamp.Value, text, GetTiming(span, "end")));
             }
         }
 
         return words;
+    }
+
+    private static string GetText(XElement element, bool includeBackground)
+    {
+        return string.Concat(element.Nodes().Select(node => GetText(node, includeBackground)));
+    }
+
+    private static string GetText(XNode node, bool includeBackground)
+    {
+        return node switch
+        {
+            XText text => text.Value,
+            XElement element when element.Name.LocalName == "span" && !includeBackground && IsBackgroundRole(element) => " ",
+            XElement element => GetText(element, includeBackground),
+            _ => string.Empty
+        };
+    }
+
+    private static bool IsInBackgroundRole(XElement element)
+    {
+        return element.AncestorsAndSelf().Any(IsBackgroundRole);
+    }
+
+    private static bool IsBackgroundRole(XElement element)
+    {
+        return element.Attributes()
+            .Any(attribute => string.Equals(attribute.Name.LocalName, "role", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(attribute.Value, "x-bg", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static TimeSpan? GetLastWordEnd(IReadOnlyList<WordInfo> words)
+    {
+        return words
+            .Select(word => word.EndTime)
+            .LastOrDefault(endTime => endTime is not null);
     }
 
     private static TimeSpan? GetTiming(XElement element, string attributeName)
@@ -135,4 +215,6 @@ internal static class TtmlLyricsParser
     {
         return WhitespaceRegex.Replace(value, " ").Trim();
     }
+
+    private sealed record ParsedLine(LyricLine Line, int Order);
 }

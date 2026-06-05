@@ -574,6 +574,24 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0">
+                                    <TextBlock Text="Display TTML lyrics" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" FontWeight="Medium" />
+                                    <TextBlock Text="Use the dedicated two-line App Bar layout for advanced TTML lyrics with overlapping lines and word timing." Style="{StaticResource HintTextStyle}" />
+                                </StackPanel>
+                                <ComboBox x:Name="DisplayTtmlLyricsComboBox"
+                                          Grid.Column="1"
+                                          MinWidth="120"
+                                          VerticalAlignment="Center"
+                                          SelectionChanged="DisplayTtmlLyricsComboBox_OnSelectionChanged">
+                                    <ComboBoxItem Content="Disabled" />
+                                    <ComboBoxItem Content="Enabled" />
+                                </ComboBox>
+                            </Grid>
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
                                     <TextBlock Text="Lyric alignment" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" FontWeight="Medium" />
                                     <TextBlock Text="Position lyrics within the bar." Style="{StaticResource HintTextStyle}" />
                                 </StackPanel>

@@ -12,6 +12,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using Lyrictified.DisplayModes;
 using Lyrictified.Interop;
+using Lyrictified.Models;
 using Lyrictified.Services;
 using Lyrictified.Settings;
 using Lyrictified.Styling;
@@ -64,10 +65,16 @@ public partial class AppBarWindow : Window, ITrayIconHost
     }
     private string _lastProgressSongId = string.Empty;
     private TrayIcon? _trayIcon;
-    private bool IsPreviewModeEnabled => _settings.ShowNextLine;
+    private bool IsPreviewModeEnabled => IsTtmlLayoutActive || _settings.ShowNextLine;
     private DispatcherTimer? _wordAnimTimer;
     private double[]? _wordCharOpacities;
+    private double[]? _ttmlPrimaryWordCharOpacities;
+    private double[]? _ttmlSecondaryWordCharOpacities;
     private DateTime _lastLineChangeTimestamp = DateTime.MinValue;
+    private bool IsTtmlLayoutActive => _settings.DisplayTtmlLyrics
+        && _viewModel.HasTtmlLyrics
+        && !_viewModel.IsLoadingLyrics
+        && !_viewModel.NoTimedLyricsFound;
 
     public AppBarWindow()
     {
@@ -133,7 +140,11 @@ public partial class AppBarWindow : Window, ITrayIconHost
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
-        if (_viewModel.WordByWordMode && _viewModel.CurrentLyricLine?.Words?.Count > 0)
+        if (IsTtmlLayoutActive)
+        {
+            RenderTtmlLyrics();
+        }
+        else if (_viewModel.WordByWordMode && _viewModel.CurrentLyricLine?.Words?.Count > 0)
         {
             SetWordByWordInlines();
         }
@@ -146,6 +157,7 @@ public partial class AppBarWindow : Window, ITrayIconHost
         _displayedNextLineText = _viewModel.NextLine;
         _lastKnownLoadingLyrics = _viewModel.IsLoadingLyrics;
         ApplyNextLineLayout();
+        ApplyLyricLayoutMode();
         UpdateAlbumArtAndCredit();
         ApplyLyricAlignment();
         ApplyPlaybackStateVisual(immediate: true);
@@ -197,17 +209,34 @@ public partial class AppBarWindow : Window, ITrayIconHost
         {
             if (Dispatcher.CheckAccess())
             {
-                HandleCurrentLineChanged(_viewModel.CurrentLine);
+                if (IsTtmlLayoutActive)
+                {
+                    RenderTtmlLyrics();
+                }
+                else
+                {
+                    HandleCurrentLineChanged(_viewModel.CurrentLine);
+                }
             }
             else
             {
-                _ = Dispatcher.InvokeAsync(() => HandleCurrentLineChanged(_viewModel.CurrentLine));
+                _ = Dispatcher.InvokeAsync(() =>
+                {
+                    if (IsTtmlLayoutActive)
+                    {
+                        RenderTtmlLyrics();
+                    }
+                    else
+                    {
+                        HandleCurrentLineChanged(_viewModel.CurrentLine);
+                    }
+                });
             }
         }
 
         if (e.PropertyName == nameof(MainViewModel.CurrentWordIndex))
         {
-            if (_viewModel.WordByWordMode)
+            if (IsTtmlLayoutActive || _viewModel.WordByWordMode)
             {
                 StartWordAnim();
             }
@@ -215,6 +244,20 @@ public partial class AppBarWindow : Window, ITrayIconHost
 
         if (e.PropertyName == nameof(MainViewModel.NextLine))
         {
+            if (IsTtmlLayoutActive)
+            {
+                if (Dispatcher.CheckAccess())
+                {
+                    RenderTtmlLyrics();
+                }
+                else
+                {
+                    _ = Dispatcher.InvokeAsync(RenderTtmlLyrics);
+                }
+
+                return;
+            }
+
             if (Dispatcher.CheckAccess())
             {
                 HandleNextLineChanged(_viewModel.NextLine);
@@ -255,6 +298,31 @@ public partial class AppBarWindow : Window, ITrayIconHost
                 {
                     ApplyHideModeState();
                     ApplyLoadingState();
+                });
+            }
+        }
+
+        if (e.PropertyName == nameof(MainViewModel.ActiveLyricLines)
+            || e.PropertyName == nameof(MainViewModel.HasTtmlLyrics)
+            || e.PropertyName == nameof(MainViewModel.Lyrics))
+        {
+            if (Dispatcher.CheckAccess())
+            {
+                ApplyNextLineLayout();
+                if (IsTtmlLayoutActive)
+                {
+                    RenderTtmlLyrics();
+                }
+            }
+            else
+            {
+                _ = Dispatcher.InvokeAsync(() =>
+                {
+                    ApplyNextLineLayout();
+                    if (IsTtmlLayoutActive)
+                    {
+                        RenderTtmlLyrics();
+                    }
                 });
             }
         }
@@ -365,6 +433,8 @@ public partial class AppBarWindow : Window, ITrayIconHost
             IncomingLyricTextBlock.Foreground = isActiveBrush;
             OutgoingLyricTextBlock.Foreground = isActiveBrush;
             PreviewLyricTextBlock.Foreground = PreviewLyricBrush;
+            TtmlPrimaryLyricTextBlock.Foreground = isActiveBrush;
+            TtmlSecondaryLyricTextBlock.Foreground = PreviewLyricBrush;
         }
     }
 
@@ -386,9 +456,28 @@ public partial class AppBarWindow : Window, ITrayIconHost
         PreviewLyricTextBlock.Foreground = PreviewLyricBrush;
         IncomingLyricTextBlock.FontSize = GetCurrentLyricFontSize();
         OutgoingLyricTextBlock.FontSize = GetCurrentLyricFontSize();
+        TtmlLyricStage.Height = LyricStage.Height;
+        TtmlPrimaryLyricTextBlock.FontSize = AppBarDisplayMode.CurrentLyricFontSize;
+        TtmlSecondaryLyricTextBlock.FontSize = AppBarDisplayMode.PreviewLyricFontSize;
         _appBarManager?.SetHeight(effectiveHeight);
         ApplyDynamicScale(effectiveHeight);
         ApplyLyricAlignment();
+        ApplyLyricLayoutMode();
+    }
+
+    private void ApplyLyricLayoutMode()
+    {
+        var useTtmlLayout = IsTtmlLayoutActive;
+        LyricStage.Visibility = useTtmlLayout ? Visibility.Collapsed : Visibility.Visible;
+        TtmlLyricStage.Visibility = useTtmlLayout ? Visibility.Visible : Visibility.Collapsed;
+
+        if (useTtmlLayout)
+        {
+            PreviewLyricTextBlock.Visibility = Visibility.Collapsed;
+            TtmlPrimaryLyricTextBlock.FontSize = AppBarDisplayMode.CurrentLyricFontSize;
+            TtmlSecondaryLyricTextBlock.FontSize = AppBarDisplayMode.PreviewLyricFontSize;
+            TtmlSecondaryLyricTextBlock.Opacity = AppBarDisplayMode.PreviewLyricOpacity;
+        }
     }
 
     private void ApplyMonitorSetting()
@@ -485,6 +574,10 @@ public partial class AppBarWindow : Window, ITrayIconHost
         OutgoingLyricTextBlock.TextAlignment = textAlignment;
         PreviewLyricTextBlock.HorizontalAlignment = horizontalAlignment;
         PreviewLyricTextBlock.TextAlignment = textAlignment;
+        TtmlPrimaryLyricTextBlock.HorizontalAlignment = horizontalAlignment;
+        TtmlPrimaryLyricTextBlock.TextAlignment = textAlignment;
+        TtmlSecondaryLyricTextBlock.HorizontalAlignment = horizontalAlignment;
+        TtmlSecondaryLyricTextBlock.TextAlignment = textAlignment;
 
         var colDefs = MainGrid.ColumnDefinitions;
         colDefs.Clear();
@@ -822,6 +915,88 @@ public partial class AppBarWindow : Window, ITrayIconHost
         StartWordAnim();
     }
 
+    private void RenderTtmlLyrics()
+    {
+        if (!IsTtmlLayoutActive)
+        {
+            return;
+        }
+
+        ApplyLyricLayoutMode();
+
+        var (primaryLine, secondaryLine) = GetTtmlDisplayLines();
+        RenderTtmlLine(TtmlPrimaryLyricTextBlock, primaryLine, ref _ttmlPrimaryWordCharOpacities, 1);
+        RenderTtmlLine(TtmlSecondaryLyricTextBlock, secondaryLine, ref _ttmlSecondaryWordCharOpacities, AppBarDisplayMode.PreviewLyricOpacity);
+
+        if ((primaryLine?.Words?.Count > 0) || (secondaryLine?.Words?.Count > 0))
+        {
+            StartWordAnim();
+        }
+    }
+
+    private (LyricLine? Primary, LyricLine? Secondary) GetTtmlDisplayLines()
+    {
+        var activeLines = _viewModel.ActiveLyricLines
+            .Where(line => line.IsTtml)
+            .ToList();
+
+        if (activeLines.Count == 0 && _viewModel.CurrentLyricLine?.IsTtml == true)
+        {
+            activeLines.Add(_viewModel.CurrentLyricLine);
+        }
+
+        var primary = activeLines.LastOrDefault(line => !line.IsBackground)
+            ?? activeLines.LastOrDefault();
+        var secondary = activeLines.LastOrDefault(line => line.IsBackground && !ReferenceEquals(line, primary))
+            ?? activeLines.LastOrDefault(line => !ReferenceEquals(line, primary));
+
+        return (primary, secondary);
+    }
+
+    private void RenderTtmlLine(TextBlock textBlock, LyricLine? line, ref double[]? charOpacities, double targetOpacity)
+    {
+        textBlock.BeginAnimation(OpacityProperty, null);
+        textBlock.Inlines.Clear();
+
+        if (line is null || string.IsNullOrWhiteSpace(line.Text))
+        {
+            textBlock.Text = string.Empty;
+            textBlock.Opacity = 0;
+            charOpacities = null;
+            return;
+        }
+
+        textBlock.Opacity = targetOpacity;
+        if (line.Words is not { Count: > 0 } words)
+        {
+            textBlock.Text = line.Text;
+            charOpacities = null;
+            return;
+        }
+
+        textBlock.Text = string.Empty;
+        var dimBrush = GetWordBrush(textBlock.Foreground, 0.18);
+        var totalChars = 0;
+        for (var i = 0; i < words.Count; i++)
+        {
+            var word = words[i].Word;
+            for (var j = 0; j < word.Length; j++)
+            {
+                textBlock.Inlines.Add(new Run(word[j].ToString()) { Foreground = dimBrush });
+                totalChars++;
+            }
+
+            if (i < words.Count - 1)
+            {
+                textBlock.Inlines.Add(new Run(" ") { Foreground = dimBrush });
+                totalChars++;
+            }
+        }
+
+        charOpacities = new double[totalChars];
+        Array.Fill(charOpacities, 0.18);
+    }
+
     private void UpdateWordInlineHighlight()
     {
         StartWordAnim();
@@ -849,6 +1024,12 @@ public partial class AppBarWindow : Window, ITrayIconHost
 
     private void WordAnimTimer_Tick(object? sender, EventArgs e)
     {
+        if (IsTtmlLayoutActive)
+        {
+            UpdateTtmlWordHighlights();
+            return;
+        }
+
         var line = _viewModel.CurrentLyricLine;
         var words = line?.Words;
         if (words is null || words.Count == 0)
@@ -1302,6 +1483,8 @@ public partial class AppBarWindow : Window, ITrayIconHost
             IncomingLyricTextBlock.Foreground = LoadingTextBrush;
             OutgoingLyricTextBlock.Foreground = LoadingTextBrush;
             PreviewLyricTextBlock.Foreground = LoadingTextBrush;
+            TtmlPrimaryLyricTextBlock.Foreground = LoadingTextBrush;
+            TtmlSecondaryLyricTextBlock.Foreground = LoadingTextBrush;
             LyricsContentPanel.Opacity = 0.58;
             LoadingOverlay.Visibility = Visibility.Visible;
 
@@ -1846,7 +2029,11 @@ public partial class AppBarWindow : Window, ITrayIconHost
         _displayedLyricText = _viewModel.CurrentLine;
         _displayedNextLineText = _viewModel.NextLine;
 
-        if (_viewModel.WordByWordMode && _viewModel.CurrentLyricLine?.Words?.Count > 0)
+        if (IsTtmlLayoutActive)
+        {
+            RenderTtmlLyrics();
+        }
+        else if (_viewModel.WordByWordMode && _viewModel.CurrentLyricLine?.Words?.Count > 0)
         {
             IncomingLyricTextBlock.Inlines.Clear();
             OutgoingLyricTextBlock.Inlines.Clear();
@@ -1869,6 +2056,7 @@ public partial class AppBarWindow : Window, ITrayIconHost
         }
         PreviewLyricTextBlock.Text = _displayedNextLineText;
         ApplyNextLineLayout();
+        ApplyLyricLayoutMode();
         UpdateAlbumArtAndCredit();
         ApplyLyricAlignment();
         ApplyDisplayModeState();
@@ -1900,6 +2088,7 @@ public partial class AppBarWindow : Window, ITrayIconHost
         persistedSettings.LyricAlignment = incomingSettings.LyricAlignment;
         persistedSettings.ShowAlbumArt = incomingSettings.ShowAlbumArt;
         persistedSettings.WordByWordMode = incomingSettings.WordByWordMode;
+        persistedSettings.DisplayTtmlLyrics = incomingSettings.DisplayTtmlLyrics;
         persistedSettings.AutostartWithWindows = incomingSettings.AutostartWithWindows;
         persistedSettings.MaxCacheSize = incomingSettings.MaxCacheSize;
         persistedSettings.WindowedShowNextLine = incomingSettings.WindowedShowNextLine;
@@ -2099,5 +2288,92 @@ public partial class AppBarWindow : Window, ITrayIconHost
         catch
         {
         }
+    }
+
+    private void UpdateTtmlWordHighlights()
+    {
+        if (_viewModel.IsPlaybackPaused)
+        {
+            return;
+        }
+
+        var position = _viewModel.EstimatedPosition;
+        if (position is null)
+        {
+            StopWordAnim();
+            return;
+        }
+
+        var (primaryLine, secondaryLine) = GetTtmlDisplayLines();
+        var updatedPrimary = UpdateWordHighlightsForLine(TtmlPrimaryLyricTextBlock, primaryLine, position.Value, ref _ttmlPrimaryWordCharOpacities);
+        var updatedSecondary = UpdateWordHighlightsForLine(TtmlSecondaryLyricTextBlock, secondaryLine, position.Value, ref _ttmlSecondaryWordCharOpacities);
+
+        if (!updatedPrimary && !updatedSecondary)
+        {
+            StopWordAnim();
+        }
+    }
+
+    private bool UpdateWordHighlightsForLine(TextBlock textBlock, LyricLine? line, TimeSpan position, ref double[]? charOpacities)
+    {
+        var words = line?.Words;
+        if (words is null || words.Count == 0)
+        {
+            return false;
+        }
+
+        var inlines = textBlock.Inlines.ToList();
+        if (inlines.Count == 0)
+        {
+            RenderTtmlLine(textBlock, line, ref charOpacities, textBlock.Opacity <= 0 ? 1 : textBlock.Opacity);
+            inlines = textBlock.Inlines.ToList();
+        }
+
+        if (charOpacities is null || charOpacities.Length != inlines.Count)
+        {
+            charOpacities = new double[inlines.Count];
+            Array.Fill(charOpacities, 0.18);
+        }
+
+        var charIndex = 0;
+        var fullBrush = GetWordBrush(textBlock.Foreground, 1);
+        var dimBrush = GetWordBrush(textBlock.Foreground, 0.18);
+
+        for (var wordIndex = 0; wordIndex < words.Count; wordIndex++)
+        {
+            var word = words[wordIndex];
+            var nextTimestamp = word.EndTime
+                ?? (wordIndex + 1 < words.Count ? words[wordIndex + 1].Timestamp : line!.EndTime)
+                ?? word.Timestamp + TimeSpan.FromMilliseconds(650);
+
+            var targetOpacity = position >= word.Timestamp && position < nextTimestamp
+                ? 1
+                : position >= nextTimestamp
+                    ? 1
+                    : 0.18;
+
+            for (var i = 0; i < word.Word.Length && charIndex < inlines.Count; i++, charIndex++)
+            {
+                charOpacities[charIndex] += (targetOpacity - charOpacities[charIndex]) * 0.35;
+                if (inlines[charIndex] is Run run)
+                {
+                    run.Foreground = charOpacities[charIndex] >= 0.6
+                        ? GetWordBrush(textBlock.Foreground, charOpacities[charIndex])
+                        : dimBrush;
+                }
+            }
+
+            if (wordIndex < words.Count - 1 && charIndex < inlines.Count)
+            {
+                if (inlines[charIndex] is Run spaceRun)
+                {
+                    spaceRun.Foreground = targetOpacity > 0.5 ? fullBrush : dimBrush;
+                }
+
+                charIndex++;
+            }
+        }
+
+        return true;
     }
 }
