@@ -102,6 +102,7 @@ public partial class SettingsWindow : Window
             };
             WindowedShowAlbumArtComboBox.SelectedIndex = settings.WindowedShowAlbumArt ? 0 : 1;
             WindowedWordByWordComboBox.SelectedIndex = settings.WindowedWordByWordMode ? 1 : 0;
+            WindowedDisplayTtmlLyricsComboBox.SelectedIndex = settings.WindowedDisplayTtmlLyrics ? 1 : 0;
 
             TaskbarMaximumWidthTextBox.Text = settings.TaskbarMaximumWidth?.ToString() ?? string.Empty;
             DebugForceLyricsSourceComboBox.SelectedIndex = settings.DebugForceLyricsSource switch
@@ -187,6 +188,11 @@ public partial class SettingsWindow : Window
         RaiseSettingsChanged();
     }
 
+    private void WindowedDisplayTtmlLyricsComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        RaiseSettingsChanged();
+    }
+
     private void CustomHeightTextBox_OnTextChanged(object sender, TextChangedEventArgs e)
     {
         UpdateBarHeightHint();
@@ -265,6 +271,7 @@ public partial class SettingsWindow : Window
             },
             WindowedShowAlbumArt = WindowedShowAlbumArtComboBox.SelectedIndex == 0,
             WindowedWordByWordMode = WindowedWordByWordComboBox.SelectedIndex == 1,
+            WindowedDisplayTtmlLyrics = WindowedDisplayTtmlLyricsComboBox.SelectedIndex == 1,
             MaxCacheSize = ParseMaxCacheSize(),
             DebugForceLyricsSource = (DebugForceLyricsSourceComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() switch
             {

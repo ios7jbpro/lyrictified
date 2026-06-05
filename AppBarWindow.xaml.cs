@@ -70,6 +70,8 @@ public partial class AppBarWindow : Window, ITrayIconHost
     private double[]? _wordCharOpacities;
     private double[]? _ttmlPrimaryWordCharOpacities;
     private double[]? _ttmlSecondaryWordCharOpacities;
+    private string? _ttmlPrimaryLineKey;
+    private string? _ttmlSecondaryLineKey;
     private DateTime _lastLineChangeTimestamp = DateTime.MinValue;
     private bool IsTtmlLayoutActive => _settings.DisplayTtmlLyrics
         && _viewModel.HasTtmlLyrics
@@ -477,6 +479,13 @@ public partial class AppBarWindow : Window, ITrayIconHost
             TtmlPrimaryLyricTextBlock.FontSize = AppBarDisplayMode.CurrentLyricFontSize;
             TtmlSecondaryLyricTextBlock.FontSize = AppBarDisplayMode.PreviewLyricFontSize;
             TtmlSecondaryLyricTextBlock.Opacity = AppBarDisplayMode.PreviewLyricOpacity;
+        }
+        else
+        {
+            _ttmlPrimaryLineKey = null;
+            _ttmlSecondaryLineKey = null;
+            _ttmlPrimaryWordCharOpacities = null;
+            _ttmlSecondaryWordCharOpacities = null;
         }
     }
 
@@ -925,8 +934,20 @@ public partial class AppBarWindow : Window, ITrayIconHost
         ApplyLyricLayoutMode();
 
         var (primaryLine, secondaryLine) = GetTtmlDisplayLines();
-        RenderTtmlLine(TtmlPrimaryLyricTextBlock, primaryLine, ref _ttmlPrimaryWordCharOpacities, 1);
-        RenderTtmlLine(TtmlSecondaryLyricTextBlock, secondaryLine, ref _ttmlSecondaryWordCharOpacities, AppBarDisplayMode.PreviewLyricOpacity);
+        var primaryKey = GetTtmlLineKey(primaryLine);
+        var secondaryKey = GetTtmlLineKey(secondaryLine);
+
+        if (!string.Equals(_ttmlPrimaryLineKey, primaryKey, StringComparison.Ordinal))
+        {
+            RenderTtmlLine(TtmlPrimaryLyricTextBlock, primaryLine, ref _ttmlPrimaryWordCharOpacities, 1);
+            _ttmlPrimaryLineKey = primaryKey;
+        }
+
+        if (!string.Equals(_ttmlSecondaryLineKey, secondaryKey, StringComparison.Ordinal))
+        {
+            RenderTtmlLine(TtmlSecondaryLyricTextBlock, secondaryLine, ref _ttmlSecondaryWordCharOpacities, AppBarDisplayMode.PreviewLyricOpacity);
+            _ttmlSecondaryLineKey = secondaryKey;
+        }
 
         if ((primaryLine?.Words?.Count > 0) || (secondaryLine?.Words?.Count > 0))
         {
@@ -951,6 +972,13 @@ public partial class AppBarWindow : Window, ITrayIconHost
             ?? activeLines.LastOrDefault(line => !ReferenceEquals(line, primary));
 
         return (primary, secondary);
+    }
+
+    private static string? GetTtmlLineKey(LyricLine? line)
+    {
+        return line is null
+            ? null
+            : $"{line.Timestamp.Ticks}|{line.EndTime?.Ticks}|{line.IsBackground}|{line.Text}";
     }
 
     private void RenderTtmlLine(TextBlock textBlock, LyricLine? line, ref double[]? charOpacities, double targetOpacity)
@@ -2091,10 +2119,11 @@ public partial class AppBarWindow : Window, ITrayIconHost
         persistedSettings.DisplayTtmlLyrics = incomingSettings.DisplayTtmlLyrics;
         persistedSettings.AutostartWithWindows = incomingSettings.AutostartWithWindows;
         persistedSettings.MaxCacheSize = incomingSettings.MaxCacheSize;
-        persistedSettings.WindowedShowNextLine = incomingSettings.WindowedShowNextLine;
-        persistedSettings.WindowedLyricAlignment = incomingSettings.WindowedLyricAlignment;
-        persistedSettings.WindowedShowAlbumArt = incomingSettings.WindowedShowAlbumArt;
+            persistedSettings.WindowedShowNextLine = incomingSettings.WindowedShowNextLine;
+            persistedSettings.WindowedLyricAlignment = incomingSettings.WindowedLyricAlignment;
+            persistedSettings.WindowedShowAlbumArt = incomingSettings.WindowedShowAlbumArt;
             persistedSettings.WindowedWordByWordMode = incomingSettings.WindowedWordByWordMode;
+            persistedSettings.WindowedDisplayTtmlLyrics = incomingSettings.WindowedDisplayTtmlLyrics;
             persistedSettings.DebugForceLyricsSource = incomingSettings.DebugForceLyricsSource;
             persistedSettings.PreferredMonitorDeviceName = null;
         persistedSettings.DetectedMediaApps = MergeDetectedApps(

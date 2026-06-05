@@ -129,6 +129,18 @@
                     <StackPanel x:Name="LyricsListPanel"
                                 Margin="40,20,40,20" />
                 </ScrollViewer>
+                <ScrollViewer x:Name="TtmlLyricsScrollViewer"
+                              VerticalScrollBarVisibility="Hidden"
+                              HorizontalScrollBarVisibility="Disabled"
+                              CanContentScroll="False"
+                              Focusable="False"
+                              PanningMode="VerticalOnly"
+                              Visibility="Collapsed"
+                              Opacity="0">
+                    <StackPanel x:Name="TtmlLyricsListPanel"
+                                Margin="48,28,48,28"
+                                VerticalAlignment="Center" />
+                </ScrollViewer>
 
                 <Grid x:Name="LoadingOverlay"
                       VerticalAlignment="Center"

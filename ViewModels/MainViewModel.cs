@@ -529,7 +529,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 var currentIndex = FindCurrentLyricIndex(position.Value);
                 CurrentLineIndex = currentIndex;
                 var activeLyrics = GetActiveLyricLines(position.Value, currentIndex);
-                ActiveLyricLines = activeLyrics;
+                SetActiveLyricLines(activeLyrics);
                 var currentLyric = activeLyrics.Count > 0
                     ? activeLyrics[^1]
                     : currentIndex >= 0
@@ -581,7 +581,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                     else
                     {
                         CurrentLyricLine = null;
-                        ActiveLyricLines = Array.Empty<LyricLine>();
+                        SetActiveLyricLines(Array.Empty<LyricLine>());
                         CurrentWordIndex = -1;
                     }
                 }
@@ -694,6 +694,29 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         }
 
         return active;
+    }
+
+    private void SetActiveLyricLines(IReadOnlyList<LyricLine> activeLines)
+    {
+        if (_activeLyricLines.Count == activeLines.Count)
+        {
+            var same = true;
+            for (var i = 0; i < activeLines.Count; i++)
+            {
+                if (!ReferenceEquals(_activeLyricLines[i], activeLines[i]))
+                {
+                    same = false;
+                    break;
+                }
+            }
+
+            if (same)
+            {
+                return;
+            }
+        }
+
+        ActiveLyricLines = activeLines;
     }
 
     internal static int FindCurrentWordIndex(IReadOnlyList<WordInfo> words, TimeSpan position)

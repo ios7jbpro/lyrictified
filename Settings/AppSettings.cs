@@ -40,6 +40,8 @@ public sealed class AppSettings
 
     public bool DisplayTtmlLyrics { get; set; }
 
+    public bool WindowedDisplayTtmlLyrics { get; set; }
+
     public int MaxCacheSize { get; set; } = 25;
 
     public bool AutostartWithWindows { get; set; }
