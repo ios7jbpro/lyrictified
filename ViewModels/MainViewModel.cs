@@ -49,6 +49,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private bool _hasTtmlLyrics;
     private IReadOnlyList<LyricLine> _cleanedLrcLyrics = Array.Empty<LyricLine>();
     private string _taskbarCurrentLine = string.Empty;
+    private string _nonTtmlNextLine = string.Empty;
     private int _cleanedLrcCurrentLineIndex = -1;
 
     public MainViewModel()
@@ -189,6 +190,12 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         private set => SetField(ref _taskbarCurrentLine, value);
     }
 
+    public string NonTtmlNextLine
+    {
+        get => _nonTtmlNextLine;
+        private set => SetField(ref _nonTtmlNextLine, value);
+    }
+
     public int CleanedLrcCurrentLineIndex
     {
         get => _cleanedLrcCurrentLineIndex;
@@ -257,6 +264,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         CurrentLine = "Lyrics not found";
         TaskbarCurrentLine = "Lyrics not found";
         NextLine = string.Empty;
+        NonTtmlNextLine = string.Empty;
         StatusText = $"No synced lyrics found for {_currentSong.Artist}";
         SetNextRefreshInterval(IdleRefreshInterval);
     }
@@ -327,6 +335,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 CurrentLine = "Play something to show lyrics here.";
                 TaskbarCurrentLine = "Play something to show lyrics here.";
                 NextLine = string.Empty;
+                NonTtmlNextLine = string.Empty;
                 SongTitle = string.Empty;
                 SongArtist = string.Empty;
                 AlbumArt = null;
@@ -365,6 +374,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             CurrentLine = "Loading synced lyrics...";
             TaskbarCurrentLine = "Loading synced lyrics...";
             NextLine = string.Empty;
+            NonTtmlNextLine = string.Empty;
             IsLoadingLyrics = true;
             NoTimedLyricsFound = false;
             _noLyricsShownAt = null;
@@ -403,6 +413,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                     _noLyricsShownAt = DateTime.UtcNow;
                     CurrentLine = "Lyrics not found";
                     NextLine = string.Empty;
+                    NonTtmlNextLine = string.Empty;
                     StatusText = $"No synced lyrics found for {song.Artist}";
                     SetNextRefreshInterval(IdleRefreshInterval);
                     return;
@@ -535,6 +546,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 CurrentLine = elapsed.TotalSeconds < 5 ? "Lyrics not found" : _currentSong.Title;
                 TaskbarCurrentLine = CurrentLine;
                 NextLine = string.Empty;
+                NonTtmlNextLine = string.Empty;
                 StatusText = _currentSong.IsPlaying
                     ? $"No synced lyrics found for {_currentSong.Artist}"
                     : $"No synced lyrics found for {_currentSong.Artist} (paused)";
@@ -564,9 +576,10 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 var currentIndex = FindCurrentLyricIndex(position.Value);
                 CurrentLineIndex = currentIndex;
 
+                var cleanedIndex = -1;
                 if (_cleanedLrcLyrics.Count > 0)
                 {
-                    var cleanedIndex = FindCurrentLyricIndex(_cleanedLrcLyrics, position.Value);
+                    cleanedIndex = FindCurrentLyricIndex(_cleanedLrcLyrics, position.Value);
                     CleanedLrcCurrentLineIndex = cleanedIndex >= 0 ? cleanedIndex : -1;
                 }
                 else
@@ -634,7 +647,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
                 if (_cleanedLrcLyrics.Count > 0)
                 {
-                    var cleanedIndex = FindCurrentLyricIndex(_cleanedLrcLyrics, position.Value);
+                    cleanedIndex = FindCurrentLyricIndex(_cleanedLrcLyrics, position.Value);
                     if (cleanedIndex >= 0)
                     {
                         TaskbarCurrentLine = _cleanedLrcLyrics[cleanedIndex].Text;
@@ -646,6 +659,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 }
                 else
                 {
+                    cleanedIndex = -1;
                     TaskbarCurrentLine = CurrentLine;
                 }
 
@@ -657,6 +671,23 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 else
                 {
                     NextLine = string.Empty;
+                }
+
+                if (_cleanedLrcLyrics.Count > 0)
+                {
+                    var cleanedNextIndex = cleanedIndex >= 0 ? cleanedIndex + 1 : 1;
+                    if (cleanedNextIndex >= 0 && cleanedNextIndex < _cleanedLrcLyrics.Count)
+                    {
+                        NonTtmlNextLine = _cleanedLrcLyrics[cleanedNextIndex].Text;
+                    }
+                    else
+                    {
+                        NonTtmlNextLine = string.Empty;
+                    }
+                }
+                else
+                {
+                    NonTtmlNextLine = NextLine;
                 }
 
                 StatusText = _currentSong.IsPlaying
@@ -886,6 +917,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         CurrentLine = "Play something to show lyrics here.";
         TaskbarCurrentLine = "Play something to show lyrics here.";
         NextLine = string.Empty;
+        NonTtmlNextLine = string.Empty;
         SetNextRefreshInterval(IdleRefreshInterval);
     }
 
@@ -908,6 +940,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         CurrentLine = song is not null ? "Lyrics not found" : "Play something to show lyrics here.";
         TaskbarCurrentLine = song is not null ? "Lyrics not found" : "Play something to show lyrics here.";
         NextLine = string.Empty;
+        NonTtmlNextLine = string.Empty;
         SetNextRefreshInterval(IdleRefreshInterval);
     }
 

@@ -78,6 +78,14 @@ public partial class AppBarWindow : Window, ITrayIconHost
         && !_viewModel.IsLoadingLyrics
         && !_viewModel.NoTimedLyricsFound;
 
+    private bool IsCleanedLrcActive => !IsTtmlLayoutActive && _viewModel.CleanedLrcLyrics.Count > 0;
+
+    private string GetEffectiveCurrentLine() =>
+        IsCleanedLrcActive ? _viewModel.TaskbarCurrentLine : _viewModel.CurrentLine;
+
+    private string GetEffectiveNextLine() =>
+        IsCleanedLrcActive ? _viewModel.NonTtmlNextLine : _viewModel.NextLine;
+
     public AppBarWindow()
     {
         InitializeComponent();
@@ -152,11 +160,11 @@ public partial class AppBarWindow : Window, ITrayIconHost
         }
         else
         {
-            IncomingLyricTextBlock.Text = _viewModel.CurrentLine;
+            IncomingLyricTextBlock.Text = GetEffectiveCurrentLine();
         }
-        PreviewLyricTextBlock.Text = _viewModel.NextLine;
-        _displayedLyricText = _viewModel.CurrentLine;
-        _displayedNextLineText = _viewModel.NextLine;
+        PreviewLyricTextBlock.Text = GetEffectiveNextLine();
+        _displayedLyricText = GetEffectiveCurrentLine();
+        _displayedNextLineText = GetEffectiveNextLine();
         _lastKnownLoadingLyrics = _viewModel.IsLoadingLyrics;
         ApplyNextLineLayout();
         ApplyLyricLayoutMode();
@@ -207,7 +215,8 @@ public partial class AppBarWindow : Window, ITrayIconHost
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(MainViewModel.CurrentLine))
+        if (e.PropertyName == nameof(MainViewModel.CurrentLine)
+            || e.PropertyName == nameof(MainViewModel.TaskbarCurrentLine))
         {
             if (Dispatcher.CheckAccess())
             {
@@ -217,7 +226,7 @@ public partial class AppBarWindow : Window, ITrayIconHost
                 }
                 else
                 {
-                    HandleCurrentLineChanged(_viewModel.CurrentLine);
+                    HandleCurrentLineChanged(GetEffectiveCurrentLine());
                 }
             }
             else
@@ -230,7 +239,7 @@ public partial class AppBarWindow : Window, ITrayIconHost
                     }
                     else
                     {
-                        HandleCurrentLineChanged(_viewModel.CurrentLine);
+                        HandleCurrentLineChanged(GetEffectiveCurrentLine());
                     }
                 });
             }
@@ -244,7 +253,8 @@ public partial class AppBarWindow : Window, ITrayIconHost
             }
         }
 
-        if (e.PropertyName == nameof(MainViewModel.NextLine))
+        if (e.PropertyName == nameof(MainViewModel.NextLine)
+            || e.PropertyName == nameof(MainViewModel.NonTtmlNextLine))
         {
             if (IsTtmlLayoutActive)
             {
@@ -262,11 +272,11 @@ public partial class AppBarWindow : Window, ITrayIconHost
 
             if (Dispatcher.CheckAccess())
             {
-                HandleNextLineChanged(_viewModel.NextLine);
+                HandleNextLineChanged(GetEffectiveNextLine());
             }
             else
             {
-                _ = Dispatcher.InvokeAsync(() => HandleNextLineChanged(_viewModel.NextLine));
+                _ = Dispatcher.InvokeAsync(() => HandleNextLineChanged(GetEffectiveNextLine()));
             }
         }
 
@@ -786,7 +796,7 @@ public partial class AppBarWindow : Window, ITrayIconHost
         }
 
         var wbw = _viewModel.WordByWordMode;
-        var wc = _viewModel.CurrentLyricLine?.Words?.Count ?? 0;
+        var wc = IsCleanedLrcActive ? 0 : (_viewModel.CurrentLyricLine?.Words?.Count ?? 0);
         Logger.Log($"HandleCurrentLineChanged: WordByWord={wbw} Words={wc} text='{newCurrentLine}'");
 
         if (wbw && wc > 0)
