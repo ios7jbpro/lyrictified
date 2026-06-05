@@ -25,12 +25,12 @@ public partial class SettingsWindow : Window
 
     public SettingsWindow()
     {
-        InitializeComponent();
         _textSettingsChangedTimer = new DispatcherTimer
         {
             Interval = TextSettingsChangeDelay
         };
         _textSettingsChangedTimer.Tick += TextSettingsChangedTimer_OnTick;
+        InitializeComponent();
         DetectedAppsListBox.ItemsSource = _detectedApps;
 #if DEBUG
         DebugTabItem.Visibility = Visibility.Visible;
@@ -88,6 +88,10 @@ public partial class SettingsWindow : Window
                 _ => 1
             };
             ShowAlbumArtComboBox.SelectedIndex = settings.ShowAlbumArt ? 0 : 1;
+            AppBarShowProgressBarComboBox.SelectedIndex = settings.AppBarShowProgressBar ? 0 : 1;
+            AppBarAdaptToContentComboBox.SelectedIndex = settings.AppBarAdaptToContent ? 0 : 1;
+            AppBarAdaptThresholdSlider.Value = Math.Clamp(settings.AppBarAdaptThreshold, 0, 255);
+            AppBarAdaptThresholdValueTextBlock.Text = AppBarAdaptThresholdSlider.Value.ToString("F0");
             WordByWordComboBox.SelectedIndex = settings.WordByWordMode ? 1 : 0;
             DisplayTtmlLyricsComboBox.SelectedIndex = settings.DisplayTtmlLyrics ? 1 : 0;
             MaxCacheSizeTextBox.Text = settings.MaxCacheSize.ToString();
@@ -190,6 +194,30 @@ public partial class SettingsWindow : Window
 
     private void WindowedDisplayTtmlLyricsComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        if (_isInitializing)
+        {
+            return;
+        }
+
+        if (WindowedDisplayTtmlLyricsComboBox.SelectedIndex == 1)
+        {
+            var result = System.Windows.MessageBox.Show(
+                "TTML support in Windowed mode is highly experimental and buggy.\n\n" +
+                "By enabling this feature, you agree not to report bugs related to it.\n\n" +
+                "Do you want to continue and enable it?",
+                "Experimental Feature Warning",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+
+            if (result != MessageBoxResult.Yes)
+            {
+                _isInitializing = true;
+                WindowedDisplayTtmlLyricsComboBox.SelectedIndex = 0;
+                _isInitializing = false;
+                return;
+            }
+        }
+
         RaiseSettingsChanged();
     }
 
@@ -207,6 +235,27 @@ public partial class SettingsWindow : Window
     private void ShowAlbumArtComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         RaiseSettingsChanged();
+    }
+
+    private void AppBarShowProgressBarComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        RaiseSettingsChanged();
+    }
+
+    private void AppBarAdaptToContentComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        UpdateAdaptThresholdVisibility();
+        RaiseSettingsChanged();
+    }
+
+    private void AppBarAdaptThresholdSlider_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (AppBarAdaptThresholdValueTextBlock is not null)
+        {
+            AppBarAdaptThresholdValueTextBlock.Text = e.NewValue.ToString("F0");
+        }
+
+        RaiseTextSettingsChanged();
     }
 
     private void WordByWordComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -259,6 +308,9 @@ public partial class SettingsWindow : Window
                 _ => LyricAlignment.Center
             },
             ShowAlbumArt = ShowAlbumArtComboBox.SelectedIndex == 0,
+            AppBarShowProgressBar = AppBarShowProgressBarComboBox.SelectedIndex == 0,
+            AppBarAdaptToContent = AppBarAdaptToContentComboBox.SelectedIndex == 0,
+            AppBarAdaptThreshold = (int)AppBarAdaptThresholdSlider.Value,
             WordByWordMode = WordByWordComboBox.SelectedIndex == 1,
             DisplayTtmlLyrics = DisplayTtmlLyricsComboBox.SelectedIndex == 1,
             AutostartWithWindows = AutostartWithWindowsCheckBox.IsChecked == true,
@@ -424,6 +476,20 @@ public partial class SettingsWindow : Window
         HideModeComboBox.IsEnabled = isAppBarMode;
         ShowNextLineComboBox.IsEnabled = isAppBarMode;
         CustomHeightTextBox.IsEnabled = isAppBarMode;
+        AppBarShowProgressBarComboBox.IsEnabled = isAppBarMode;
+        AppBarAdaptToContentComboBox.IsEnabled = isAppBarMode;
+        UpdateAdaptThresholdVisibility();
+    }
+
+    private void UpdateAdaptThresholdVisibility()
+    {
+        if (AppBarAdaptThresholdGrid is null || AppBarAdaptToContentComboBox is null)
+        {
+            return;
+        }
+
+        var visible = AppBarAdaptToContentComboBox.SelectedIndex == 0;
+        AppBarAdaptThresholdGrid.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private DisplayMode GetSelectedDisplayMode()

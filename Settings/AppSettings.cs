@@ -34,6 +34,12 @@ public sealed class AppSettings
 
     public bool WindowedShowAlbumArt { get; set; } = true;
 
+    public bool AppBarShowProgressBar { get; set; } = true;
+
+    public bool AppBarAdaptToContent { get; set; }
+
+    public int AppBarAdaptThreshold { get; set; } = 130;
+
     public bool WordByWordMode { get; set; }
 
     public bool WindowedWordByWordMode { get; set; }

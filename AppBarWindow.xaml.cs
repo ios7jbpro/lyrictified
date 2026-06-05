@@ -1,7 +1,10 @@
 using Microsoft.Win32;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -38,6 +41,7 @@ public partial class AppBarWindow : Window, ITrayIconHost
     private readonly DispatcherTimer _monitorWarningTimer;
     private readonly DispatcherTimer _deferredHideTimer;
     private readonly DispatcherTimer _progressTimer;
+    private readonly DispatcherTimer _adaptToContentTimer;
     private readonly AppSettingsService _appSettingsService;
     private AppBarManager? _appBarManager;
     private WindowAppearanceManager? _appearanceManager;
@@ -123,6 +127,12 @@ public partial class AppBarWindow : Window, ITrayIconHost
         };
         _progressTimer.Tick += ProgressTimer_OnTick;
 
+        _adaptToContentTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(3)
+        };
+        _adaptToContentTimer.Tick += AdaptToContentTimer_OnTick;
+
         SourceInitialized += OnSourceInitialized;
         Loaded += OnLoaded;
         Closing += OnClosing;
@@ -187,6 +197,8 @@ public partial class AppBarWindow : Window, ITrayIconHost
         _deferredHideTimer.Tick -= DeferredHideTimer_OnTick;
         _progressTimer.Stop();
         _progressTimer.Tick -= ProgressTimer_OnTick;
+        _adaptToContentTimer.Stop();
+        _adaptToContentTimer.Tick -= AdaptToContentTimer_OnTick;
         StopWordAnim();
         if (_wordAnimTimer is not null)
             _wordAnimTimer.Tick -= WordAnimTimer_Tick;
@@ -392,29 +404,14 @@ public partial class AppBarWindow : Window, ITrayIconHost
         }
 
         var isBlackout = ShouldUseBlackoutMode();
-        if (isBlackout)
-        {
-            Background = BlackoutBrush;
-            SurfaceBorder.Background = BlackoutBrush;
-            SurfaceBorder.BorderBrush = BlackoutBrush;
-        }
-        else
-        {
-            var palette = _appearanceManager.Apply();
-            Background = palette.WindowBackground;
-            SurfaceBorder.Background = palette.SurfaceBackground;
-            SurfaceBorder.BorderBrush = palette.SurfaceBorder;
-            SettingsButton.Background = palette.ButtonBackground;
-            SettingsButton.BorderBrush = palette.ButtonBorder;
-            CloseButton.Background = palette.ButtonBackground;
-            CloseButton.BorderBrush = palette.ButtonBorder;
-            SwitchMonitorButton.Background = palette.ButtonBackground;
-            SwitchMonitorButton.BorderBrush = palette.ButtonBorder;
-            ProgressBarFill.Background = palette.ProgressBarBrush;
-        }
+        var hideBorder = isBlackout || !_settings.AppBarShowProgressBar;
 
         if (isBlackout)
         {
+            StopAdaptiveBackground();
+            Background = BlackoutBrush;
+            SurfaceBorder.Background = BlackoutBrush;
+            SurfaceBorder.BorderBrush = BlackoutBrush;
             SettingsButton.Background = BlackoutBrush;
             SettingsButton.BorderBrush = BlackoutBrush;
             CloseButton.Background = BlackoutBrush;
@@ -422,10 +419,51 @@ public partial class AppBarWindow : Window, ITrayIconHost
             SwitchMonitorButton.Background = BlackoutBrush;
             SwitchMonitorButton.BorderBrush = BlackoutBrush;
         }
+        else
+        {
+            var palette = _appearanceManager.Apply();
+
+            if (_settings.AppBarAdaptToContent)
+            {
+                Background = palette.WindowBackground;
+                SettingsButton.Background = palette.ButtonBackground;
+                SettingsButton.BorderBrush = palette.ButtonBorder;
+                CloseButton.Background = palette.ButtonBackground;
+                CloseButton.BorderBrush = palette.ButtonBorder;
+                SwitchMonitorButton.Background = palette.ButtonBackground;
+                SwitchMonitorButton.BorderBrush = palette.ButtonBorder;
+                ProgressBarFill.Background = palette.ProgressBarBrush;
+
+                if (_settings.AppBarShowProgressBar)
+                {
+                    SurfaceBorder.BorderBrush = palette.SurfaceBorder;
+                }
+                else
+                {
+                    SurfaceBorder.BorderBrush = System.Windows.Media.Brushes.Transparent;
+                }
+
+                StartAdaptiveBackground();
+            }
+            else
+            {
+                StopAdaptiveBackground();
+                Background = palette.WindowBackground;
+                SurfaceBorder.Background = palette.SurfaceBackground;
+                SurfaceBorder.BorderBrush = palette.SurfaceBorder;
+                SettingsButton.Background = palette.ButtonBackground;
+                SettingsButton.BorderBrush = palette.ButtonBorder;
+                CloseButton.Background = palette.ButtonBackground;
+                CloseButton.BorderBrush = palette.ButtonBorder;
+                SwitchMonitorButton.Background = palette.ButtonBackground;
+                SwitchMonitorButton.BorderBrush = palette.ButtonBorder;
+                ProgressBarFill.Background = palette.ProgressBarBrush;
+            }
+        }
 
         AlbumArtPanel.Visibility = isBlackout ? Visibility.Collapsed : (_settings.ShowAlbumArt ? Visibility.Visible : Visibility.Collapsed);
         SongCreditPanel.Visibility = isBlackout ? Visibility.Collapsed : Visibility.Visible;
-        ProgressBarTrack.Visibility = isBlackout ? Visibility.Collapsed : Visibility.Visible;
+        ProgressBarTrack.Visibility = isBlackout || !_settings.AppBarShowProgressBar ? Visibility.Collapsed : Visibility.Visible;
         LyricsContentPanel.Visibility = isBlackout ? Visibility.Collapsed : Visibility.Visible;
         if (isBlackout)
         {
@@ -438,7 +476,7 @@ public partial class AppBarWindow : Window, ITrayIconHost
         {
             UpdateSongInfoHoverOpacity();
         }
-        AnimateBorderVisibility(isBlackout);
+        AnimateBorderVisibility(hideBorder);
         if (!_viewModel.IsLoadingLyrics)
         {
             var isActiveBrush = new SolidColorBrush(MediaColor.FromRgb(245, 247, 250));
@@ -1875,7 +1913,7 @@ public partial class AppBarWindow : Window, ITrayIconHost
 
     private void UpdateHoverEffect(bool isHovering)
     {
-        if (ShouldUseBlackoutMode())
+        if (ShouldUseBlackoutMode() || _settings.AppBarAdaptToContent)
         {
             return;
         }
@@ -1906,6 +1944,105 @@ public partial class AppBarWindow : Window, ITrayIconHost
                 EasingFunction = new QuadraticEase { EasingMode = isHovering ? EasingMode.EaseOut : EasingMode.EaseIn }
             };
             borderBrush.BeginAnimation(SolidColorBrush.ColorProperty, borderAnim);
+        }
+    }
+
+    private void StartAdaptiveBackground()
+    {
+        if (!_adaptToContentTimer.IsEnabled)
+        {
+            _adaptToContentTimer.Start();
+            UpdateAdaptiveBackground();
+        }
+    }
+
+    private void StopAdaptiveBackground()
+    {
+        _adaptToContentTimer.Stop();
+    }
+
+    private void AdaptToContentTimer_OnTick(object? sender, EventArgs e)
+    {
+        if (!IsVisible || ShouldUseBlackoutMode() || !_settings.AppBarAdaptToContent)
+        {
+            return;
+        }
+
+        UpdateAdaptiveBackground();
+    }
+
+    private void UpdateAdaptiveBackground()
+    {
+        try
+        {
+            var width = (int)Math.Ceiling(ActualWidth);
+            var height = (int)Math.Ceiling(ActualHeight);
+            if (width <= 0 || height <= 0)
+            {
+                return;
+            }
+
+            var screenPoint = PointToScreen(new System.Windows.Point(0, 0));
+            var screenX = (int)Math.Round(screenPoint.X);
+            var screenY = (int)Math.Round(screenPoint.Y);
+            var sampleHeight = Math.Min(40, height);
+
+            using var stripBitmap = new Bitmap(width, sampleHeight);
+            using (var g = Graphics.FromImage(stripBitmap))
+            {
+                g.CopyFromScreen(screenX, screenY + height, 0, 0, new System.Drawing.Size(width, sampleHeight));
+            }
+
+            var avgWidth = Math.Max(1, width / 8);
+            using var avgBitmap = new Bitmap(avgWidth, 1);
+            using (var g = Graphics.FromImage(avgBitmap))
+            {
+                g.InterpolationMode = InterpolationMode.HighQualityBilinear;
+                g.DrawImage(stripBitmap, 0, 0, avgWidth, 1);
+            }
+
+            long rSum = 0, gSum = 0, bSum = 0;
+            for (int x = 0; x < avgBitmap.Width; x++)
+            {
+                var pixel = avgBitmap.GetPixel(x, 0);
+                rSum += pixel.R;
+                gSum += pixel.G;
+                bSum += pixel.B;
+            }
+
+            var count = avgBitmap.Width;
+            var avgR = (double)rSum / count;
+            var avgG = (double)gSum / count;
+            var avgB = (double)bSum / count;
+
+            var luminance = 0.299 * avgR + 0.587 * avgG + 0.114 * avgB;
+            var luminanceThreshold = Math.Clamp(_settings.AppBarAdaptThreshold, 0, 255);
+            const double TargetLuminance = 100.0;
+
+            double factor;
+            if (luminance > luminanceThreshold)
+            {
+                factor = TargetLuminance / luminance;
+            }
+            else
+            {
+                factor = 1.0;
+            }
+
+            var finalR = (byte)Math.Clamp(avgR * factor, 0, 255);
+            var finalG = (byte)Math.Clamp(avgG * factor, 0, 255);
+            var finalB = (byte)Math.Clamp(avgB * factor, 0, 255);
+
+            var topColor = MediaColor.FromArgb(185, finalR, finalG, finalB);
+            var bottomColor = MediaColor.FromArgb(225, (byte)(finalR * 0.85), (byte)(finalG * 0.85), (byte)(finalB * 0.85));
+
+            var brush = new System.Windows.Media.LinearGradientBrush(topColor, bottomColor, 90.0);
+
+            SurfaceBorder.Background = brush;
+        }
+        catch
+        {
+            // Ignore capture failures
         }
     }
 
@@ -2125,6 +2262,9 @@ public partial class AppBarWindow : Window, ITrayIconHost
         persistedSettings.TaskbarMaximumWidth = incomingSettings.TaskbarMaximumWidth;
         persistedSettings.LyricAlignment = incomingSettings.LyricAlignment;
         persistedSettings.ShowAlbumArt = incomingSettings.ShowAlbumArt;
+        persistedSettings.AppBarShowProgressBar = incomingSettings.AppBarShowProgressBar;
+        persistedSettings.AppBarAdaptToContent = incomingSettings.AppBarAdaptToContent;
+        persistedSettings.AppBarAdaptThreshold = incomingSettings.AppBarAdaptThreshold;
         persistedSettings.WordByWordMode = incomingSettings.WordByWordMode;
         persistedSettings.DisplayTtmlLyrics = incomingSettings.DisplayTtmlLyrics;
         persistedSettings.AutostartWithWindows = incomingSettings.AutostartWithWindows;
