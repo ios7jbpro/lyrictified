@@ -32,7 +32,7 @@ public sealed class CompositeLyricsService : IDisposable
         _cacheService.Prune(maxSize);
     }
 
-    public async Task<IReadOnlyList<LyricLine>> GetTimedLyricsAsync(SongInfo song, CancellationToken cancellationToken)
+    public async Task<LyricsResult> GetTimedLyricsAsync(SongInfo song, CancellationToken cancellationToken)
     {
         Logger.Log($"GetTimedLyricsAsync: {song.Title} - {song.Artist}");
 
@@ -51,7 +51,7 @@ public sealed class CompositeLyricsService : IDisposable
             {
                 Logger.Log($"Cache hit: {cached.Count} lines");
                 _lastSearchInfo = $"{searchKey}\nResult: Cache hit — {cached.Count} lines";
-                return cached;
+                return WrapResult(cached);
             }
         }
 
@@ -68,7 +68,7 @@ public sealed class CompositeLyricsService : IDisposable
                     Logger.Log($"Lyrictified Server API: {localLyrics.Count} lines in {sw.ElapsedMilliseconds}ms");
                     _lastSearchInfo = $"{searchKey}\nSource: Lyrictified Server API — {localLyrics.Count} lines ({sw.ElapsedMilliseconds}ms) — Accepted";
                     _cacheService.Store(searchTitle, searchArtist, localLyrics, _maxCacheSize);
-                    return localLyrics;
+                    return WrapResult(localLyrics);
                 }
                 Logger.Log($"Lyrictified Server API: 0 lines in {sw.ElapsedMilliseconds}ms");
                 _lastSearchInfo = $"{searchKey}\nSource: Lyrictified Server API — No synced lyrics found ({sw.ElapsedMilliseconds}ms) — Denied";
@@ -85,7 +85,7 @@ public sealed class CompositeLyricsService : IDisposable
 
             if (!string.IsNullOrEmpty(forcedSource))
             {
-                return Array.Empty<LyricLine>();
+                return EmptyResult();
             }
         }
 
@@ -102,7 +102,7 @@ public sealed class CompositeLyricsService : IDisposable
                     Logger.Log($"lrclib: {lrclibLyrics.Count} lines in {sw.ElapsedMilliseconds}ms");
                     _lastSearchInfo = $"{searchKey}\nSource: lrclib.net — {lrclibLyrics.Count} lines ({sw.ElapsedMilliseconds}ms) — Accepted";
                     _cacheService.Store(searchTitle, searchArtist, lrclibLyrics, _maxCacheSize);
-                    return lrclibLyrics;
+                    return WrapResult(lrclibLyrics);
                 }
                 Logger.Log($"lrclib: 0 lines in {sw.ElapsedMilliseconds}ms");
                 _lastSearchInfo = $"{searchKey}\nSource: lrclib.net — No synced lyrics found ({sw.ElapsedMilliseconds}ms) — Denied";
@@ -119,7 +119,7 @@ public sealed class CompositeLyricsService : IDisposable
 
             if (!string.IsNullOrEmpty(forcedSource))
             {
-                return Array.Empty<LyricLine>();
+                return EmptyResult();
             }
         }
 
@@ -136,11 +136,11 @@ public sealed class CompositeLyricsService : IDisposable
                     Logger.Log($"syncedlyrics: {sidecarLyrics.Count} lines in {sw.ElapsedMilliseconds}ms");
                     _lastSearchInfo = $"{searchKey}\nSource: syncedlyrics — {sidecarLyrics.Count} lines ({sw.ElapsedMilliseconds}ms) — Accepted";
                     _cacheService.Store(searchTitle, searchArtist, sidecarLyrics, _maxCacheSize);
-                    return sidecarLyrics;
+                    return WrapResult(sidecarLyrics);
                 }
                 Logger.Log($"syncedlyrics: 0 lines in {sw.ElapsedMilliseconds}ms");
                 _lastSearchInfo = $"{searchKey}\nSource: syncedlyrics — No lyrics found ({sw.ElapsedMilliseconds}ms) — Denied";
-                return Array.Empty<LyricLine>();
+                return EmptyResult();
             }
             catch (OperationCanceledException)
             {
@@ -150,11 +150,23 @@ public sealed class CompositeLyricsService : IDisposable
             {
                 Logger.Log($"syncedlyrics failed: {ex.Message}");
                 _lastSearchInfo = $"{searchKey}\nSource: syncedlyrics — Error: {ex.Message} — Denied";
-                return Array.Empty<LyricLine>();
+                return EmptyResult();
             }
         }
 
-        return Array.Empty<LyricLine>();
+        return EmptyResult();
+    }
+
+    private static LyricsResult WrapResult(IReadOnlyList<LyricLine> lyrics)
+    {
+        var isTtml = lyrics.Any(line => line.IsTtml);
+        var cleaned = isTtml ? TtmlLyricsParser.CleanToLrc(lyrics) : null;
+        return new LyricsResult(lyrics, isTtml, cleaned);
+    }
+
+    private static LyricsResult EmptyResult()
+    {
+        return new LyricsResult(Array.Empty<LyricLine>(), false);
     }
 
     public void Dispose()

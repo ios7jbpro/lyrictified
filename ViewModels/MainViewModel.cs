@@ -47,6 +47,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private bool _wordByWordMode;
     private bool _forceLyricsRefresh;
     private bool _hasTtmlLyrics;
+    private IReadOnlyList<LyricLine> _cleanedLrcLyrics = Array.Empty<LyricLine>();
 
     public MainViewModel()
     {
@@ -174,6 +175,12 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         private set => SetField(ref _hasTtmlLyrics, value);
     }
 
+    public IReadOnlyList<LyricLine> CleanedLrcLyrics
+    {
+        get => _cleanedLrcLyrics;
+        private set => SetField(ref _cleanedLrcLyrics, value);
+    }
+
     public IReadOnlyList<LyricLine> Lyrics => _lyrics;
 
     public int CurrentLineIndex
@@ -225,6 +232,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         ResetPlaybackClock();
         _lyrics = Array.Empty<LyricLine>();
         HasTtmlLyrics = false;
+        CleanedLrcLyrics = Array.Empty<LyricLine>();
         ActiveLyricLines = Array.Empty<LyricLine>();
         CurrentLineIndex = -1;
         OnPropertyChanged(nameof(Lyrics));
@@ -252,6 +260,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
         _lyrics = testLyrics;
         HasTtmlLyrics = false;
+        CleanedLrcLyrics = Array.Empty<LyricLine>();
         ActiveLyricLines = Array.Empty<LyricLine>();
         CurrentLineIndex = -1;
         OnPropertyChanged(nameof(Lyrics));
@@ -305,6 +314,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 AlbumArt = null;
                 _lyrics = Array.Empty<LyricLine>();
                 HasTtmlLyrics = false;
+                CleanedLrcLyrics = Array.Empty<LyricLine>();
                 ActiveLyricLines = Array.Empty<LyricLine>();
                 CurrentLineIndex = -1;
                 OnPropertyChanged(nameof(Lyrics));
@@ -340,6 +350,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             _noLyricsShownAt = null;
             _lyrics = Array.Empty<LyricLine>();
             HasTtmlLyrics = false;
+            CleanedLrcLyrics = Array.Empty<LyricLine>();
             ActiveLyricLines = Array.Empty<LyricLine>();
             CurrentLineIndex = -1;
             OnPropertyChanged(nameof(Lyrics));
@@ -349,17 +360,18 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
             try
             {
-                var lyrics = await _lyricsService.GetTimedLyricsAsync(song, cancellationToken);
+                var result = await _lyricsService.GetTimedLyricsAsync(song, cancellationToken);
                 if (cancellationToken.IsCancellationRequested)
                 {
                     return;
                 }
 
-                _lyrics = lyrics;
-                HasTtmlLyrics = lyrics.Any(line => line.IsTtml);
+                _lyrics = result.Lines;
+                HasTtmlLyrics = result.IsTtml;
+                CleanedLrcLyrics = result.CleanedLrcLines ?? Array.Empty<LyricLine>();
                 OnPropertyChanged(nameof(Lyrics));
-                var wordsTotal = lyrics.Count(l => l.Words?.Count > 0);
-                Logger.Log($"HandleSongAsync: {lyrics.Count} lines, {wordsTotal} with word data");
+                var wordsTotal = result.Lines.Count(l => l.Words?.Count > 0);
+                Logger.Log($"HandleSongAsync: {result.Lines.Count} lines, {wordsTotal} with word data, IsTtml={result.IsTtml}");
                 if (_lyrics.Count == 0)
                 {
                     IsLoadingLyrics = false;
@@ -803,6 +815,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         ResetPlaybackClock();
         _lyrics = Array.Empty<LyricLine>();
         HasTtmlLyrics = false;
+        CleanedLrcLyrics = Array.Empty<LyricLine>();
         ActiveLyricLines = Array.Empty<LyricLine>();
         CurrentLineIndex = -1;
         OnPropertyChanged(nameof(Lyrics));
@@ -823,6 +836,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         ResetPlaybackClock();
         _lyrics = Array.Empty<LyricLine>();
         HasTtmlLyrics = false;
+        CleanedLrcLyrics = Array.Empty<LyricLine>();
         ActiveLyricLines = Array.Empty<LyricLine>();
         CurrentLineIndex = -1;
         OnPropertyChanged(nameof(Lyrics));

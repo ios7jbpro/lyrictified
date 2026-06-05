@@ -211,6 +211,19 @@ internal static class TtmlLyricsParser
         return true;
     }
 
+    public static IReadOnlyList<LyricLine> CleanToLrc(IReadOnlyList<LyricLine> ttmlLines)
+    {
+        if (ttmlLines.Count == 0)
+        {
+            return Array.Empty<LyricLine>();
+        }
+
+        return ttmlLines
+            .Where(line => !line.IsBackground)
+            .Select(line => new LyricLine(line.Timestamp, line.Text, null, null, false, false))
+            .ToArray();
+    }
+
     private static string NormalizeText(string value)
     {
         return WhitespaceRegex.Replace(value, " ").Trim();

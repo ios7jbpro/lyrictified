@@ -59,6 +59,8 @@ public partial class WindowedWindow : Window, ITrayIconHost
     private readonly Dictionary<TextBlock, bool> _ttmlSubLineActiveStates = new();
     private readonly Dictionary<TextBlock, double[]> _ttmlWordOpacityStates = new();
     private readonly HashSet<TextBlock> _ttmlWordActiveTextBlocks = new();
+    private readonly Dictionary<TextBlock, (int Distance, bool IsActiveMain)> _ttmlMainRowStates = new();
+    private int _lastTtmlCurrentRowIndex = -1;
     private SettingsWindow? _settingsWindow;
     private TrayIcon? _trayIcon;
     private WindowAppearanceManager? _appearanceManager;
@@ -195,6 +197,14 @@ public partial class WindowedWindow : Window, ITrayIconHost
                 });
                 break;
             case nameof(MainViewModel.CurrentLine):
+                OnUi(() =>
+                {
+                    if (!IsTtmlLayoutActive)
+                    {
+                        UpdateCurrentLyricHighlight();
+                    }
+                });
+                break;
             case nameof(MainViewModel.CurrentLineIndex):
                 OnUi(() =>
                 {
@@ -220,11 +230,7 @@ public partial class WindowedWindow : Window, ITrayIconHost
             case nameof(MainViewModel.NextLine):
                 OnUi(() =>
                 {
-                    if (IsTtmlLayoutActive)
-                    {
-                        RenderTtmlLyrics();
-                    }
-                    else
+                    if (!IsTtmlLayoutActive)
                     {
                         RefreshOptionalPreviewLine();
                     }
@@ -364,6 +370,8 @@ public partial class WindowedWindow : Window, ITrayIconHost
         _ttmlSubLineActiveStates.Clear();
         _ttmlWordOpacityStates.Clear();
         _ttmlWordActiveTextBlocks.Clear();
+        _ttmlMainRowStates.Clear();
+        _lastTtmlCurrentRowIndex = -1;
         TtmlLyricsListPanel.Children.Clear();
     }
 
@@ -437,10 +445,21 @@ public partial class WindowedWindow : Window, ITrayIconHost
                 targetOpacity = 1;
             }
 
-            row.MainTextBlock.Foreground = distance == 0 || isActiveMain ? ActiveLyricBrush : InactiveLyricBrush;
-            row.MainTextBlock.FontWeight = distance == 0 || isActiveMain ? FontWeights.Bold : FontWeights.SemiBold;
-            ApplyTtmlRowState(row.MainPanel, targetOpacity);
-            ApplyTtmlPrimaryLineState(row.MainTextBlock, distance == 0 || isActiveMain, animated);
+            var stateChanged = true;
+            if (_ttmlMainRowStates.TryGetValue(row.MainTextBlock, out var lastState))
+            {
+                stateChanged = lastState.Distance != distance || lastState.IsActiveMain != isActiveMain;
+            }
+
+            if (stateChanged)
+            {
+                _ttmlMainRowStates[row.MainTextBlock] = (distance, isActiveMain);
+                row.MainTextBlock.Foreground = distance == 0 || isActiveMain ? ActiveLyricBrush : InactiveLyricBrush;
+                row.MainTextBlock.FontWeight = distance == 0 || isActiveMain ? FontWeights.Bold : FontWeights.SemiBold;
+                ApplyTtmlRowState(row.MainPanel, targetOpacity);
+                ApplyTtmlPrimaryLineState(row.MainTextBlock, distance == 0 || isActiveMain, animated);
+            }
+
             AddActiveTtmlRenderedLine(row.MainLine, row.MainTextBlock, isActiveMain, activeWordBlocksThisFrame);
             if (!isActiveMain)
             {
@@ -464,7 +483,12 @@ public partial class WindowedWindow : Window, ITrayIconHost
 
         _ttmlWordActiveTextBlocks.RemoveWhere(textBlock => !activeWordBlocksThisFrame.Contains(textBlock));
 
-        CenterTtmlCurrentLyric(currentRowIndex, animated);
+        if (currentRowIndex != _lastTtmlCurrentRowIndex || !animated)
+        {
+            _lastTtmlCurrentRowIndex = currentRowIndex;
+            CenterTtmlCurrentLyric(currentRowIndex, animated);
+        }
+
         if (_ttmlRenderedLines.Any(line => line.Line.Words?.Count > 0))
         {
             StartWordAnim();
