@@ -48,6 +48,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
     private bool _forceLyricsRefresh;
     private bool _hasTtmlLyrics;
     private IReadOnlyList<LyricLine> _cleanedLrcLyrics = Array.Empty<LyricLine>();
+    private string _taskbarCurrentLine = string.Empty;
 
     public MainViewModel()
     {
@@ -181,6 +182,12 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         private set => SetField(ref _cleanedLrcLyrics, value);
     }
 
+    public string TaskbarCurrentLine
+    {
+        get => _taskbarCurrentLine;
+        private set => SetField(ref _taskbarCurrentLine, value);
+    }
+
     public IReadOnlyList<LyricLine> Lyrics => _lyrics;
 
     public int CurrentLineIndex
@@ -240,6 +247,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         NoTimedLyricsFound = true;
         _noLyricsShownAt = DateTime.UtcNow;
         CurrentLine = "Lyrics not found";
+        TaskbarCurrentLine = "Lyrics not found";
         NextLine = string.Empty;
         StatusText = $"No synced lyrics found for {_currentSong.Artist}";
         SetNextRefreshInterval(IdleRefreshInterval);
@@ -308,6 +316,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 WindowTitle = "Lyrictified";
                 StatusText = "Waiting for a song...";
                 CurrentLine = "Play something to show lyrics here.";
+                TaskbarCurrentLine = "Play something to show lyrics here.";
                 NextLine = string.Empty;
                 SongTitle = string.Empty;
                 SongArtist = string.Empty;
@@ -344,6 +353,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
             StatusText = song.IsPlaying ? $"{song.Artist} is playing" : $"{song.Artist} is paused";
             IsPlaybackPaused = !song.IsPlaying;
             CurrentLine = "Loading synced lyrics...";
+            TaskbarCurrentLine = "Loading synced lyrics...";
             NextLine = string.Empty;
             IsLoadingLyrics = true;
             NoTimedLyricsFound = false;
@@ -511,6 +521,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                 _noLyricsShownAt ??= DateTime.UtcNow;
                 var elapsed = DateTime.UtcNow - _noLyricsShownAt.Value;
                 CurrentLine = elapsed.TotalSeconds < 5 ? "Lyrics not found" : _currentSong.Title;
+                TaskbarCurrentLine = CurrentLine;
                 NextLine = string.Empty;
                 StatusText = _currentSong.IsPlaying
                     ? $"No synced lyrics found for {_currentSong.Artist}"
@@ -598,6 +609,23 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
                     }
                 }
 
+                if (_cleanedLrcLyrics.Count > 0)
+                {
+                    var cleanedIndex = FindCurrentLyricIndex(_cleanedLrcLyrics, position.Value);
+                    if (cleanedIndex >= 0)
+                    {
+                        TaskbarCurrentLine = _cleanedLrcLyrics[cleanedIndex].Text;
+                    }
+                    else
+                    {
+                        TaskbarCurrentLine = _cleanedLrcLyrics[0].Text;
+                    }
+                }
+                else
+                {
+                    TaskbarCurrentLine = CurrentLine;
+                }
+
                 var nextIndex = currentIndex >= 0 ? currentIndex + 1 : 1;
                 if (nextIndex >= 0 && nextIndex < _lyrics.Count)
                 {
@@ -662,14 +690,19 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
     private int FindCurrentLyricIndex(TimeSpan position)
     {
+        return FindCurrentLyricIndex(_lyrics, position);
+    }
+
+    private static int FindCurrentLyricIndex(IReadOnlyList<LyricLine> lyrics, TimeSpan position)
+    {
         var low = 0;
-        var high = _lyrics.Count - 1;
+        var high = lyrics.Count - 1;
         var result = -1;
 
         while (low <= high)
         {
             var mid = low + ((high - low) / 2);
-            if (_lyrics[mid].Timestamp <= position)
+            if (lyrics[mid].Timestamp <= position)
             {
                 result = mid;
                 low = mid + 1;
@@ -827,6 +860,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         WindowTitle = "Lyrictified";
         StatusText = statusText;
         CurrentLine = "Play something to show lyrics here.";
+        TaskbarCurrentLine = "Play something to show lyrics here.";
         NextLine = string.Empty;
         SetNextRefreshInterval(IdleRefreshInterval);
     }
@@ -847,6 +881,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         WindowTitle = song?.DisplayTitle ?? "Lyrictified";
         StatusText = statusText;
         CurrentLine = song is not null ? "Lyrics not found" : "Play something to show lyrics here.";
+        TaskbarCurrentLine = song is not null ? "Lyrics not found" : "Play something to show lyrics here.";
         NextLine = string.Empty;
         SetNextRefreshInterval(IdleRefreshInterval);
     }

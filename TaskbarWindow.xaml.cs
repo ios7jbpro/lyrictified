@@ -94,8 +94,8 @@ public partial class TaskbarWindow : Window, ITrayIconHost
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
-        IncomingLyricTextBlock.Text = _viewModel.CurrentLine;
-        _displayedLyricText = _viewModel.CurrentLine;
+        IncomingLyricTextBlock.Text = _viewModel.TaskbarCurrentLine;
+        _displayedLyricText = _viewModel.TaskbarCurrentLine;
         ApplyLoadingState(immediate: true);
         EnsureTopmostOrder();
         await _viewModel.InitializeAsync();
@@ -169,15 +169,15 @@ public partial class TaskbarWindow : Window, ITrayIconHost
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(MainViewModel.CurrentLine))
+        if (e.PropertyName == nameof(MainViewModel.TaskbarCurrentLine))
         {
             if (Dispatcher.CheckAccess())
             {
-                HandleCurrentLineChanged(_viewModel.CurrentLine);
+                HandleCurrentLineChanged(_viewModel.TaskbarCurrentLine);
             }
             else
             {
-                _ = Dispatcher.InvokeAsync(() => HandleCurrentLineChanged(_viewModel.CurrentLine));
+                _ = Dispatcher.InvokeAsync(() => HandleCurrentLineChanged(_viewModel.TaskbarCurrentLine));
             }
         }
 
