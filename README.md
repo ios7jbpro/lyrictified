@@ -8,10 +8,7 @@ A Windows desktop app that displays real-time synced lyrics for whatever music i
 
 - Detects the currently playing song from any Windows media app via the SMTC API
 - Fetches time-synced lyrics from [lrclib.net](https://lrclib.net) with a fallback to the [`syncedlyrics`](https://github.com/moehmeni/syncedlyrics) Python CLI (supports NetEase, Megalobiz, and more)
-- Three display modes:
-  - **AppBar** - a full-width bar attached to the top of a monitor
-  - **Windowed** - a window that displays all lyrics, apple music-like
-  - **Taskbar** - a compact floating window positioned above the taskbar
+- Three display modes: **AppBar**, **Taskbar**, and **Island**
 - Album artwork display with song title, artist, and timestamp
 - Smooth progress bar showing current playback position
 - Multi-monitor support with per-mode monitor selection
@@ -21,6 +18,26 @@ A Windows desktop app that displays real-time synced lyrics for whatever music i
 - Graceful no-lyrics state (fades in song title instead of error animation)
 - Per-app ignore lists to exclude specific media sources
 - Settings persisted to `%LOCALAPPDATA%\Lyrictified\settings.json`
+
+## Display Modes
+
+![App Bar Mode](appbar.png)
+
+### App Bar Mode
+
+A full-width bar that attaches to the top of your monitor. It shows the current lyric line, album artwork, song info, and a smooth progress bar — all without getting in the way of your workflow.
+
+![Taskbar Mode](taskbar.png)
+
+### Taskbar Mode
+
+A compact floating window that sits just above the Windows taskbar. It keeps lyrics always visible while you work, play, or browse, with smart clamping and multi-monitor support.
+
+![Island Mode](island.png)
+
+### Island Mode
+
+A lightweight, click-through lyrics overlay that floats on top of your screen. It auto-sizes to fit each lyric line, fades on hover, and stays out of your way while keeping you in sync with the music.
 
 ## Requirements
 
