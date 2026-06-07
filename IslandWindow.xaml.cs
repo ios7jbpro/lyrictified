@@ -803,6 +803,16 @@ public partial class IslandWindow : Window, ITrayIconHost
         return completion.Task;
     }
 
+    private double GetExtraIconSpace()
+    {
+        var extra = 0.0;
+        if (LoadingIcon.Visibility == Visibility.Visible)
+            extra += LoadingSpacerTargetWidth;
+        if (PauseIcon.Visibility == Visibility.Visible)
+            extra += PauseSpacerTargetWidth;
+        return extra;
+    }
+
     private double MeasureIslandWidth(string text)
     {
         var availableWidth = Math.Max(
@@ -830,7 +840,7 @@ public partial class IslandWindow : Window, ITrayIconHost
             WpfBrushes.White,
             pixelsPerDip);
 
-        var desiredWidth = formattedText.WidthIncludingTrailingWhitespace + IslandDisplayMode.BackgroundHorizontalPadding;
+        var desiredWidth = formattedText.WidthIncludingTrailingWhitespace + IslandDisplayMode.BackgroundHorizontalPadding + GetExtraIconSpace();
         return Math.Clamp(desiredWidth, IslandDisplayMode.MinimumBackgroundWidth, availableWidth);
     }
 
@@ -874,11 +884,13 @@ public partial class IslandWindow : Window, ITrayIconHost
             LoadingIcon.BeginAnimation(OpacityProperty, iconFade);
             LoadingSpacer.BeginAnimation(WidthProperty, spacerAnimation);
             LoadingSpinnerRotateTransform.BeginAnimation(RotateTransform.AngleProperty, spinnerRotation);
+            UpdateIslandWidth(_displayedLyricText, false);
             return;
         }
 
         LyricStage.Opacity = 1;
         ApplyAppearance();
+        UpdateIslandWidth(_displayedLyricText, false);
 
         var iconFadeOut = new DoubleAnimation
         {
@@ -958,6 +970,7 @@ public partial class IslandWindow : Window, ITrayIconHost
 
         PauseSpacer.BeginAnimation(WidthProperty, spacerAnimation);
         PauseIcon.BeginAnimation(OpacityProperty, iconAnimation);
+        UpdateIslandWidth(_displayedLyricText, false);
         _isPauseVisualActive = isPaused;
     }
 
