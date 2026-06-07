@@ -36,6 +36,8 @@ public sealed class AppSettings
 
     public double IslandCornerRadius { get; set; } = 14;
 
+    public bool IslandHideInFullscreen { get; set; }
+
     public LyricAlignment LyricAlignment { get; set; } = LyricAlignment.Center;
 
     public LyricAlignment WindowedLyricAlignment { get; set; } = LyricAlignment.Center;

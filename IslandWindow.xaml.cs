@@ -55,8 +55,10 @@ public partial class IslandWindow : Window, ITrayIconHost
     private bool _isIslandContentVisible = true;
     private bool _isPauseVisualActive;
     private bool _isNoLyricsAnimationActive;
+    private bool _isFullscreenHidden;
     private SettingsWindow? _settingsWindow;
     private TrayIcon? _trayIcon;
+    private readonly DispatcherTimer _fullscreenTimer;
     private const double PauseSpacerTargetWidth = 24;
     private const double LoadingSpacerTargetWidth = 24;
     private static readonly MediaColor RedFlashColor = MediaColor.FromArgb(230, 200, 40, 40);
@@ -77,6 +79,8 @@ public partial class IslandWindow : Window, ITrayIconHost
         _monitorWarningTimer.Tick += MonitorWarningTimer_OnTick;
         _hoverTimer = new DispatcherTimer { Interval = HoverPollInterval };
         _hoverTimer.Tick += HoverTimer_OnTick;
+        _fullscreenTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+        _fullscreenTimer.Tick += FullscreenTimer_OnTick;
 
         SourceInitialized += OnSourceInitialized;
         Loaded += OnLoaded;
@@ -105,6 +109,7 @@ public partial class IslandWindow : Window, ITrayIconHost
         ApplyPlaybackStateVisual(immediate: true);
         EnsureTopmostOrder();
         _hoverTimer.Start();
+        _fullscreenTimer.Start();
         WorkspaceVisibilityManager.PinToAllWorkspaces(this);
         _trayIcon = new TrayIcon(this);
 
@@ -130,6 +135,8 @@ public partial class IslandWindow : Window, ITrayIconHost
         _monitorWarningTimer.Tick -= MonitorWarningTimer_OnTick;
         _hoverTimer.Stop();
         _hoverTimer.Tick -= HoverTimer_OnTick;
+        _fullscreenTimer.Stop();
+        _fullscreenTimer.Tick -= FullscreenTimer_OnTick;
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
         SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
         SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
@@ -190,7 +197,7 @@ public partial class IslandWindow : Window, ITrayIconHost
 
     private void AnimateIslandHoverOpacity(bool isHovered)
     {
-        if (_isNoLyricsAnimationActive)
+        if (_isNoLyricsAnimationActive || _isFullscreenHidden)
         {
             return;
         }
@@ -207,6 +214,107 @@ public partial class IslandWindow : Window, ITrayIconHost
         };
 
         IslandLayer.BeginAnimation(OpacityProperty, animation);
+    }
+
+    private void FullscreenTimer_OnTick(object? sender, EventArgs e)
+    {
+        if (!_settings.IslandHideInFullscreen)
+        {
+            if (_isFullscreenHidden)
+            {
+                ShowFromFullscreenHide();
+            }
+
+            return;
+        }
+
+        var isFullscreen = IsForegroundWindowFullscreenOnIslandMonitor();
+        if (isFullscreen && !_isFullscreenHidden)
+        {
+            HideForFullscreen();
+        }
+        else if (!isFullscreen && _isFullscreenHidden)
+        {
+            ShowFromFullscreenHide();
+        }
+    }
+
+    private void HideForFullscreen()
+    {
+        _isFullscreenHidden = true;
+        IslandLayer.BeginAnimation(OpacityProperty, null);
+        var animation = new DoubleAnimation
+        {
+            To = 0,
+            Duration = TimeSpan.FromMilliseconds(300),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
+        };
+        IslandLayer.BeginAnimation(OpacityProperty, animation);
+    }
+
+    private void ShowFromFullscreenHide()
+    {
+        _isFullscreenHidden = false;
+        IslandLayer.BeginAnimation(OpacityProperty, null);
+        var targetOpacity = !_isIslandContentVisible ? 0 : (_isPointerOverIsland ? HoverFadeOpacity : 1);
+        var animation = new DoubleAnimation
+        {
+            To = targetOpacity,
+            Duration = TimeSpan.FromMilliseconds(300),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+        };
+        IslandLayer.BeginAnimation(OpacityProperty, animation);
+    }
+
+    private bool IsForegroundWindowFullscreenOnIslandMonitor()
+    {
+        if (_appBarManager is null || _appBarManager.Monitors.Count == 0)
+        {
+            return false;
+        }
+
+        var foregroundHwnd = GetForegroundWindow();
+        if (foregroundHwnd == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        if (foregroundHwnd == _hwndSource?.Handle)
+        {
+            return false;
+        }
+
+        if (!GetWindowRect(foregroundHwnd, out var windowRect))
+        {
+            return false;
+        }
+
+        var monitor = _appBarManager.Monitors[Math.Clamp(_appBarManager.CurrentMonitorIndex, 0, _appBarManager.Monitors.Count - 1)];
+        var bounds = monitor.Bounds;
+        var monitorWidth = bounds.right - bounds.left;
+        var monitorHeight = bounds.bottom - bounds.top;
+        var windowWidth = windowRect.right - windowRect.left;
+        var windowHeight = windowRect.bottom - windowRect.top;
+
+        // Check if the window covers the entire monitor
+        if (windowWidth < monitorWidth - 8 || windowHeight < monitorHeight - 8)
+        {
+            return false;
+        }
+
+        if (Math.Abs(windowRect.left - bounds.left) > 8 || Math.Abs(windowRect.top - bounds.top) > 8)
+        {
+            return false;
+        }
+
+        // Also verify it's not a desktop window
+        var desktopHwnd = GetShellWindow();
+        if (foregroundHwnd == desktopHwnd)
+        {
+            return false;
+        }
+
+        return true;
     }
 
     private void OnUserPreferenceChanged(object sender, UserPreferenceChangedEventArgs e)
@@ -564,6 +672,11 @@ public partial class IslandWindow : Window, ITrayIconHost
     private void UpdateIslandContentVisibility(string text)
     {
         _isIslandContentVisible = !string.IsNullOrWhiteSpace(text);
+        if (_isFullscreenHidden)
+        {
+            return;
+        }
+
         IslandLayer.BeginAnimation(OpacityProperty, null);
         IslandLayer.Opacity = _isIslandContentVisible
             ? (_isPointerOverIsland ? HoverFadeOpacity : 1)
@@ -572,6 +685,12 @@ public partial class IslandWindow : Window, ITrayIconHost
 
     private Task SetIslandContentVisibleAsync(bool isVisible)
     {
+        if (_isFullscreenHidden && isVisible)
+        {
+            _isIslandContentVisible = isVisible;
+            return Task.CompletedTask;
+        }
+
         var targetOpacity = isVisible
             ? (_isPointerOverIsland ? HoverFadeOpacity : 1)
             : 0;
@@ -871,6 +990,10 @@ public partial class IslandWindow : Window, ITrayIconHost
         {
             StartNoLyricsAnimation();
         }
+        else if (!_viewModel.NoTimedLyricsFound && _isNoLyricsAnimationActive)
+        {
+            CancelNoLyricsAnimation();
+        }
     }
 
     private void StartNoLyricsAnimation()
@@ -912,21 +1035,13 @@ public partial class IslandWindow : Window, ITrayIconHost
 
         // 3. Fade out the entire pill after 2 seconds
         IslandLayer.BeginAnimation(OpacityProperty, null);
+        IslandLayer.Opacity = 1;
         var fadeOut = new DoubleAnimation
         {
             To = 0,
             BeginTime = TimeSpan.FromSeconds(2),
             Duration = TimeSpan.FromMilliseconds(400),
             EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
-        };
-        fadeOut.Completed += (_, _) =>
-        {
-            if (!_isNoLyricsAnimationActive)
-            {
-                return;
-            }
-
-            IslandLayer.Opacity = 0;
         };
         IslandLayer.BeginAnimation(OpacityProperty, fadeOut);
     }
@@ -948,6 +1063,7 @@ public partial class IslandWindow : Window, ITrayIconHost
         // Restore visual state
         IslandRedOverlay.Opacity = 0;
         IslandLayerVibrateTransform.X = 0;
+        IslandLayer.Opacity = 1;
 
         // Fade the pill back in
         var fadeIn = new DoubleAnimation
@@ -1075,6 +1191,7 @@ public partial class IslandWindow : Window, ITrayIconHost
         PositionWindow();
         RefreshSettingsWindowOptions();
         ApplyAppearance();
+        FullscreenTimer_OnTick(null, EventArgs.Empty);
     }
 
     private AppSettings MergeSettings(AppSettings incomingSettings)
@@ -1094,6 +1211,7 @@ public partial class IslandWindow : Window, ITrayIconHost
         persistedSettings.IslandScale = incomingSettings.IslandScale;
         persistedSettings.IslandContainerHeight = incomingSettings.IslandContainerHeight;
         persistedSettings.IslandCornerRadius = incomingSettings.IslandCornerRadius;
+        persistedSettings.IslandHideInFullscreen = incomingSettings.IslandHideInFullscreen;
         persistedSettings.LyricAlignment = incomingSettings.LyricAlignment;
         persistedSettings.ShowAlbumArt = incomingSettings.ShowAlbumArt;
         persistedSettings.WordByWordMode = incomingSettings.WordByWordMode;
@@ -1293,6 +1411,24 @@ public partial class IslandWindow : Window, ITrayIconHost
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool UnhookWinEvent(IntPtr hWinEventHook);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool GetWindowRect(IntPtr hWnd, out RectNative lpRect);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr GetShellWindow();
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RectNative
+    {
+        public int left;
+        public int top;
+        public int right;
+        public int bottom;
+    }
 
     private delegate void WinEventDelegate(
         IntPtr hWinEventHook,

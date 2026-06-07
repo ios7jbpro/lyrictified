@@ -957,6 +957,28 @@
                         </StackPanel>
                     </Border>
 
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="Behavior" Style="{StaticResource SectionTitleStyle}" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="Hide in fullscreen" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" FontWeight="Medium" />
+                                    <TextBlock Text="Automatically hide the Island when a fullscreen window is active on the same monitor." Style="{StaticResource HintTextStyle}" />
+                                </StackPanel>
+                                <CheckBox x:Name="IslandHideInFullscreenCheckBox"
+                                          Grid.Column="1"
+                                          Style="{StaticResource ToggleSwitchStyle}"
+                                          VerticalAlignment="Center"
+                                          Checked="IslandHideInFullscreenCheckBox_OnChanged"
+                                          Unchecked="IslandHideInFullscreenCheckBox_OnChanged" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
                 </StackPanel>
             </ScrollViewer>
         </TabItem>

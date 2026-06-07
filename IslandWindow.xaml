@@ -52,7 +52,7 @@
                     Width="160"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Stretch"
-                    Background="#E6000000"
+                    Background="#FF000000"
                     CornerRadius="14"
                     RenderTransformOrigin="0.5,0.5">
                 <Border.RenderTransform>
@@ -63,7 +63,7 @@
                 </Border.RenderTransform>
                 <Border x:Name="IslandRedOverlay"
                         Background="#E6C83030"
-                        CornerRadius="14"
+                        CornerRadius="{Binding CornerRadius, ElementName=IslandBackground}"
                         Opacity="0"
                         IsHitTestVisible="False"
                         HorizontalAlignment="Stretch"

@@ -120,6 +120,7 @@ public partial class SettingsWindow : Window
             IslandScaleTextBox.Text = (GetEffectiveIslandScale(settings.IslandScale) * 100).ToString("F0");
             IslandContainerHeightTextBox.Text = settings.IslandContainerHeight?.ToString() ?? string.Empty;
             IslandCornerRadiusTextBox.Text = GetEffectiveIslandCornerRadius(settings.IslandCornerRadius).ToString("F0");
+            IslandHideInFullscreenCheckBox.IsChecked = settings.IslandHideInFullscreen;
             DebugForceLyricsSourceComboBox.SelectedIndex = settings.DebugForceLyricsSource switch
             {
                 "Local" => 1,
@@ -326,6 +327,11 @@ public partial class SettingsWindow : Window
         RaiseTextSettingsChanged();
     }
 
+    private void IslandHideInFullscreenCheckBox_OnChanged(object sender, RoutedEventArgs e)
+    {
+        RaiseSettingsChanged();
+    }
+
     private void AutostartWithWindowsCheckBox_OnChanged(object sender, RoutedEventArgs e)
     {
         RaiseSettingsChanged();
@@ -358,6 +364,7 @@ public partial class SettingsWindow : Window
             IslandScale = ParseIslandScale(),
             IslandContainerHeight = ParseIslandContainerHeight(),
             IslandCornerRadius = ParseIslandCornerRadius(),
+            IslandHideInFullscreen = IslandHideInFullscreenCheckBox.IsChecked == true,
             LyricAlignment = (LyricAlignmentComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() switch
             {
                 "Left" => LyricAlignment.Left,
