@@ -71,3 +71,8 @@ Built with help from:
 - [Claude Code](https://code.claude.com/docs/en/overview)
 - [Cursor](https://www.cursor.com/)
 - [cotunjr](https://github.com/cotunjr)
+
+
+## Disclaimer
+
+This project is almost entirely AI generated, including this README and some of the images. Yes, this is intentional, since this project is meant to be a completely LLM generated.
