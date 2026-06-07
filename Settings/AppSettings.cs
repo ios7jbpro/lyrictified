@@ -14,6 +14,8 @@ public sealed class AppSettings
 
     public string? TaskbarPreferredMonitorDeviceName { get; set; }
 
+    public string? IslandPreferredMonitorDeviceName { get; set; }
+
     public bool ShowNextLine { get; set; }
 
     public bool WindowedShowNextLine { get; set; }
@@ -25,6 +27,8 @@ public sealed class AppSettings
     public double? WindowedHeight { get; set; }
 
     public int? TaskbarMaximumWidth { get; set; }
+
+    public int? IslandMaximumWidth { get; set; }
 
     public LyricAlignment LyricAlignment { get; set; } = LyricAlignment.Center;
 

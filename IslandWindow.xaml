@@ -1,0 +1,119 @@
+<Window x:Class="Lyrictified.IslandWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="{Binding WindowTitle}"
+        Width="640"
+        Height="48"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        ResizeMode="NoResize"
+        ShowInTaskbar="True"
+        Background="Transparent"
+        Topmost="True"
+        MouseLeftButtonDown="Window_OnMouseLeftButtonDown"
+        MouseRightButtonUp="Window_OnMouseRightButtonUp">
+    <Grid x:Name="RootGrid"
+          Margin="12,0,12,0"
+          Background="#00000000">
+        <Border x:Name="MonitorWarningBanner"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Top"
+                Margin="0,2,0,0"
+                Padding="10,4"
+                Background="#D9A33A1D"
+                BorderBrush="#F0D38B"
+                BorderThickness="1"
+                CornerRadius="8"
+                Opacity="0"
+                Visibility="Collapsed"
+                IsHitTestVisible="False"
+                Panel.ZIndex="5">
+            <TextBlock x:Name="MonitorWarningTextBlock"
+                       Foreground="#FFF3D0"
+                       FontSize="12"
+                       FontWeight="SemiBold" />
+        </Border>
+
+        <Grid x:Name="IslandLayer"
+              Height="40"
+              HorizontalAlignment="Center"
+              VerticalAlignment="Top"
+              ClipToBounds="False">
+            <Border x:Name="IslandBackground"
+                    Width="160"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Stretch"
+                    Background="#E6000000"
+                    CornerRadius="14"
+                    RenderTransformOrigin="0.5,0.5">
+                <Border.RenderTransform>
+                    <TransformGroup>
+                        <ScaleTransform x:Name="IslandBackgroundScaleTransform" ScaleX="1" />
+                        <TranslateTransform x:Name="IslandBackgroundTranslateTransform" X="0" />
+                    </TransformGroup>
+                </Border.RenderTransform>
+            </Border>
+            <Grid x:Name="IslandTextClip"
+                  Width="160"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Stretch"
+                  ClipToBounds="True">
+                <Grid x:Name="LyricStage"
+                      Height="24"
+                      Margin="18,0"
+                      VerticalAlignment="Center"
+                      ClipToBounds="False">
+                    <TextBlock x:Name="OutgoingLyricTextBlock"
+                               Foreground="#F5F7FA"
+                               FontSize="20"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center"
+                               HorizontalAlignment="Stretch"
+                               TextAlignment="Center"
+                               TextTrimming="CharacterEllipsis"
+                               Opacity="0">
+                        <TextBlock.RenderTransform>
+                            <TranslateTransform x:Name="OutgoingLyricTranslateTransform" Y="0" />
+                        </TextBlock.RenderTransform>
+                    </TextBlock>
+                    <TextBlock x:Name="IncomingLyricTextBlock"
+                               Foreground="#F5F7FA"
+                               FontSize="20"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center"
+                               HorizontalAlignment="Stretch"
+                               TextAlignment="Center"
+                               TextTrimming="CharacterEllipsis"
+                               Opacity="1">
+                        <TextBlock.RenderTransform>
+                            <TranslateTransform x:Name="IncomingLyricTranslateTransform" Y="0" />
+                        </TextBlock.RenderTransform>
+                    </TextBlock>
+                </Grid>
+            </Grid>
+            <Grid x:Name="LoadingOverlay"
+                  VerticalAlignment="Center"
+                  HorizontalAlignment="Right"
+                  Margin="0,0,12,0"
+                  Visibility="Collapsed"
+                  IsHitTestVisible="False"
+                  Panel.ZIndex="3">
+                <Image x:Name="LoadingSpinnerImage"
+                       Width="20"
+                       Height="20"
+                       Source="Assets/loading.png"
+                       Stretch="Uniform"
+                       Opacity="0"
+                       RenderTransformOrigin="0.5,0.5">
+                    <Image.RenderTransform>
+                        <RotateTransform x:Name="LoadingSpinnerRotateTransform"
+                                         Angle="0" />
+                    </Image.RenderTransform>
+                </Image>
+            </Grid>
+        </Grid>
+    </Grid>
+</Window>

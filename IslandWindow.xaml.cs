@@ -1,4 +1,5 @@
 using Microsoft.Win32;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.ComponentModel;
 using System.IO;
@@ -20,7 +21,7 @@ using WpfApplication = System.Windows.Application;
 
 namespace Lyrictified;
 
-public partial class TaskbarWindow : Window, ITrayIconHost
+public partial class IslandWindow : Window, ITrayIconHost
 {
     private static readonly TimeSpan MonitorWarningDuration = TimeSpan.FromSeconds(4);
     private static WpfBrush GetLoadingTextBrush()
@@ -43,10 +44,12 @@ public partial class TaskbarWindow : Window, ITrayIconHost
     private AppSettings _settings;
     private string _displayedLyricText = string.Empty;
     private string? _lastMonitorWarningKey;
+    private double _islandWidth = 160;
+    private int _lyricTransitionVersion;
     private SettingsWindow? _settingsWindow;
     private TrayIcon? _trayIcon;
 
-    public TaskbarWindow()
+    public IslandWindow()
     {
         InitializeComponent();
         _appSettingsService = new AppSettingsService();
@@ -80,7 +83,7 @@ public partial class TaskbarWindow : Window, ITrayIconHost
             0,
             0,
             WINEVENT_OUTOFCONTEXT);
-        _appBarManager = new AppBarManager(this, TaskbarDisplayMode.WindowHeight);
+        _appBarManager = new AppBarManager(this, IslandDisplayMode.WindowHeight);
         ApplyMonitorSetting();
         PositionWindow();
         ApplyAppearance();
@@ -96,6 +99,7 @@ public partial class TaskbarWindow : Window, ITrayIconHost
     {
         IncomingLyricTextBlock.Text = _viewModel.TaskbarCurrentLine;
         _displayedLyricText = _viewModel.TaskbarCurrentLine;
+        UpdateIslandWidth(_displayedLyricText, immediate: true);
         ApplyLoadingState(immediate: true);
         EnsureTopmostOrder();
         await _viewModel.InitializeAsync();
@@ -219,10 +223,7 @@ public partial class TaskbarWindow : Window, ITrayIconHost
             : new SolidColorBrush(MediaColor.FromArgb(0, 0, 0, 0));
         if (!_viewModel.IsLoadingLyrics)
         {
-            var lyricColor = IsWindowsLightTheme()
-                ? MediaColor.FromRgb(26, 26, 26)
-                : MediaColor.FromRgb(245, 247, 250);
-            var lyricBrush = new SolidColorBrush(lyricColor);
+            var lyricBrush = new SolidColorBrush(MediaColor.FromRgb(245, 247, 250));
             IncomingLyricTextBlock.Foreground = lyricBrush;
             OutgoingLyricTextBlock.Foreground = lyricBrush;
         }
@@ -235,13 +236,13 @@ public partial class TaskbarWindow : Window, ITrayIconHost
             return;
         }
 
-        var preferredMonitorDeviceName = _settings.TaskbarPreferredMonitorDeviceName ?? _settings.PreferredMonitorDeviceName;
+        var preferredMonitorDeviceName = _settings.IslandPreferredMonitorDeviceName ?? _settings.PreferredMonitorDeviceName;
 
         if (string.IsNullOrWhiteSpace(preferredMonitorDeviceName))
         {
             if (_appBarManager.CurrentMonitorDeviceName is not null)
             {
-                _settings.TaskbarPreferredMonitorDeviceName = _appBarManager.CurrentMonitorDeviceName;
+                _settings.IslandPreferredMonitorDeviceName = _appBarManager.CurrentMonitorDeviceName;
                 _appSettingsService.Save(_settings);
             }
 
@@ -275,72 +276,190 @@ public partial class TaskbarWindow : Window, ITrayIconHost
         }
 
         var monitor = _appBarManager.Monitors[Math.Clamp(_appBarManager.CurrentMonitorIndex, 0, _appBarManager.Monitors.Count - 1)];
-        var bounds = TaskbarDisplayMode.GetWindowBounds(monitor, _settings.TaskbarMaximumWidth);
+        var bounds = IslandDisplayMode.GetWindowBounds(monitor, _settings.IslandMaximumWidth);
         Left = bounds.Left;
         Top = bounds.Top;
         Width = bounds.Width;
         Height = bounds.Height;
+        UpdateIslandWidth(_displayedLyricText, immediate: true);
         EnsureTopmostOrder();
     }
 
-    private void HandleCurrentLineChanged(string newCurrentLine)
+    private async void HandleCurrentLineChanged(string newCurrentLine)
     {
         if (string.Equals(_displayedLyricText, newCurrentLine, StringComparison.Ordinal))
         {
             return;
         }
 
+        var transitionVersion = ++_lyricTransitionVersion;
+
         OutgoingLyricTextBlock.BeginAnimation(OpacityProperty, null);
         IncomingLyricTextBlock.BeginAnimation(OpacityProperty, null);
         OutgoingLyricTranslateTransform.BeginAnimation(TranslateTransform.YProperty, null);
         IncomingLyricTranslateTransform.BeginAnimation(TranslateTransform.YProperty, null);
+        IslandBackground.BeginAnimation(WidthProperty, null);
+        IslandTextClip.BeginAnimation(WidthProperty, null);
+        IslandBackgroundScaleTransform.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        IslandBackgroundTranslateTransform.BeginAnimation(TranslateTransform.XProperty, null);
 
         OutgoingLyricTextBlock.Text = _displayedLyricText;
         OutgoingLyricTextBlock.Opacity = string.IsNullOrWhiteSpace(_displayedLyricText) ? 0 : 1;
         OutgoingLyricTranslateTransform.Y = 0;
 
+        IncomingLyricTextBlock.Text = string.Empty;
+        IncomingLyricTextBlock.Opacity = 0;
+        IncomingLyricTranslateTransform.Y = 0;
+
+        if (!string.IsNullOrWhiteSpace(_displayedLyricText))
+        {
+            await AnimateDoubleAsync(
+                OutgoingLyricTextBlock,
+                OpacityProperty,
+                new DoubleAnimation
+                {
+                    To = 0,
+                    Duration = TimeSpan.FromMilliseconds(160),
+                    EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
+                });
+
+            if (transitionVersion != _lyricTransitionVersion)
+            {
+                return;
+            }
+        }
+
+        OutgoingLyricTextBlock.BeginAnimation(OpacityProperty, null);
+        OutgoingLyricTextBlock.Opacity = 0;
+        OutgoingLyricTextBlock.Text = string.Empty;
+
+        await AnimateIslandWidthAsync(newCurrentLine);
+
+        if (transitionVersion != _lyricTransitionVersion)
+        {
+            return;
+        }
+
         IncomingLyricTextBlock.Text = newCurrentLine;
         IncomingLyricTextBlock.Opacity = 0;
-        IncomingLyricTranslateTransform.Y = TaskbarDisplayMode.GetSingleLineStartY();
 
-        var fadeOut = new DoubleAnimation
+        await AnimateDoubleAsync(
+            IncomingLyricTextBlock,
+            OpacityProperty,
+            new DoubleAnimation
+            {
+                From = 0,
+                To = 1,
+                Duration = TimeSpan.FromMilliseconds(190),
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+            });
+
+        if (transitionVersion != _lyricTransitionVersion)
         {
-            To = 0,
-            Duration = TimeSpan.FromMilliseconds(120),
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
-        };
-
-        var slideOut = new DoubleAnimation
-        {
-            To = -6,
-            Duration = TimeSpan.FromMilliseconds(120),
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
-        };
-
-        var fadeIn = new DoubleAnimation
-        {
-            From = 0,
-            To = 1,
-            BeginTime = TimeSpan.FromMilliseconds(40),
-            Duration = TimeSpan.FromMilliseconds(180),
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
-        };
-
-        var slideIn = new DoubleAnimation
-        {
-            From = TaskbarDisplayMode.GetSingleLineStartY(),
-            To = 0,
-            BeginTime = TimeSpan.FromMilliseconds(40),
-            Duration = TimeSpan.FromMilliseconds(190),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-        };
-
-        OutgoingLyricTextBlock.BeginAnimation(OpacityProperty, fadeOut);
-        OutgoingLyricTranslateTransform.BeginAnimation(TranslateTransform.YProperty, slideOut);
-        IncomingLyricTextBlock.BeginAnimation(OpacityProperty, fadeIn);
-        IncomingLyricTranslateTransform.BeginAnimation(TranslateTransform.YProperty, slideIn);
+            return;
+        }
 
         _displayedLyricText = newCurrentLine;
+    }
+
+    private void UpdateIslandWidth(string text, bool immediate)
+    {
+        var width = MeasureIslandWidth(text);
+        _islandWidth = width;
+
+        IslandBackground.BeginAnimation(WidthProperty, null);
+        IslandTextClip.BeginAnimation(WidthProperty, null);
+        IslandBackground.Width = width;
+        IslandTextClip.Width = width;
+
+        if (immediate)
+        {
+            IslandBackgroundTranslateTransform.BeginAnimation(TranslateTransform.XProperty, null);
+            IslandBackgroundScaleTransform.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            IslandBackgroundScaleTransform.ScaleX = 1;
+            IslandBackgroundTranslateTransform.X = 0;
+        }
+    }
+
+    private async Task AnimateIslandWidthAsync(string text)
+    {
+        var targetWidth = MeasureIslandWidth(text);
+        var animationBaseWidth = Math.Max(_islandWidth, targetWidth);
+        var fromScale = _islandWidth / animationBaseWidth;
+        var toScale = targetWidth / animationBaseWidth;
+
+        IslandBackground.BeginAnimation(WidthProperty, null);
+        IslandTextClip.BeginAnimation(WidthProperty, null);
+        IslandBackgroundTranslateTransform.BeginAnimation(TranslateTransform.XProperty, null);
+        IslandBackground.Width = animationBaseWidth;
+        IslandTextClip.Width = animationBaseWidth;
+        IslandBackgroundScaleTransform.ScaleX = fromScale;
+        IslandBackgroundTranslateTransform.X = 0;
+
+        var scaleAnimation = new DoubleAnimation
+        {
+            From = fromScale,
+            To = toScale,
+            Duration = TimeSpan.FromMilliseconds(190),
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut }
+        };
+
+        await AnimateDoubleAsync(IslandBackgroundScaleTransform, ScaleTransform.ScaleXProperty, scaleAnimation);
+
+        IslandBackground.BeginAnimation(WidthProperty, null);
+        IslandTextClip.BeginAnimation(WidthProperty, null);
+        IslandBackgroundScaleTransform.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        IslandBackgroundTranslateTransform.BeginAnimation(TranslateTransform.XProperty, null);
+        IslandBackground.Width = targetWidth;
+        IslandTextClip.Width = targetWidth;
+        IslandBackgroundScaleTransform.ScaleX = 1;
+        IslandBackgroundTranslateTransform.X = 0;
+        _islandWidth = targetWidth;
+    }
+
+    private static Task AnimateDoubleAsync(UIElement target, DependencyProperty property, DoubleAnimation animation)
+    {
+        var completion = new TaskCompletionSource();
+        animation.Completed += (_, _) => completion.TrySetResult();
+        target.BeginAnimation(property, animation);
+        return completion.Task;
+    }
+
+    private static Task AnimateDoubleAsync(Animatable target, DependencyProperty property, DoubleAnimation animation)
+    {
+        var completion = new TaskCompletionSource();
+        animation.Completed += (_, _) => completion.TrySetResult();
+        target.BeginAnimation(property, animation);
+        return completion.Task;
+    }
+
+    private double MeasureIslandWidth(string text)
+    {
+        var availableWidth = Math.Max(
+            IslandDisplayMode.MinimumBackgroundWidth,
+            ActualWidth - (IslandDisplayMode.HorizontalMargin * 2));
+
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return Math.Min(IslandDisplayMode.MinimumBackgroundWidth, availableWidth);
+        }
+
+        var pixelsPerDip = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+        var formattedText = new FormattedText(
+            text,
+            CultureInfo.CurrentUICulture,
+            System.Windows.FlowDirection.LeftToRight,
+            new Typeface(
+                IncomingLyricTextBlock.FontFamily,
+                IncomingLyricTextBlock.FontStyle,
+                IncomingLyricTextBlock.FontWeight,
+                IncomingLyricTextBlock.FontStretch),
+            IncomingLyricTextBlock.FontSize,
+            WpfBrushes.White,
+            pixelsPerDip);
+
+        var desiredWidth = formattedText.WidthIncludingTrailingWhitespace + IslandDisplayMode.BackgroundHorizontalPadding;
+        return Math.Clamp(desiredWidth, IslandDisplayMode.MinimumBackgroundWidth, availableWidth);
     }
 
     private void ApplyLoadingState(bool immediate = false)
@@ -505,15 +624,15 @@ public partial class TaskbarWindow : Window, ITrayIconHost
         _appSettingsService.Save(_settings);
         _viewModel.UpdateSettings(_settings);
 
-        if (_settings.DisplayMode != DisplayMode.Taskbar)
+        if (_settings.DisplayMode != DisplayMode.Island)
         {
             ((App)WpfApplication.Current).RestartDisplayWindow();
             return;
         }
 
-        if (_appBarManager is not null && !string.IsNullOrWhiteSpace(_settings.TaskbarPreferredMonitorDeviceName))
+        if (_appBarManager is not null && !string.IsNullOrWhiteSpace(_settings.IslandPreferredMonitorDeviceName))
         {
-            if (_appBarManager.SetCurrentMonitor(_settings.TaskbarPreferredMonitorDeviceName))
+            if (_appBarManager.SetCurrentMonitor(_settings.IslandPreferredMonitorDeviceName))
             {
                 _lastMonitorWarningKey = null;
             }
@@ -735,7 +854,7 @@ public partial class TaskbarWindow : Window, ITrayIconHost
         Close();
     }
 
-    public DisplayMode CurrentDisplayMode => DisplayMode.Taskbar;
+    public DisplayMode CurrentDisplayMode => DisplayMode.Island;
 
     public void SwitchDisplayMode(DisplayMode mode)
     {

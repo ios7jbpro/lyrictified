@@ -2311,10 +2311,12 @@ public partial class AppBarWindow : Window, ITrayIconHost
         persistedSettings.ShowNextLine = incomingSettings.ShowNextLine;
         persistedSettings.AppBarPreferredMonitorDeviceName = incomingSettings.AppBarPreferredMonitorDeviceName;
         persistedSettings.TaskbarPreferredMonitorDeviceName = incomingSettings.TaskbarPreferredMonitorDeviceName;
+        persistedSettings.IslandPreferredMonitorDeviceName = incomingSettings.IslandPreferredMonitorDeviceName;
         persistedSettings.CustomBarHeight = incomingSettings.CustomBarHeight;
         persistedSettings.WindowedWidth = incomingSettings.WindowedWidth;
         persistedSettings.WindowedHeight = incomingSettings.WindowedHeight;
         persistedSettings.TaskbarMaximumWidth = incomingSettings.TaskbarMaximumWidth;
+        persistedSettings.IslandMaximumWidth = incomingSettings.IslandMaximumWidth;
         persistedSettings.LyricAlignment = incomingSettings.LyricAlignment;
         persistedSettings.ShowAlbumArt = incomingSettings.ShowAlbumArt;
         persistedSettings.AppBarShowProgressBar = incomingSettings.AppBarShowProgressBar;

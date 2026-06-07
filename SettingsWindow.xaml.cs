@@ -65,11 +65,13 @@ public partial class SettingsWindow : Window
         {
             var appBarMonitor = settings.AppBarPreferredMonitorDeviceName ?? settings.PreferredMonitorDeviceName;
             var taskbarMonitor = settings.TaskbarPreferredMonitorDeviceName ?? settings.PreferredMonitorDeviceName;
+            var islandMonitor = settings.IslandPreferredMonitorDeviceName ?? settings.PreferredMonitorDeviceName;
 
             DisplayModeComboBox.SelectedIndex = settings.DisplayMode switch
             {
                 DisplayMode.Windowed => 1,
                 DisplayMode.Taskbar => 2,
+                DisplayMode.Island => 3,
                 _ => 0
             };
             HideModeComboBox.SelectedIndex = settings.HideMode switch
@@ -114,6 +116,7 @@ public partial class SettingsWindow : Window
             WindowedDisplayTtmlLyricsComboBox.SelectedIndex = settings.WindowedDisplayTtmlLyrics ? 1 : 0;
 
             TaskbarMaximumWidthTextBox.Text = settings.TaskbarMaximumWidth?.ToString() ?? string.Empty;
+            IslandMaximumWidthTextBox.Text = settings.IslandMaximumWidth?.ToString() ?? string.Empty;
             DebugForceLyricsSourceComboBox.SelectedIndex = settings.DebugForceLyricsSource switch
             {
                 "Local" => 1,
@@ -139,9 +142,18 @@ public partial class SettingsWindow : Window
                 TaskbarMonitorComboBox.SelectedIndex = 0;
             }
 
+            IslandMonitorComboBox.ItemsSource = monitors;
+            IslandMonitorComboBox.SelectedValue = islandMonitor;
+
+            if (IslandMonitorComboBox.SelectedIndex < 0 && monitors.Count > 0)
+            {
+                IslandMonitorComboBox.SelectedIndex = 0;
+            }
+
             UpdateAppBarControls();
             UpdateBarHeightHint();
             UpdateTaskbarMaximumWidthHint();
+            UpdateIslandMaximumWidthHint();
         }
         finally
         {
@@ -173,6 +185,11 @@ public partial class SettingsWindow : Window
     }
 
     private void TaskbarMonitorComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        RaiseSettingsChanged();
+    }
+
+    private void IslandMonitorComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         RaiseSettingsChanged();
     }
@@ -279,6 +296,12 @@ public partial class SettingsWindow : Window
         RaiseTextSettingsChanged();
     }
 
+    private void IslandMaximumWidthTextBox_OnTextChanged(object sender, TextChangedEventArgs e)
+    {
+        UpdateIslandMaximumWidthHint();
+        RaiseTextSettingsChanged();
+    }
+
     private void AutostartWithWindowsCheckBox_OnChanged(object sender, RoutedEventArgs e)
     {
         RaiseSettingsChanged();
@@ -304,8 +327,10 @@ public partial class SettingsWindow : Window
             PreferredMonitorDeviceName = null,
             AppBarPreferredMonitorDeviceName = AppBarMonitorComboBox.SelectedValue as string,
             TaskbarPreferredMonitorDeviceName = TaskbarMonitorComboBox.SelectedValue as string,
+            IslandPreferredMonitorDeviceName = IslandMonitorComboBox.SelectedValue as string,
             CustomBarHeight = ParseCustomHeight(),
             TaskbarMaximumWidth = ParseTaskbarMaximumWidth(),
+            IslandMaximumWidth = ParseIslandMaximumWidth(),
             LyricAlignment = (LyricAlignmentComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() switch
             {
                 "Left" => LyricAlignment.Left,
@@ -393,6 +418,16 @@ public partial class SettingsWindow : Window
         return int.TryParse(TaskbarMaximumWidthTextBox.Text, out var parsedWidth) ? parsedWidth : null;
     }
 
+    private int? ParseIslandMaximumWidth()
+    {
+        if (string.IsNullOrWhiteSpace(IslandMaximumWidthTextBox.Text))
+        {
+            return null;
+        }
+
+        return int.TryParse(IslandMaximumWidthTextBox.Text, out var parsedWidth) ? parsedWidth : null;
+    }
+
     private int ParseMaxCacheSize()
     {
         if (int.TryParse(MaxCacheSizeTextBox.Text, out var parsed) && parsed >= 0)
@@ -458,6 +493,12 @@ public partial class SettingsWindow : Window
             return;
         }
 
+        if (GetSelectedDisplayMode() == DisplayMode.Island)
+        {
+            BarHeightHintTextBlock.Text = $"Island mode uses a fixed {IslandDisplayMode.WindowHeight}px height.";
+            return;
+        }
+
         var automaticHeight = AppBarDisplayMode.GetAutomaticHeight(ShowNextLineComboBox.SelectedIndex == 1);
         if (int.TryParse(CustomHeightTextBox.Text, out var parsedHeight))
         {
@@ -478,6 +519,18 @@ public partial class SettingsWindow : Window
         }
 
         TaskbarMaximumWidthHintTextBlock.Text = $"Leave empty to use the default {TaskbarDisplayMode.DefaultMaximumWidth}px taskbar width cap.";
+    }
+
+    private void UpdateIslandMaximumWidthHint()
+    {
+        if (int.TryParse(IslandMaximumWidthTextBox.Text, out var parsedWidth))
+        {
+            var effectiveWidth = IslandDisplayMode.GetEffectiveMaximumWidth(parsedWidth);
+            IslandMaximumWidthHintTextBlock.Text = $"Island width is clamped to at least {effectiveWidth}px.";
+            return;
+        }
+
+        IslandMaximumWidthHintTextBlock.Text = $"Leave empty to use the default {IslandDisplayMode.DefaultMaximumWidth}px island width cap.";
     }
 
     private void UpdateAppBarControls()
@@ -508,6 +561,7 @@ public partial class SettingsWindow : Window
         {
             "Windowed" => DisplayMode.Windowed,
             "Taskbar" => DisplayMode.Taskbar,
+            "Island" => DisplayMode.Island,
             _ => DisplayMode.AppBar
         };
     }

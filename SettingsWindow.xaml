@@ -489,6 +489,7 @@
                                 <ComboBoxItem Tag="AppBar" Content="App bar (top of screen)" />
                                 <ComboBoxItem Tag="Windowed" Content="Windowed" />
                                 <ComboBoxItem Tag="Taskbar" Content="Taskbar" />
+                                <ComboBoxItem Tag="Island" Content="Island" />
                             </ComboBox>
                         </StackPanel>
                     </Border>
@@ -887,6 +888,38 @@
                             <TextBlock x:Name="TaskbarMaximumWidthHintTextBlock"
                                        Style="{StaticResource HintTextStyle}"
                                        Text="Leave empty to use the default 880px taskbar width cap." />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </TabItem>
+
+        <TabItem Header="Island">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Margin="4,8,4,4">
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="Display Monitor" Style="{StaticResource SectionTitleStyle}" />
+                            <TextBlock Text="Choose which monitor to display lyrics on." Style="{StaticResource LabelStyle}" />
+                            <ComboBox x:Name="IslandMonitorComboBox"
+                                      MinWidth="260"
+                                      DisplayMemberPath="DisplayName"
+                                      SelectedValuePath="DeviceName"
+                                      SelectionChanged="IslandMonitorComboBox_OnSelectionChanged" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="Maximum Width" Style="{StaticResource SectionTitleStyle}" />
+                            <TextBlock Text="Custom maximum width in pixels. Leave empty for default." Style="{StaticResource LabelStyle}" />
+                            <TextBox x:Name="IslandMaximumWidthTextBox"
+                                     MinWidth="260"
+                                     MaxWidth="260"
+                                     TextChanged="IslandMaximumWidthTextBox_OnTextChanged" />
+                            <TextBlock x:Name="IslandMaximumWidthHintTextBlock"
+                                       Style="{StaticResource HintTextStyle}"
+                                       Text="Leave empty to use the default 880px island width cap." />
                         </StackPanel>
                     </Border>
                 </StackPanel>

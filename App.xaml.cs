@@ -57,6 +57,7 @@ public partial class App : Application
         var previousWindow = MainWindow;
         Window nextWindow = settings.DisplayMode switch
         {
+            DisplayMode.Island => new IslandWindow(),
             DisplayMode.Taskbar => new TaskbarWindow(),
             DisplayMode.Windowed => new WindowedWindow(),
             _ => new AppBarWindow()
@@ -67,6 +68,6 @@ public partial class App : Application
         if (previousWindow is not null && !ReferenceEquals(previousWindow, nextWindow))
         {
             previousWindow.Close();
+        }
     }
-}
 }
