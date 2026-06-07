@@ -542,6 +542,8 @@ public partial class TaskbarWindow : Window, ITrayIconHost
         persistedSettings.WindowedHeight = incomingSettings.WindowedHeight;
         persistedSettings.TaskbarMaximumWidth = incomingSettings.TaskbarMaximumWidth;
         persistedSettings.IslandMaximumWidth = incomingSettings.IslandMaximumWidth;
+        persistedSettings.IslandScale = incomingSettings.IslandScale;
+        persistedSettings.IslandContainerHeight = incomingSettings.IslandContainerHeight;
         persistedSettings.LyricAlignment = incomingSettings.LyricAlignment;
         persistedSettings.ShowAlbumArt = incomingSettings.ShowAlbumArt;
         persistedSettings.WordByWordMode = incomingSettings.WordByWordMode;

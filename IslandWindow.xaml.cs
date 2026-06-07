@@ -24,6 +24,8 @@ namespace Lyrictified;
 public partial class IslandWindow : Window, ITrayIconHost
 {
     private static readonly TimeSpan MonitorWarningDuration = TimeSpan.FromSeconds(4);
+    private static readonly TimeSpan HoverPollInterval = TimeSpan.FromMilliseconds(80);
+    private const double HoverFadeOpacity = 0.16;
     private static WpfBrush GetLoadingTextBrush()
     {
         var color = IsWindowsLightTheme()
@@ -36,6 +38,7 @@ public partial class IslandWindow : Window, ITrayIconHost
 
     private readonly MainViewModel _viewModel;
     private readonly DispatcherTimer _monitorWarningTimer;
+    private readonly DispatcherTimer _hoverTimer;
     private readonly AppSettingsService _appSettingsService;
     private AppBarManager? _appBarManager;
     private HwndSource? _hwndSource;
@@ -46,6 +49,7 @@ public partial class IslandWindow : Window, ITrayIconHost
     private string? _lastMonitorWarningKey;
     private double _islandWidth = 160;
     private int _lyricTransitionVersion;
+    private bool _isPointerOverIsland;
     private SettingsWindow? _settingsWindow;
     private TrayIcon? _trayIcon;
 
@@ -63,6 +67,8 @@ public partial class IslandWindow : Window, ITrayIconHost
 
         _monitorWarningTimer = new DispatcherTimer { Interval = MonitorWarningDuration };
         _monitorWarningTimer.Tick += MonitorWarningTimer_OnTick;
+        _hoverTimer = new DispatcherTimer { Interval = HoverPollInterval };
+        _hoverTimer.Tick += HoverTimer_OnTick;
 
         SourceInitialized += OnSourceInitialized;
         Loaded += OnLoaded;
@@ -84,10 +90,12 @@ public partial class IslandWindow : Window, ITrayIconHost
             0,
             WINEVENT_OUTOFCONTEXT);
         _appBarManager = new AppBarManager(this, IslandDisplayMode.WindowHeight);
+        ApplyClickThroughWindowStyle();
         ApplyMonitorSetting();
         PositionWindow();
         ApplyAppearance();
         EnsureTopmostOrder();
+        _hoverTimer.Start();
         WorkspaceVisibilityManager.PinToAllWorkspaces(this);
         _trayIcon = new TrayIcon(this);
 
@@ -109,6 +117,8 @@ public partial class IslandWindow : Window, ITrayIconHost
     {
         _monitorWarningTimer.Stop();
         _monitorWarningTimer.Tick -= MonitorWarningTimer_OnTick;
+        _hoverTimer.Stop();
+        _hoverTimer.Tick -= HoverTimer_OnTick;
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
         SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
         SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
@@ -131,6 +141,51 @@ public partial class IslandWindow : Window, ITrayIconHost
         PositionWindow();
         EnsureTopmostOrder();
         RefreshSettingsWindowOptions();
+    }
+
+    private void HoverTimer_OnTick(object? sender, EventArgs e)
+    {
+        if (!GetCursorPos(out var point))
+        {
+            return;
+        }
+
+        var scale = GetEffectiveIslandScale();
+        var scaledWidth = _islandWidth * scale;
+        var islandLeft = Left + ((ActualWidth - scaledWidth) / 2);
+        var scaledHeight = IslandLayer.ActualHeight * scale;
+        var islandTop = Top + ((ActualHeight - scaledHeight) / 2);
+        var islandRight = islandLeft + scaledWidth;
+        var islandBottom = islandTop + scaledHeight;
+        var isPointerOverIsland =
+            point.X >= islandLeft
+            && point.X <= islandRight
+            && point.Y >= islandTop
+            && point.Y <= islandBottom;
+
+        if (isPointerOverIsland == _isPointerOverIsland)
+        {
+            return;
+        }
+
+        _isPointerOverIsland = isPointerOverIsland;
+        AnimateIslandHoverOpacity(isPointerOverIsland);
+    }
+
+    private void AnimateIslandHoverOpacity(bool isHovered)
+    {
+        IslandLayer.BeginAnimation(OpacityProperty, null);
+        var animation = new DoubleAnimation
+        {
+            To = isHovered ? HoverFadeOpacity : 1,
+            Duration = TimeSpan.FromMilliseconds(isHovered ? 120 : 180),
+            EasingFunction = new QuadraticEase
+            {
+                EasingMode = isHovered ? EasingMode.EaseOut : EasingMode.EaseIn
+            }
+        };
+
+        IslandLayer.BeginAnimation(OpacityProperty, animation);
     }
 
     private void OnUserPreferenceChanged(object sender, UserPreferenceChangedEventArgs e)
@@ -276,13 +331,30 @@ public partial class IslandWindow : Window, ITrayIconHost
         }
 
         var monitor = _appBarManager.Monitors[Math.Clamp(_appBarManager.CurrentMonitorIndex, 0, _appBarManager.Monitors.Count - 1)];
-        var bounds = IslandDisplayMode.GetWindowBounds(monitor, _settings.IslandMaximumWidth);
+        var bounds = IslandDisplayMode.GetWindowBounds(
+            monitor,
+            _settings.IslandMaximumWidth,
+            GetEffectiveIslandScale(),
+            _settings.IslandContainerHeight);
         Left = bounds.Left;
         Top = bounds.Top;
         Width = bounds.Width;
         Height = bounds.Height;
+        ApplyIslandScale();
         UpdateIslandWidth(_displayedLyricText, immediate: true);
         EnsureTopmostOrder();
+    }
+
+    private void ApplyIslandScale()
+    {
+        var scale = GetEffectiveIslandScale();
+        IslandLayerScaleTransform.ScaleX = scale;
+        IslandLayerScaleTransform.ScaleY = scale;
+    }
+
+    private double GetEffectiveIslandScale()
+    {
+        return IslandDisplayMode.GetEffectiveScale(_settings.IslandScale);
     }
 
     private async void HandleCurrentLineChanged(string newCurrentLine)
@@ -437,7 +509,7 @@ public partial class IslandWindow : Window, ITrayIconHost
     {
         var availableWidth = Math.Max(
             IslandDisplayMode.MinimumBackgroundWidth,
-            ActualWidth - (IslandDisplayMode.HorizontalMargin * 2));
+            (ActualWidth / GetEffectiveIslandScale()) - (IslandDisplayMode.HorizontalMargin * 2));
 
         if (string.IsNullOrWhiteSpace(text))
         {
@@ -583,21 +655,6 @@ public partial class IslandWindow : Window, ITrayIconHost
         ApplyAppearance();
     }
 
-    private void Window_OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        if (e.ClickCount >= 2)
-        {
-            OpenSettingsWindow();
-            e.Handled = true;
-        }
-    }
-
-    private void Window_OnMouseRightButtonUp(object sender, MouseButtonEventArgs e)
-    {
-        WpfApplication.Current.Shutdown();
-        e.Handled = true;
-    }
-
     private void RefreshSettingsWindowOptions()
     {
         if (_settingsWindow is null || _appBarManager is null)
@@ -661,6 +718,8 @@ public partial class IslandWindow : Window, ITrayIconHost
         persistedSettings.WindowedHeight = incomingSettings.WindowedHeight;
         persistedSettings.TaskbarMaximumWidth = incomingSettings.TaskbarMaximumWidth;
         persistedSettings.IslandMaximumWidth = incomingSettings.IslandMaximumWidth;
+        persistedSettings.IslandScale = incomingSettings.IslandScale;
+        persistedSettings.IslandContainerHeight = incomingSettings.IslandContainerHeight;
         persistedSettings.LyricAlignment = incomingSettings.LyricAlignment;
         persistedSettings.ShowAlbumArt = incomingSettings.ShowAlbumArt;
         persistedSettings.WordByWordMode = incomingSettings.WordByWordMode;
@@ -769,6 +828,21 @@ public partial class IslandWindow : Window, ITrayIconHost
             SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW);
     }
 
+    private void ApplyClickThroughWindowStyle()
+    {
+        var hwnd = _hwndSource?.Handle ?? new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        var extendedStyle = GetWindowLong(hwnd, GWL_EXSTYLE);
+        SetWindowLong(
+            hwnd,
+            GWL_EXSTYLE,
+            extendedStyle | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW);
+    }
+
     private void ScheduleTopmostRefreshBurst()
     {
         EnsureTopmostOrder();
@@ -797,11 +871,31 @@ public partial class IslandWindow : Window, ITrayIconHost
     }
 
     private static readonly IntPtr HWND_TOPMOST = new(-1);
+    private const int GWL_EXSTYLE = -20;
+    private const int WS_EX_TRANSPARENT = 0x00000020;
+    private const int WS_EX_TOOLWINDOW = 0x00000080;
+    private const int WS_EX_NOACTIVATE = 0x08000000;
     private const uint SWP_NOSIZE = 0x0001;
     private const uint SWP_NOMOVE = 0x0002;
     private const uint SWP_NOACTIVATE = 0x0010;
     private const uint SWP_SHOWWINDOW = 0x0040;
     private const uint SWP_NOOWNERZORDER = 0x0200;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct CursorPoint
+    {
+        public int X;
+        public int Y;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool GetCursorPos(out CursorPoint lpPoint);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool SetWindowPos(

@@ -911,7 +911,7 @@
 
                     <Border Style="{StaticResource CardStyle}">
                         <StackPanel>
-                            <TextBlock Text="Maximum Width" Style="{StaticResource SectionTitleStyle}" />
+                            <TextBlock Text="Container Size" Style="{StaticResource SectionTitleStyle}" />
                             <TextBlock Text="Custom maximum width in pixels. Leave empty for default." Style="{StaticResource LabelStyle}" />
                             <TextBox x:Name="IslandMaximumWidthTextBox"
                                      MinWidth="260"
@@ -920,8 +920,33 @@
                             <TextBlock x:Name="IslandMaximumWidthHintTextBlock"
                                        Style="{StaticResource HintTextStyle}"
                                        Text="Leave empty to use the default 880px island width cap." />
+                            <TextBlock Text="Custom height in pixels for the invisible Island host area. Leave empty for automatic."
+                                       Style="{StaticResource LabelStyle}"
+                                       Margin="0,16,0,6" />
+                            <TextBox x:Name="IslandContainerHeightTextBox"
+                                     MinWidth="260"
+                                     MaxWidth="260"
+                                     TextChanged="IslandContainerHeightTextBox_OnTextChanged" />
+                            <TextBlock x:Name="IslandContainerHeightHintTextBlock"
+                                       Style="{StaticResource HintTextStyle}"
+                                       Text="Leave empty to use automatic height." />
                         </StackPanel>
                     </Border>
+
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="Scale" Style="{StaticResource SectionTitleStyle}" />
+                            <TextBlock Text="Scale the Island UI. Use 100 for default size." Style="{StaticResource LabelStyle}" />
+                            <TextBox x:Name="IslandScaleTextBox"
+                                     MinWidth="260"
+                                     MaxWidth="260"
+                                     TextChanged="IslandScaleTextBox_OnTextChanged" />
+                            <TextBlock x:Name="IslandScaleHintTextBlock"
+                                       Style="{StaticResource HintTextStyle}"
+                                       Text="Allowed range: 50% to 200%." />
+                        </StackPanel>
+                    </Border>
+
                 </StackPanel>
             </ScrollViewer>
         </TabItem>

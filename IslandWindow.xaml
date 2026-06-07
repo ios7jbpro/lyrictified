@@ -12,11 +12,10 @@
         ResizeMode="NoResize"
         ShowInTaskbar="True"
         Background="Transparent"
-        Topmost="True"
-        MouseLeftButtonDown="Window_OnMouseLeftButtonDown"
-        MouseRightButtonUp="Window_OnMouseRightButtonUp">
+        Topmost="True">
     <Grid x:Name="RootGrid"
           Margin="12,0,12,0"
+          ClipToBounds="False"
           Background="#00000000">
         <Border x:Name="MonitorWarningBanner"
                 HorizontalAlignment="Center"
@@ -40,8 +39,12 @@
         <Grid x:Name="IslandLayer"
               Height="40"
               HorizontalAlignment="Center"
-              VerticalAlignment="Top"
-              ClipToBounds="False">
+              VerticalAlignment="Center"
+              ClipToBounds="False"
+              RenderTransformOrigin="0.5,0.5">
+            <Grid.RenderTransform>
+                <ScaleTransform x:Name="IslandLayerScaleTransform" ScaleX="1" ScaleY="1" />
+            </Grid.RenderTransform>
             <Border x:Name="IslandBackground"
                     Width="160"
                     HorizontalAlignment="Center"

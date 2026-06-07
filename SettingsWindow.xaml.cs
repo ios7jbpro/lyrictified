@@ -117,6 +117,8 @@ public partial class SettingsWindow : Window
 
             TaskbarMaximumWidthTextBox.Text = settings.TaskbarMaximumWidth?.ToString() ?? string.Empty;
             IslandMaximumWidthTextBox.Text = settings.IslandMaximumWidth?.ToString() ?? string.Empty;
+            IslandScaleTextBox.Text = (GetEffectiveIslandScale(settings.IslandScale) * 100).ToString("F0");
+            IslandContainerHeightTextBox.Text = settings.IslandContainerHeight?.ToString() ?? string.Empty;
             DebugForceLyricsSourceComboBox.SelectedIndex = settings.DebugForceLyricsSource switch
             {
                 "Local" => 1,
@@ -154,6 +156,8 @@ public partial class SettingsWindow : Window
             UpdateBarHeightHint();
             UpdateTaskbarMaximumWidthHint();
             UpdateIslandMaximumWidthHint();
+            UpdateIslandScaleHint();
+            UpdateIslandContainerHeightHint();
         }
         finally
         {
@@ -302,6 +306,18 @@ public partial class SettingsWindow : Window
         RaiseTextSettingsChanged();
     }
 
+    private void IslandScaleTextBox_OnTextChanged(object sender, TextChangedEventArgs e)
+    {
+        UpdateIslandScaleHint();
+        RaiseTextSettingsChanged();
+    }
+
+    private void IslandContainerHeightTextBox_OnTextChanged(object sender, TextChangedEventArgs e)
+    {
+        UpdateIslandContainerHeightHint();
+        RaiseTextSettingsChanged();
+    }
+
     private void AutostartWithWindowsCheckBox_OnChanged(object sender, RoutedEventArgs e)
     {
         RaiseSettingsChanged();
@@ -331,6 +347,8 @@ public partial class SettingsWindow : Window
             CustomBarHeight = ParseCustomHeight(),
             TaskbarMaximumWidth = ParseTaskbarMaximumWidth(),
             IslandMaximumWidth = ParseIslandMaximumWidth(),
+            IslandScale = ParseIslandScale(),
+            IslandContainerHeight = ParseIslandContainerHeight(),
             LyricAlignment = (LyricAlignmentComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() switch
             {
                 "Left" => LyricAlignment.Left,
@@ -426,6 +444,38 @@ public partial class SettingsWindow : Window
         }
 
         return int.TryParse(IslandMaximumWidthTextBox.Text, out var parsedWidth) ? parsedWidth : null;
+    }
+
+    private double ParseIslandScale()
+    {
+        if (!double.TryParse(IslandScaleTextBox.Text, out var parsedPercent))
+        {
+            return 1.0;
+        }
+
+        return GetEffectiveIslandScale(parsedPercent / 100.0);
+    }
+
+    private int? ParseIslandContainerHeight()
+    {
+        if (string.IsNullOrWhiteSpace(IslandContainerHeightTextBox.Text))
+        {
+            return null;
+        }
+
+        return int.TryParse(IslandContainerHeightTextBox.Text, out var parsedHeight)
+            ? IslandDisplayMode.GetEffectiveContainerHeight(parsedHeight)
+            : null;
+    }
+
+    private static double GetEffectiveIslandScale(double scale)
+    {
+        if (double.IsNaN(scale) || double.IsInfinity(scale) || scale <= 0)
+        {
+            return 1.0;
+        }
+
+        return Math.Clamp(scale, 0.5, 2.0);
     }
 
     private int ParseMaxCacheSize()
@@ -531,6 +581,30 @@ public partial class SettingsWindow : Window
         }
 
         IslandMaximumWidthHintTextBlock.Text = $"Leave empty to use the default {IslandDisplayMode.DefaultMaximumWidth}px island width cap.";
+    }
+
+    private void UpdateIslandScaleHint()
+    {
+        if (double.TryParse(IslandScaleTextBox.Text, out var parsedPercent))
+        {
+            var effectivePercent = GetEffectiveIslandScale(parsedPercent / 100.0) * 100;
+            IslandScaleHintTextBlock.Text = $"Effective Island scale: {effectivePercent:F0}%.";
+            return;
+        }
+
+        IslandScaleHintTextBlock.Text = "Allowed range: 50% to 200%.";
+    }
+
+    private void UpdateIslandContainerHeightHint()
+    {
+        if (int.TryParse(IslandContainerHeightTextBox.Text, out var parsedHeight))
+        {
+            var effectiveHeight = IslandDisplayMode.GetEffectiveContainerHeight(parsedHeight);
+            IslandContainerHeightHintTextBlock.Text = $"Transparent container height is clamped to {effectiveHeight}px.";
+            return;
+        }
+
+        IslandContainerHeightHintTextBlock.Text = "Leave empty to use automatic height.";
     }
 
     private void UpdateAppBarControls()

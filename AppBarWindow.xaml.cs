@@ -2317,6 +2317,8 @@ public partial class AppBarWindow : Window, ITrayIconHost
         persistedSettings.WindowedHeight = incomingSettings.WindowedHeight;
         persistedSettings.TaskbarMaximumWidth = incomingSettings.TaskbarMaximumWidth;
         persistedSettings.IslandMaximumWidth = incomingSettings.IslandMaximumWidth;
+        persistedSettings.IslandScale = incomingSettings.IslandScale;
+        persistedSettings.IslandContainerHeight = incomingSettings.IslandContainerHeight;
         persistedSettings.LyricAlignment = incomingSettings.LyricAlignment;
         persistedSettings.ShowAlbumArt = incomingSettings.ShowAlbumArt;
         persistedSettings.AppBarShowProgressBar = incomingSettings.AppBarShowProgressBar;

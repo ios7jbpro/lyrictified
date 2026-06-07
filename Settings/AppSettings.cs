@@ -30,6 +30,10 @@ public sealed class AppSettings
 
     public int? IslandMaximumWidth { get; set; }
 
+    public double IslandScale { get; set; } = 1.0;
+
+    public int? IslandContainerHeight { get; set; }
+
     public LyricAlignment LyricAlignment { get; set; } = LyricAlignment.Center;
 
     public LyricAlignment WindowedLyricAlignment { get; set; } = LyricAlignment.Center;
