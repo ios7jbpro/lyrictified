@@ -43,7 +43,10 @@
               ClipToBounds="False"
               RenderTransformOrigin="0.5,0.5">
             <Grid.RenderTransform>
-                <ScaleTransform x:Name="IslandLayerScaleTransform" ScaleX="1" ScaleY="1" />
+                <TransformGroup>
+                    <ScaleTransform x:Name="IslandLayerScaleTransform" ScaleX="1" ScaleY="1" />
+                    <TranslateTransform x:Name="IslandLayerVibrateTransform" X="0" />
+                </TransformGroup>
             </Grid.RenderTransform>
             <Border x:Name="IslandBackground"
                     Width="160"
@@ -58,6 +61,13 @@
                         <TranslateTransform x:Name="IslandBackgroundTranslateTransform" X="0" />
                     </TransformGroup>
                 </Border.RenderTransform>
+                <Border x:Name="IslandRedOverlay"
+                        Background="#E6C83030"
+                        CornerRadius="14"
+                        Opacity="0"
+                        IsHitTestVisible="False"
+                        HorizontalAlignment="Stretch"
+                        VerticalAlignment="Stretch" />
             </Border>
             <Grid x:Name="IslandTextClip"
                   Width="160"
@@ -69,7 +79,41 @@
                       Margin="18,0"
                       VerticalAlignment="Center"
                       ClipToBounds="False">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Border x:Name="LoadingSpacer"
+                            Grid.Column="0"
+                            Width="0"
+                            VerticalAlignment="Stretch" />
+                    <Viewbox x:Name="LoadingIcon"
+                             Grid.Column="0"
+                             Width="20"
+                             Height="20"
+                             Margin="0,0,4,0"
+                             HorizontalAlignment="Center"
+                             VerticalAlignment="Center"
+                             Opacity="0"
+                             Visibility="Collapsed"
+                             IsHitTestVisible="False"
+                             Panel.ZIndex="2">
+                        <Image x:Name="LoadingSpinnerImage"
+                               Width="20"
+                               Height="20"
+                               Source="Assets/loading.png"
+                               Stretch="Uniform"
+                               Opacity="1"
+                               RenderTransformOrigin="0.5,0.5">
+                            <Image.RenderTransform>
+                                <RotateTransform x:Name="LoadingSpinnerRotateTransform"
+                                                 Angle="0" />
+                            </Image.RenderTransform>
+                        </Image>
+                    </Viewbox>
                     <TextBlock x:Name="OutgoingLyricTextBlock"
+                               Grid.Column="1"
                                Foreground="#F5F7FA"
                                FontSize="20"
                                FontWeight="SemiBold"
@@ -83,6 +127,7 @@
                         </TextBlock.RenderTransform>
                     </TextBlock>
                     <TextBlock x:Name="IncomingLyricTextBlock"
+                               Grid.Column="1"
                                Foreground="#F5F7FA"
                                FontSize="20"
                                FontWeight="SemiBold"
@@ -95,27 +140,27 @@
                             <TranslateTransform x:Name="IncomingLyricTranslateTransform" Y="0" />
                         </TextBlock.RenderTransform>
                     </TextBlock>
+                    <Border x:Name="PauseSpacer"
+                            Grid.Column="2"
+                            Width="0"
+                            VerticalAlignment="Stretch" />
+                    <Viewbox x:Name="PauseIcon"
+                             Grid.Column="2"
+                             Width="20"
+                             Height="20"
+                             Margin="4,0,0,0"
+                             HorizontalAlignment="Center"
+                             VerticalAlignment="Center"
+                             Opacity="0"
+                             Visibility="Collapsed"
+                             IsHitTestVisible="False"
+                             Panel.ZIndex="2">
+                        <Canvas Width="20" Height="20">
+                            <Rectangle x:Name="PauseBar1" Width="5" Height="14" Canvas.Left="4" Canvas.Top="3" RadiusX="2" RadiusY="2" Fill="#F5F7FA" />
+                            <Rectangle x:Name="PauseBar2" Width="5" Height="14" Canvas.Left="11" Canvas.Top="3" RadiusX="2" RadiusY="2" Fill="#F5F7FA" />
+                        </Canvas>
+                    </Viewbox>
                 </Grid>
-            </Grid>
-            <Grid x:Name="LoadingOverlay"
-                  VerticalAlignment="Center"
-                  HorizontalAlignment="Right"
-                  Margin="0,0,12,0"
-                  Visibility="Collapsed"
-                  IsHitTestVisible="False"
-                  Panel.ZIndex="3">
-                <Image x:Name="LoadingSpinnerImage"
-                       Width="20"
-                       Height="20"
-                       Source="Assets/loading.png"
-                       Stretch="Uniform"
-                       Opacity="0"
-                       RenderTransformOrigin="0.5,0.5">
-                    <Image.RenderTransform>
-                        <RotateTransform x:Name="LoadingSpinnerRotateTransform"
-                                         Angle="0" />
-                    </Image.RenderTransform>
-                </Image>
             </Grid>
         </Grid>
     </Grid>

@@ -34,6 +34,8 @@ public sealed class AppSettings
 
     public int? IslandContainerHeight { get; set; }
 
+    public double IslandCornerRadius { get; set; } = 14;
+
     public LyricAlignment LyricAlignment { get; set; } = LyricAlignment.Center;
 
     public LyricAlignment WindowedLyricAlignment { get; set; } = LyricAlignment.Center;

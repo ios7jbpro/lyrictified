@@ -119,6 +119,7 @@ public partial class SettingsWindow : Window
             IslandMaximumWidthTextBox.Text = settings.IslandMaximumWidth?.ToString() ?? string.Empty;
             IslandScaleTextBox.Text = (GetEffectiveIslandScale(settings.IslandScale) * 100).ToString("F0");
             IslandContainerHeightTextBox.Text = settings.IslandContainerHeight?.ToString() ?? string.Empty;
+            IslandCornerRadiusTextBox.Text = GetEffectiveIslandCornerRadius(settings.IslandCornerRadius).ToString("F0");
             DebugForceLyricsSourceComboBox.SelectedIndex = settings.DebugForceLyricsSource switch
             {
                 "Local" => 1,
@@ -158,6 +159,7 @@ public partial class SettingsWindow : Window
             UpdateIslandMaximumWidthHint();
             UpdateIslandScaleHint();
             UpdateIslandContainerHeightHint();
+            UpdateIslandCornerRadiusHint();
         }
         finally
         {
@@ -318,6 +320,12 @@ public partial class SettingsWindow : Window
         RaiseTextSettingsChanged();
     }
 
+    private void IslandCornerRadiusTextBox_OnTextChanged(object sender, TextChangedEventArgs e)
+    {
+        UpdateIslandCornerRadiusHint();
+        RaiseTextSettingsChanged();
+    }
+
     private void AutostartWithWindowsCheckBox_OnChanged(object sender, RoutedEventArgs e)
     {
         RaiseSettingsChanged();
@@ -349,6 +357,7 @@ public partial class SettingsWindow : Window
             IslandMaximumWidth = ParseIslandMaximumWidth(),
             IslandScale = ParseIslandScale(),
             IslandContainerHeight = ParseIslandContainerHeight(),
+            IslandCornerRadius = ParseIslandCornerRadius(),
             LyricAlignment = (LyricAlignmentComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() switch
             {
                 "Left" => LyricAlignment.Left,
@@ -468,6 +477,16 @@ public partial class SettingsWindow : Window
             : null;
     }
 
+    private double ParseIslandCornerRadius()
+    {
+        if (!double.TryParse(IslandCornerRadiusTextBox.Text, out var parsedRadius))
+        {
+            return 14;
+        }
+
+        return GetEffectiveIslandCornerRadius(parsedRadius);
+    }
+
     private static double GetEffectiveIslandScale(double scale)
     {
         if (double.IsNaN(scale) || double.IsInfinity(scale) || scale <= 0)
@@ -476,6 +495,16 @@ public partial class SettingsWindow : Window
         }
 
         return Math.Clamp(scale, 0.5, 2.0);
+    }
+
+    private static double GetEffectiveIslandCornerRadius(double radius)
+    {
+        if (double.IsNaN(radius) || double.IsInfinity(radius) || radius < 0)
+        {
+            return 14;
+        }
+
+        return Math.Clamp(radius, 0, 40);
     }
 
     private int ParseMaxCacheSize()
@@ -576,7 +605,7 @@ public partial class SettingsWindow : Window
         if (int.TryParse(IslandMaximumWidthTextBox.Text, out var parsedWidth))
         {
             var effectiveWidth = IslandDisplayMode.GetEffectiveMaximumWidth(parsedWidth);
-            IslandMaximumWidthHintTextBlock.Text = $"Island width is clamped to at least {effectiveWidth}px.";
+            IslandMaximumWidthHintTextBlock.Text = $"Island transparent container width cap: {effectiveWidth}px.";
             return;
         }
 
@@ -605,6 +634,18 @@ public partial class SettingsWindow : Window
         }
 
         IslandContainerHeightHintTextBlock.Text = "Leave empty to use automatic height.";
+    }
+
+    private void UpdateIslandCornerRadiusHint()
+    {
+        if (double.TryParse(IslandCornerRadiusTextBox.Text, out var parsedRadius))
+        {
+            var effectiveRadius = GetEffectiveIslandCornerRadius(parsedRadius);
+            IslandCornerRadiusHintTextBlock.Text = $"Effective background corner radius: {effectiveRadius:F0}px.";
+            return;
+        }
+
+        IslandCornerRadiusHintTextBlock.Text = "Allowed range: 0px to 40px.";
     }
 
     private void UpdateAppBarControls()

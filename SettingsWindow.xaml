@@ -944,6 +944,16 @@
                             <TextBlock x:Name="IslandScaleHintTextBlock"
                                        Style="{StaticResource HintTextStyle}"
                                        Text="Allowed range: 50% to 200%." />
+                            <TextBlock Text="Background corner radius in pixels."
+                                       Style="{StaticResource LabelStyle}"
+                                       Margin="0,16,0,6" />
+                            <TextBox x:Name="IslandCornerRadiusTextBox"
+                                     MinWidth="260"
+                                     MaxWidth="260"
+                                     TextChanged="IslandCornerRadiusTextBox_OnTextChanged" />
+                            <TextBlock x:Name="IslandCornerRadiusHintTextBlock"
+                                       Style="{StaticResource HintTextStyle}"
+                                       Text="Allowed range: 0px to 40px." />
                         </StackPanel>
                     </Border>
 

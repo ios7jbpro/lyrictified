@@ -41,6 +41,16 @@ public static class IslandDisplayMode
         return Math.Max(configuredContainerHeight, MinimumContainerHeight);
     }
 
+    public static double GetEffectiveCornerRadius(double radius)
+    {
+        if (double.IsNaN(radius) || double.IsInfinity(radius) || radius < 0)
+        {
+            return 14;
+        }
+
+        return Math.Clamp(radius, 0, 40);
+    }
+
     public static double GetAutomaticContainerHeight(double scale)
     {
         return (WindowHeight * GetEffectiveScale(scale)) + (VerticalScalePadding * 2);
@@ -58,7 +68,7 @@ public static class IslandDisplayMode
         var monitorWidth = monitor.Bounds.right - monitor.Bounds.left;
         var effectiveScale = GetEffectiveScale(scale);
         var maximumWidth = GetEffectiveMaximumWidth(configuredMaximumWidth);
-        var logicalWidth = Math.Min(maximumWidth, Math.Max(MinimumMaximumWidth, monitorWidth / 2));
+        var logicalWidth = Math.Min(maximumWidth, Math.Max(MinimumMaximumWidth, monitorWidth / effectiveScale));
         var width = Math.Min(monitorWidth, logicalWidth * effectiveScale);
         var left = monitor.Bounds.left + ((monitorWidth - width) / 2);
         var top = monitor.Bounds.top;

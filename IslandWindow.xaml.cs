@@ -25,6 +25,8 @@ public partial class IslandWindow : Window, ITrayIconHost
 {
     private static readonly TimeSpan MonitorWarningDuration = TimeSpan.FromSeconds(4);
     private static readonly TimeSpan HoverPollInterval = TimeSpan.FromMilliseconds(80);
+    private static readonly TimeSpan EmptyLineHideDelay = TimeSpan.FromMilliseconds(260);
+    private static readonly TimeSpan EmptyLineUpcomingLyricGrace = TimeSpan.FromMilliseconds(1600);
     private const double HoverFadeOpacity = 0.16;
     private static WpfBrush GetLoadingTextBrush()
     {
@@ -50,8 +52,14 @@ public partial class IslandWindow : Window, ITrayIconHost
     private double _islandWidth = 160;
     private int _lyricTransitionVersion;
     private bool _isPointerOverIsland;
+    private bool _isIslandContentVisible = true;
+    private bool _isPauseVisualActive;
+    private bool _isNoLyricsAnimationActive;
     private SettingsWindow? _settingsWindow;
     private TrayIcon? _trayIcon;
+    private const double PauseSpacerTargetWidth = 24;
+    private const double LoadingSpacerTargetWidth = 24;
+    private static readonly MediaColor RedFlashColor = MediaColor.FromArgb(230, 200, 40, 40);
 
     public IslandWindow()
     {
@@ -94,6 +102,7 @@ public partial class IslandWindow : Window, ITrayIconHost
         ApplyMonitorSetting();
         PositionWindow();
         ApplyAppearance();
+        ApplyPlaybackStateVisual(immediate: true);
         EnsureTopmostOrder();
         _hoverTimer.Start();
         WorkspaceVisibilityManager.PinToAllWorkspaces(this);
@@ -108,7 +117,9 @@ public partial class IslandWindow : Window, ITrayIconHost
         IncomingLyricTextBlock.Text = _viewModel.TaskbarCurrentLine;
         _displayedLyricText = _viewModel.TaskbarCurrentLine;
         UpdateIslandWidth(_displayedLyricText, immediate: true);
+        UpdateIslandContentVisibility(_displayedLyricText);
         ApplyLoadingState(immediate: true);
+        ApplyPlaybackStateVisual(immediate: true);
         EnsureTopmostOrder();
         await _viewModel.InitializeAsync();
     }
@@ -145,6 +156,11 @@ public partial class IslandWindow : Window, ITrayIconHost
 
     private void HoverTimer_OnTick(object? sender, EventArgs e)
     {
+        if (_isNoLyricsAnimationActive)
+        {
+            return;
+        }
+
         if (!GetCursorPos(out var point))
         {
             return;
@@ -174,10 +190,15 @@ public partial class IslandWindow : Window, ITrayIconHost
 
     private void AnimateIslandHoverOpacity(bool isHovered)
     {
+        if (_isNoLyricsAnimationActive)
+        {
+            return;
+        }
+
         IslandLayer.BeginAnimation(OpacityProperty, null);
         var animation = new DoubleAnimation
         {
-            To = isHovered ? HoverFadeOpacity : 1,
+            To = !_isIslandContentVisible ? 0 : (isHovered ? HoverFadeOpacity : 1),
             Duration = TimeSpan.FromMilliseconds(isHovered ? 120 : 180),
             EasingFunction = new QuadraticEase
             {
@@ -251,6 +272,31 @@ public partial class IslandWindow : Window, ITrayIconHost
                 _ = Dispatcher.InvokeAsync(() => ApplyLoadingState());
             }
         }
+
+        if (e.PropertyName == nameof(MainViewModel.IsPlaybackPaused))
+        {
+            if (Dispatcher.CheckAccess())
+            {
+                AnimatePlaybackStateChange(_viewModel.IsPlaybackPaused);
+            }
+            else
+            {
+                _ = Dispatcher.InvokeAsync(() => AnimatePlaybackStateChange(_viewModel.IsPlaybackPaused));
+            }
+        }
+
+        if (e.PropertyName == nameof(MainViewModel.NoTimedLyricsFound)
+            || e.PropertyName == nameof(MainViewModel.IsLoadingLyrics))
+        {
+            if (Dispatcher.CheckAccess())
+            {
+                HandleNoLyricsState();
+            }
+            else
+            {
+                _ = Dispatcher.InvokeAsync(() => HandleNoLyricsState());
+            }
+        }
     }
 
     private static bool IsWindowsLightTheme()
@@ -276,6 +322,7 @@ public partial class IslandWindow : Window, ITrayIconHost
         RootGrid.Background = IsSettingsWindowVisible()
             ? new SolidColorBrush(MediaColor.FromArgb(180, 10, 14, 20))
             : new SolidColorBrush(MediaColor.FromArgb(0, 0, 0, 0));
+        ApplyIslandCornerRadius();
         if (!_viewModel.IsLoadingLyrics)
         {
             var lyricBrush = new SolidColorBrush(MediaColor.FromRgb(245, 247, 250));
@@ -342,6 +389,9 @@ public partial class IslandWindow : Window, ITrayIconHost
         Height = bounds.Height;
         ApplyIslandScale();
         UpdateIslandWidth(_displayedLyricText, immediate: true);
+        _ = Dispatcher.InvokeAsync(
+            () => UpdateIslandWidth(_displayedLyricText, immediate: true),
+            DispatcherPriority.Loaded);
         EnsureTopmostOrder();
     }
 
@@ -357,9 +407,20 @@ public partial class IslandWindow : Window, ITrayIconHost
         return IslandDisplayMode.GetEffectiveScale(_settings.IslandScale);
     }
 
+    private void ApplyIslandCornerRadius()
+    {
+        var radius = IslandDisplayMode.GetEffectiveCornerRadius(_settings.IslandCornerRadius);
+        IslandBackground.CornerRadius = new CornerRadius(radius);
+    }
+
     private async void HandleCurrentLineChanged(string newCurrentLine)
     {
         if (string.Equals(_displayedLyricText, newCurrentLine, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (_isNoLyricsAnimationActive)
         {
             return;
         }
@@ -405,7 +466,42 @@ public partial class IslandWindow : Window, ITrayIconHost
         OutgoingLyricTextBlock.Opacity = 0;
         OutgoingLyricTextBlock.Text = string.Empty;
 
+        if (string.IsNullOrWhiteSpace(newCurrentLine))
+        {
+            _displayedLyricText = string.Empty;
+
+            if (!ShouldHideForEmptyLine())
+            {
+                return;
+            }
+
+            await Task.Delay(EmptyLineHideDelay);
+
+            if (transitionVersion != _lyricTransitionVersion)
+            {
+                return;
+            }
+
+            await SetIslandContentVisibleAsync(false);
+            return;
+        }
+
         await AnimateIslandWidthAsync(newCurrentLine);
+
+        if (transitionVersion != _lyricTransitionVersion)
+        {
+            return;
+        }
+
+        if (!_isIslandContentVisible)
+        {
+            await SetIslandContentVisibleAsync(true);
+
+            if (transitionVersion != _lyricTransitionVersion)
+            {
+                return;
+            }
+        }
 
         if (transitionVersion != _lyricTransitionVersion)
         {
@@ -434,6 +530,80 @@ public partial class IslandWindow : Window, ITrayIconHost
         _displayedLyricText = newCurrentLine;
     }
 
+    private bool ShouldHideForEmptyLine()
+    {
+        if (_viewModel.IsLoadingLyrics)
+        {
+            return false;
+        }
+
+        if (_viewModel.Lyrics.Count == 0)
+        {
+            return true;
+        }
+
+        var position = _viewModel.EstimatedPosition;
+        if (position is null)
+        {
+            return true;
+        }
+
+        var nextNonEmptyLine = _viewModel.Lyrics
+            .Where(line => line.Timestamp >= position.Value && !string.IsNullOrWhiteSpace(line.Text))
+            .OrderBy(line => line.Timestamp)
+            .FirstOrDefault();
+
+        if (nextNonEmptyLine is null)
+        {
+            return true;
+        }
+
+        return nextNonEmptyLine.Timestamp - position.Value > EmptyLineUpcomingLyricGrace;
+    }
+
+    private void UpdateIslandContentVisibility(string text)
+    {
+        _isIslandContentVisible = !string.IsNullOrWhiteSpace(text);
+        IslandLayer.BeginAnimation(OpacityProperty, null);
+        IslandLayer.Opacity = _isIslandContentVisible
+            ? (_isPointerOverIsland ? HoverFadeOpacity : 1)
+            : 0;
+    }
+
+    private Task SetIslandContentVisibleAsync(bool isVisible)
+    {
+        var targetOpacity = isVisible
+            ? (_isPointerOverIsland ? HoverFadeOpacity : 1)
+            : 0;
+
+        if (_isIslandContentVisible == isVisible && Math.Abs(IslandLayer.Opacity - targetOpacity) < 0.001)
+        {
+            IslandLayer.Opacity = targetOpacity;
+            return Task.CompletedTask;
+        }
+
+        _isIslandContentVisible = isVisible;
+        IslandLayer.BeginAnimation(OpacityProperty, null);
+        var completion = new TaskCompletionSource();
+        var animation = new DoubleAnimation
+        {
+            To = targetOpacity,
+            Duration = TimeSpan.FromMilliseconds(isVisible ? 180 : 140),
+            EasingFunction = new QuadraticEase
+            {
+                EasingMode = isVisible ? EasingMode.EaseOut : EasingMode.EaseIn
+            }
+        };
+        animation.Completed += (_, _) =>
+        {
+            IslandLayer.BeginAnimation(OpacityProperty, null);
+            IslandLayer.Opacity = targetOpacity;
+            completion.TrySetResult();
+        };
+        IslandLayer.BeginAnimation(OpacityProperty, animation);
+        return completion.Task;
+    }
+
     private void UpdateIslandWidth(string text, bool immediate)
     {
         var width = MeasureIslandWidth(text);
@@ -443,6 +613,7 @@ public partial class IslandWindow : Window, ITrayIconHost
         IslandTextClip.BeginAnimation(WidthProperty, null);
         IslandBackground.Width = width;
         IslandTextClip.Width = width;
+        ApplyLyricTextWidth(width);
 
         if (immediate)
         {
@@ -465,6 +636,7 @@ public partial class IslandWindow : Window, ITrayIconHost
         IslandBackgroundTranslateTransform.BeginAnimation(TranslateTransform.XProperty, null);
         IslandBackground.Width = animationBaseWidth;
         IslandTextClip.Width = animationBaseWidth;
+        ApplyLyricTextWidth(animationBaseWidth);
         IslandBackgroundScaleTransform.ScaleX = fromScale;
         IslandBackgroundTranslateTransform.X = 0;
 
@@ -484,9 +656,16 @@ public partial class IslandWindow : Window, ITrayIconHost
         IslandBackgroundTranslateTransform.BeginAnimation(TranslateTransform.XProperty, null);
         IslandBackground.Width = targetWidth;
         IslandTextClip.Width = targetWidth;
+        ApplyLyricTextWidth(targetWidth);
         IslandBackgroundScaleTransform.ScaleX = 1;
         IslandBackgroundTranslateTransform.X = 0;
         _islandWidth = targetWidth;
+    }
+
+    private void ApplyLyricTextWidth(double islandWidth)
+    {
+        var textWidth = Math.Max(0, islandWidth - IslandDisplayMode.BackgroundHorizontalPadding);
+        LyricStage.Width = textWidth;
     }
 
     private static Task AnimateDoubleAsync(UIElement target, DependencyProperty property, DoubleAnimation animation)
@@ -509,7 +688,9 @@ public partial class IslandWindow : Window, ITrayIconHost
     {
         var availableWidth = Math.Max(
             IslandDisplayMode.MinimumBackgroundWidth,
-            (ActualWidth / GetEffectiveIslandScale()) - (IslandDisplayMode.HorizontalMargin * 2));
+            RootGrid.ActualWidth > 0
+                ? RootGrid.ActualWidth / GetEffectiveIslandScale()
+                : ActualWidth / GetEffectiveIslandScale());
 
         if (string.IsNullOrWhiteSpace(text))
         {
@@ -538,7 +719,8 @@ public partial class IslandWindow : Window, ITrayIconHost
     {
         var isLoading = _viewModel.IsLoadingLyrics;
 
-        LoadingSpinnerImage.BeginAnimation(OpacityProperty, null);
+        LoadingIcon.BeginAnimation(OpacityProperty, null);
+        LoadingSpacer.BeginAnimation(WidthProperty, null);
         LoadingSpinnerRotateTransform.BeginAnimation(RotateTransform.AngleProperty, null);
 
         if (isLoading)
@@ -546,11 +728,18 @@ public partial class IslandWindow : Window, ITrayIconHost
             IncomingLyricTextBlock.Foreground = GetLoadingTextBrush();
             OutgoingLyricTextBlock.Foreground = GetLoadingTextBrush();
             LyricStage.Opacity = 0.58;
-            LoadingOverlay.Visibility = Visibility.Visible;
+            LoadingIcon.Visibility = Visibility.Visible;
 
-            var spinnerFade = new DoubleAnimation
+            var iconFade = new DoubleAnimation
             {
                 To = 1,
+                Duration = TimeSpan.FromMilliseconds(immediate ? 1 : 150),
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+            };
+
+            var spacerAnimation = new DoubleAnimation
+            {
+                To = LoadingSpacerTargetWidth,
                 Duration = TimeSpan.FromMilliseconds(immediate ? 1 : 150),
                 EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
             };
@@ -563,7 +752,8 @@ public partial class IslandWindow : Window, ITrayIconHost
                 RepeatBehavior = RepeatBehavior.Forever
             };
 
-            LoadingSpinnerImage.BeginAnimation(OpacityProperty, spinnerFade);
+            LoadingIcon.BeginAnimation(OpacityProperty, iconFade);
+            LoadingSpacer.BeginAnimation(WidthProperty, spacerAnimation);
             LoadingSpinnerRotateTransform.BeginAnimation(RotateTransform.AngleProperty, spinnerRotation);
             return;
         }
@@ -571,19 +761,202 @@ public partial class IslandWindow : Window, ITrayIconHost
         LyricStage.Opacity = 1;
         ApplyAppearance();
 
-        var fadeOut = new DoubleAnimation
+        var iconFadeOut = new DoubleAnimation
         {
             To = 0,
             Duration = TimeSpan.FromMilliseconds(immediate ? 1 : 180),
             EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
         };
-        fadeOut.Completed += (_, _) =>
+
+        var spacerFadeOut = new DoubleAnimation
         {
-            LoadingOverlay.Visibility = Visibility.Collapsed;
+            To = 0,
+            Duration = TimeSpan.FromMilliseconds(immediate ? 1 : 180),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
+        };
+
+        iconFadeOut.Completed += (_, _) =>
+        {
+            LoadingIcon.Visibility = Visibility.Collapsed;
             LoadingSpinnerRotateTransform.Angle = 0;
         };
 
-        LoadingSpinnerImage.BeginAnimation(OpacityProperty, fadeOut);
+        LoadingIcon.BeginAnimation(OpacityProperty, iconFadeOut);
+        LoadingSpacer.BeginAnimation(WidthProperty, spacerFadeOut);
+    }
+
+    private void AnimatePlaybackStateChange(bool isPaused)
+    {
+        if (_isPauseVisualActive == isPaused)
+        {
+            return;
+        }
+
+        PauseIcon.BeginAnimation(OpacityProperty, null);
+        PauseSpacer.BeginAnimation(WidthProperty, null);
+
+        var spacerAnimation = new DoubleAnimation
+        {
+            From = PauseSpacer.ActualWidth,
+            To = isPaused ? PauseSpacerTargetWidth : 0,
+            Duration = TimeSpan.FromMilliseconds(isPaused ? 260 : 150),
+            EasingFunction = new CubicEase
+            {
+                EasingMode = isPaused ? EasingMode.EaseOut : EasingMode.EaseIn
+            }
+        };
+
+        var iconAnimation = new DoubleAnimation
+        {
+            From = PauseIcon.Opacity,
+            To = isPaused ? 1 : 0,
+            BeginTime = isPaused ? TimeSpan.FromMilliseconds(110) : TimeSpan.Zero,
+            Duration = TimeSpan.FromMilliseconds(isPaused ? 190 : 90),
+            EasingFunction = new QuadraticEase
+            {
+                EasingMode = isPaused ? EasingMode.EaseOut : EasingMode.EaseIn
+            }
+        };
+
+        spacerAnimation.Completed += (_, _) =>
+        {
+            PauseSpacer.Width = isPaused ? PauseSpacerTargetWidth : 0;
+        };
+
+        iconAnimation.Completed += (_, _) =>
+        {
+            PauseIcon.Opacity = isPaused ? 1 : 0;
+            if (!isPaused)
+            {
+                PauseIcon.Visibility = Visibility.Collapsed;
+            }
+        };
+
+        if (isPaused)
+        {
+            PauseIcon.Visibility = Visibility.Visible;
+        }
+
+        PauseSpacer.BeginAnimation(WidthProperty, spacerAnimation);
+        PauseIcon.BeginAnimation(OpacityProperty, iconAnimation);
+        _isPauseVisualActive = isPaused;
+    }
+
+    private void ApplyPlaybackStateVisual(bool immediate)
+    {
+        _isPauseVisualActive = _viewModel.IsPlaybackPaused;
+        PauseSpacer.BeginAnimation(WidthProperty, null);
+        PauseIcon.BeginAnimation(OpacityProperty, null);
+
+        if (immediate)
+        {
+            PauseSpacer.Width = _isPauseVisualActive ? PauseSpacerTargetWidth : 0;
+            PauseIcon.Opacity = _isPauseVisualActive ? 1 : 0;
+            PauseIcon.Visibility = _isPauseVisualActive ? Visibility.Visible : Visibility.Collapsed;
+            return;
+        }
+
+        AnimatePlaybackStateChange(_viewModel.IsPlaybackPaused);
+    }
+
+    private void HandleNoLyricsState()
+    {
+        if (_viewModel.IsLoadingLyrics)
+        {
+            CancelNoLyricsAnimation();
+            return;
+        }
+
+        if (_viewModel.NoTimedLyricsFound && !_isNoLyricsAnimationActive)
+        {
+            StartNoLyricsAnimation();
+        }
+    }
+
+    private void StartNoLyricsAnimation()
+    {
+        if (_isNoLyricsAnimationActive)
+        {
+            return;
+        }
+
+        _isNoLyricsAnimationActive = true;
+
+        // 1. Flash background red
+        IslandRedOverlay.BeginAnimation(OpacityProperty, null);
+        var redFlash = new DoubleAnimation
+        {
+            From = 0,
+            To = 1,
+            Duration = TimeSpan.FromMilliseconds(250),
+            AutoReverse = true,
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+        };
+        IslandRedOverlay.BeginAnimation(OpacityProperty, redFlash);
+
+        // 2. Vibrate the pill
+        IslandLayerVibrateTransform.BeginAnimation(TranslateTransform.XProperty, null);
+        var vibrate = new DoubleAnimationUsingKeyFrames
+        {
+            Duration = TimeSpan.FromMilliseconds(500)
+        };
+        vibrate.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(0))));
+        vibrate.KeyFrames.Add(new LinearDoubleKeyFrame(-4, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(60))));
+        vibrate.KeyFrames.Add(new LinearDoubleKeyFrame(4, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(120))));
+        vibrate.KeyFrames.Add(new LinearDoubleKeyFrame(-3, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(180))));
+        vibrate.KeyFrames.Add(new LinearDoubleKeyFrame(3, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(240))));
+        vibrate.KeyFrames.Add(new LinearDoubleKeyFrame(-2, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(300))));
+        vibrate.KeyFrames.Add(new LinearDoubleKeyFrame(2, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(360))));
+        vibrate.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(420))));
+        IslandLayerVibrateTransform.BeginAnimation(TranslateTransform.XProperty, vibrate);
+
+        // 3. Fade out the entire pill after 2 seconds
+        IslandLayer.BeginAnimation(OpacityProperty, null);
+        var fadeOut = new DoubleAnimation
+        {
+            To = 0,
+            BeginTime = TimeSpan.FromSeconds(2),
+            Duration = TimeSpan.FromMilliseconds(400),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
+        };
+        fadeOut.Completed += (_, _) =>
+        {
+            if (!_isNoLyricsAnimationActive)
+            {
+                return;
+            }
+
+            IslandLayer.Opacity = 0;
+        };
+        IslandLayer.BeginAnimation(OpacityProperty, fadeOut);
+    }
+
+    private void CancelNoLyricsAnimation()
+    {
+        if (!_isNoLyricsAnimationActive)
+        {
+            return;
+        }
+
+        _isNoLyricsAnimationActive = false;
+
+        // Stop all animations
+        IslandRedOverlay.BeginAnimation(OpacityProperty, null);
+        IslandLayerVibrateTransform.BeginAnimation(TranslateTransform.XProperty, null);
+        IslandLayer.BeginAnimation(OpacityProperty, null);
+
+        // Restore visual state
+        IslandRedOverlay.Opacity = 0;
+        IslandLayerVibrateTransform.X = 0;
+
+        // Fade the pill back in
+        var fadeIn = new DoubleAnimation
+        {
+            To = 1,
+            Duration = TimeSpan.FromMilliseconds(300),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+        };
+        IslandLayer.BeginAnimation(OpacityProperty, fadeIn);
     }
 
     private void MonitorWarningTimer_OnTick(object? sender, EventArgs e)
@@ -720,6 +1093,7 @@ public partial class IslandWindow : Window, ITrayIconHost
         persistedSettings.IslandMaximumWidth = incomingSettings.IslandMaximumWidth;
         persistedSettings.IslandScale = incomingSettings.IslandScale;
         persistedSettings.IslandContainerHeight = incomingSettings.IslandContainerHeight;
+        persistedSettings.IslandCornerRadius = incomingSettings.IslandCornerRadius;
         persistedSettings.LyricAlignment = incomingSettings.LyricAlignment;
         persistedSettings.ShowAlbumArt = incomingSettings.ShowAlbumArt;
         persistedSettings.WordByWordMode = incomingSettings.WordByWordMode;

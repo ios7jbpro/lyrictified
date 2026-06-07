@@ -1941,6 +1941,7 @@ public partial class WindowedWindow : Window, ITrayIconHost
         persistedSettings.IslandMaximumWidth = incomingSettings.IslandMaximumWidth;
         persistedSettings.IslandScale = incomingSettings.IslandScale;
         persistedSettings.IslandContainerHeight = incomingSettings.IslandContainerHeight;
+        persistedSettings.IslandCornerRadius = incomingSettings.IslandCornerRadius;
         persistedSettings.LyricAlignment = incomingSettings.LyricAlignment;
         persistedSettings.ShowAlbumArt = incomingSettings.ShowAlbumArt;
         persistedSettings.WordByWordMode = incomingSettings.WordByWordMode;
