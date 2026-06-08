@@ -960,7 +960,7 @@
                     <Border Style="{StaticResource CardStyle}">
                         <StackPanel>
                             <TextBlock Text="Behavior" Style="{StaticResource SectionTitleStyle}" />
-                            <Grid>
+                            <Grid Margin="0,0,0,12">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
@@ -975,6 +975,25 @@
                                           VerticalAlignment="Center"
                                           Checked="IslandHideInFullscreenCheckBox_OnChanged"
                                           Unchecked="IslandHideInFullscreenCheckBox_OnChanged" />
+                            </Grid>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="Timeout" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" FontWeight="Medium" />
+                                    <TextBlock Text="Seconds to wait before fading out when paused. Set to 0 to disable." Style="{StaticResource HintTextStyle}" />
+                                </StackPanel>
+                                <TextBox x:Name="IslandTimeoutTextBox"
+                                         Grid.Column="1"
+                                         Width="80"
+                                         VerticalAlignment="Center"
+                                         TextAlignment="Center"
+                                         MaxLength="3"
+                                         PreviewTextInput="MaxCacheSizeTextBox_PreviewTextInput"
+                                         DataObject.Pasting="MaxCacheSizeTextBox_Pasting"
+                                         TextChanged="IslandTimeoutTextBox_OnTextChanged" />
                             </Grid>
                         </StackPanel>
                     </Border>

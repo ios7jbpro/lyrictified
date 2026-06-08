@@ -38,6 +38,8 @@ public sealed class AppSettings
 
     public bool IslandHideInFullscreen { get; set; }
 
+    public int IslandTimeout { get; set; } = 10;
+
     public LyricAlignment LyricAlignment { get; set; } = LyricAlignment.Center;
 
     public LyricAlignment WindowedLyricAlignment { get; set; } = LyricAlignment.Center;

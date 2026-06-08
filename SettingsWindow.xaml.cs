@@ -121,6 +121,7 @@ public partial class SettingsWindow : Window
             IslandContainerHeightTextBox.Text = settings.IslandContainerHeight?.ToString() ?? string.Empty;
             IslandCornerRadiusTextBox.Text = GetEffectiveIslandCornerRadius(settings.IslandCornerRadius).ToString("F0");
             IslandHideInFullscreenCheckBox.IsChecked = settings.IslandHideInFullscreen;
+            IslandTimeoutTextBox.Text = settings.IslandTimeout.ToString();
             DebugForceLyricsSourceComboBox.SelectedIndex = settings.DebugForceLyricsSource switch
             {
                 "Local" => 1,
@@ -332,6 +333,11 @@ public partial class SettingsWindow : Window
         RaiseSettingsChanged();
     }
 
+    private void IslandTimeoutTextBox_OnTextChanged(object sender, TextChangedEventArgs e)
+    {
+        RaiseTextSettingsChanged();
+    }
+
     private void AutostartWithWindowsCheckBox_OnChanged(object sender, RoutedEventArgs e)
     {
         RaiseSettingsChanged();
@@ -365,6 +371,7 @@ public partial class SettingsWindow : Window
             IslandContainerHeight = ParseIslandContainerHeight(),
             IslandCornerRadius = ParseIslandCornerRadius(),
             IslandHideInFullscreen = IslandHideInFullscreenCheckBox.IsChecked == true,
+            IslandTimeout = ParseIslandTimeout(),
             LyricAlignment = (LyricAlignmentComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() switch
             {
                 "Left" => LyricAlignment.Left,
@@ -512,6 +519,16 @@ public partial class SettingsWindow : Window
         }
 
         return Math.Clamp(radius, 0, 40);
+    }
+
+    private int ParseIslandTimeout()
+    {
+        if (int.TryParse(IslandTimeoutTextBox.Text, out var parsed) && parsed >= 0)
+        {
+            return parsed;
+        }
+
+        return 10;
     }
 
     private int ParseMaxCacheSize()
