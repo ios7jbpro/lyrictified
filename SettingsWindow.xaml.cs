@@ -38,6 +38,9 @@ public partial class SettingsWindow : Window
         DebugTabItem.Visibility = Visibility.Collapsed;
 #endif
         SourceInitialized += OnSourceInitialized;
+
+        var appVersion = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+        AppVersionTextBlock.Text = appVersion is not null ? $"v{appVersion.ToString(3)}" : "";
     }
 
     public event EventHandler<AppSettings>? SettingsChanged;

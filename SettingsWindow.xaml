@@ -1050,6 +1050,28 @@
             </ScrollViewer>
         </TabItem>
 
+        <TabItem Header="About">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Margin="4,8,4,4">
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="20">
+                            <TextBlock Text="Lyrictified"
+                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                       FontSize="24"
+                                       FontWeight="Bold"
+                                       HorizontalAlignment="Center" />
+                            <TextBlock x:Name="AppVersionTextBlock"
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       FontSize="14"
+                                       FontWeight="Medium"
+                                       HorizontalAlignment="Center"
+                                       Margin="0,8,0,0" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </TabItem>
+
         <TabItem x:Name="DebugTabItem" Header="Debug" Visibility="Collapsed">
             <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel Margin="4,8,4,4">
