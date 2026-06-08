@@ -33,9 +33,9 @@ A full-width bar that attaches to the top of your monitor. It shows the current 
 
 A compact floating window that sits just above the Windows taskbar. It keeps lyrics always visible while you work, play, or browse, with smart clamping and multi-monitor support.
 
-![Island Mode](island.png)
-
 ### Island Mode
+
+![Island Mode](island.png)
 
 A lightweight, click-through lyrics overlay that floats on top of your screen. It auto-sizes to fit each lyric line, fades on hover, and stays out of your way while keeping you in sync with the music.
 
