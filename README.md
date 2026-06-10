@@ -21,9 +21,9 @@ A Windows desktop app that displays real-time synced lyrics for whatever music i
 
 ## Display Modes
 
-![App Bar Mode](appbar.png)
-
 ### App Bar Mode
+
+![App Bar Mode](appbar.png)
 
 A full-width bar that attaches to the top of your monitor. It shows the current lyric line, album artwork, song info, and a smooth progress bar — all without getting in the way of your workflow.
 

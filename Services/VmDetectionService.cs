@@ -1,6 +1,7 @@
 using Microsoft.Win32;
 using System.Linq;
 using System.Text;
+using Lyrictified;
 
 namespace Lyrictified.Services;
 
@@ -202,45 +203,11 @@ internal static class VmDetectionService
     {
         try
         {
-            using var form = new System.Windows.Forms.Form
+            System.Windows.Application.Current.Dispatcher.Invoke(() =>
             {
-                Text = "Lyrictified - VM Detected",
-                ClientSize = new System.Drawing.Size(540, 260),
-                StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen,
-                FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog,
-                MaximizeBox = false,
-                MinimizeBox = false,
-                BackColor = System.Drawing.Color.FromArgb(22, 27, 34),
-            };
-
-            var label = new System.Windows.Forms.Label
-            {
-                Text = "We detected that you're running a VM (for testing?). Virtual Machines can fall behind and glitch out in audio. To work around this, we suggest you install Spotify both on your host and the VM, open it on both sides, but play the song from the host side instead. This allows Lyrictified to still get the current playing media through Spotify multi-device notification.",
-                ForeColor = System.Drawing.Color.FromArgb(230, 237, 243),
-                BackColor = form.BackColor,
-                AutoSize = false,
-                Size = new System.Drawing.Size(500, 170),
-                Location = new System.Drawing.Point(20, 15),
-                Font = new System.Drawing.Font("Segoe UI", 9.5f),
-            };
-            form.Controls.Add(label);
-
-            var btnOk = new System.Windows.Forms.Button
-            {
-                Text = "OK",
-                DialogResult = System.Windows.Forms.DialogResult.OK,
-                Size = new System.Drawing.Size(120, 32),
-                Location = new System.Drawing.Point(210, 200),
-                ForeColor = System.Drawing.Color.FromArgb(230, 237, 243),
-                BackColor = System.Drawing.Color.FromArgb(28, 33, 40),
-                FlatStyle = System.Windows.Forms.FlatStyle.Flat,
-            };
-            btnOk.FlatAppearance.BorderColor = System.Drawing.Color.FromArgb(48, 54, 61);
-            btnOk.Click += (_, _) => form.Close();
-            form.Controls.Add(btnOk);
-            form.AcceptButton = btnOk;
-
-            form.ShowDialog();
+                var dialog = new VmWarningDialog();
+                dialog.ShowDialog();
+            });
         }
         catch (Exception ex)
         {
