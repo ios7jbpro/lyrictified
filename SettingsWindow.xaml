@@ -7,7 +7,7 @@
         Height="520"
         WindowStyle="None"
         ResizeMode="CanResize"
-        WindowStartupLocation="CenterOwner"
+        WindowStartupLocation="CenterScreen"
         Background="Transparent"
         StateChanged="Window_OnStateChanged">
     <shell:WindowChrome.WindowChrome>
