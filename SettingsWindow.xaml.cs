@@ -41,7 +41,12 @@ public partial class SettingsWindow : Window
         SourceInitialized += OnSourceInitialized;
 
         var appVersion = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
-        AppVersionTextBlock.Text = appVersion is not null ? $"v{appVersion.ToString(3)}" : "";
+#if DEBUG
+        var buildSuffix = "-debug";
+#else
+        var buildSuffix = "-release";
+#endif
+        AppVersionTextBlock.Text = appVersion is not null ? $"v{appVersion.ToString(3)}{buildSuffix}" : "";
     }
 
     public event EventHandler<AppSettings>? SettingsChanged;
@@ -134,6 +139,8 @@ public partial class SettingsWindow : Window
             IslandCornerRadiusTextBox.Text = GetEffectiveIslandCornerRadius(settings.IslandCornerRadius).ToString("F0");
             IslandHideInFullscreenCheckBox.IsChecked = settings.IslandHideInFullscreen;
             IslandTimeoutTextBox.Text = settings.IslandTimeout.ToString();
+            IslandHoverOpacitySlider.Value = Math.Clamp(GetEffectiveIslandHoverOpacity(settings.IslandHoverOpacity) * 100, 0, 100);
+            IslandHoverOpacityValueTextBlock.Text = $"{(int)IslandHoverOpacitySlider.Value}%";
             DebugForceLyricsSourceComboBox.SelectedIndex = settings.DebugForceLyricsSource switch
             {
                 "Local" => 1,
@@ -351,6 +358,16 @@ public partial class SettingsWindow : Window
         RaiseTextSettingsChanged();
     }
 
+    private void IslandHoverOpacitySlider_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (IslandHoverOpacityValueTextBlock is not null)
+        {
+            IslandHoverOpacityValueTextBlock.Text = $"{(int)e.NewValue}%";
+        }
+
+        RaiseTextSettingsChanged();
+    }
+
     private void AutostartWithWindowsCheckBox_OnChanged(object sender, RoutedEventArgs e)
     {
         RaiseSettingsChanged();
@@ -390,6 +407,7 @@ public partial class SettingsWindow : Window
             IslandCornerRadius = ParseIslandCornerRadius(),
             IslandHideInFullscreen = IslandHideInFullscreenCheckBox.IsChecked == true,
             IslandTimeout = ParseIslandTimeout(),
+            IslandHoverOpacity = GetEffectiveIslandHoverOpacity(IslandHoverOpacitySlider.Value / 100.0),
             LyricAlignment = (LyricAlignmentComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() switch
             {
                 "Left" => LyricAlignment.Left,
@@ -538,6 +556,16 @@ public partial class SettingsWindow : Window
         }
 
         return Math.Clamp(radius, 0, 40);
+    }
+
+    private static double GetEffectiveIslandHoverOpacity(double opacity)
+    {
+        if (double.IsNaN(opacity) || double.IsInfinity(opacity))
+        {
+            return 0.16;
+        }
+
+        return Math.Clamp(opacity, 0, 1);
     }
 
     private int ParseIslandTimeout()

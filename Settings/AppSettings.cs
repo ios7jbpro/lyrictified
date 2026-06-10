@@ -40,6 +40,8 @@ public sealed class AppSettings
 
     public int IslandTimeout { get; set; } = 10;
 
+    public double IslandHoverOpacity { get; set; } = 0.16;
+
     public LyricAlignment LyricAlignment { get; set; } = LyricAlignment.Center;
 
     public LyricAlignment WindowedLyricAlignment { get; set; } = LyricAlignment.Center;

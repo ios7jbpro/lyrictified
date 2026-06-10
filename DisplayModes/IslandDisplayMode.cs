@@ -51,6 +51,16 @@ public static class IslandDisplayMode
         return Math.Clamp(radius, 0, 40);
     }
 
+    public static double GetEffectiveHoverOpacity(double opacity)
+    {
+        if (double.IsNaN(opacity) || double.IsInfinity(opacity))
+        {
+            return 0.16;
+        }
+
+        return Math.Clamp(opacity, 0, 1);
+    }
+
     public static double GetAutomaticContainerHeight(double scale)
     {
         return (WindowHeight * GetEffectiveScale(scale)) + (VerticalScalePadding * 2);

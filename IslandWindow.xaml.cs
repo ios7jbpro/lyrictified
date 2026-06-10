@@ -27,7 +27,6 @@ public partial class IslandWindow : Window, ITrayIconHost
     private static readonly TimeSpan HoverPollInterval = TimeSpan.FromMilliseconds(80);
     private static readonly TimeSpan EmptyLineHideDelay = TimeSpan.FromMilliseconds(260);
     private static readonly TimeSpan EmptyLineUpcomingLyricGrace = TimeSpan.FromMilliseconds(1600);
-    private const double HoverFadeOpacity = 0.16;
     private static WpfBrush GetLoadingTextBrush()
     {
         var color = IsWindowsLightTheme()
@@ -968,7 +967,7 @@ public partial class IslandWindow : Window, ITrayIconHost
             return 0;
         if (_isTimeoutHidden)
             return 0;
-        return _isPointerOverIsland ? HoverFadeOpacity : 1;
+        return _isPointerOverIsland ? IslandDisplayMode.GetEffectiveHoverOpacity(_settings.IslandHoverOpacity) : 1;
     }
 
     private void ApplyTargetIslandOpacity(TimeSpan? duration = null)
@@ -1280,7 +1279,6 @@ public partial class IslandWindow : Window, ITrayIconHost
         }
 
         PositionWindow();
-        RefreshSettingsWindowOptions();
         ApplyAppearance();
         FullscreenTimer_OnTick(null, EventArgs.Empty);
 
@@ -1293,6 +1291,8 @@ public partial class IslandWindow : Window, ITrayIconHost
                 ApplyTargetIslandOpacity();
             }
         }
+
+        ApplyTargetIslandOpacity();
     }
 
     private AppSettings MergeSettings(AppSettings incomingSettings)
@@ -1314,6 +1314,7 @@ public partial class IslandWindow : Window, ITrayIconHost
         persistedSettings.IslandCornerRadius = incomingSettings.IslandCornerRadius;
         persistedSettings.IslandHideInFullscreen = incomingSettings.IslandHideInFullscreen;
         persistedSettings.IslandTimeout = incomingSettings.IslandTimeout;
+        persistedSettings.IslandHoverOpacity = incomingSettings.IslandHoverOpacity;
         persistedSettings.LyricAlignment = incomingSettings.LyricAlignment;
         persistedSettings.ShowAlbumArt = incomingSettings.ShowAlbumArt;
         persistedSettings.WordByWordMode = incomingSettings.WordByWordMode;
