@@ -541,6 +541,27 @@
                             </Grid>
                         </StackPanel>
                     </Border>
+                    <Border x:Name="SuppressVmWarningCard" Style="{StaticResource CardStyle}" Visibility="Collapsed">
+                        <StackPanel>
+                            <TextBlock Text="Virtual Machine" Style="{StaticResource SectionTitleStyle}" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="Suppress VM warning" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" FontWeight="Medium" />
+                                    <TextBlock Text="Don't show the VM detection warning on startup." Style="{StaticResource HintTextStyle}" />
+                                </StackPanel>
+                                <CheckBox x:Name="SuppressVmWarningCheckBox"
+                                          Grid.Column="1"
+                                          Style="{StaticResource ToggleSwitchStyle}"
+                                          VerticalAlignment="Center"
+                                          Checked="SuppressVmWarningCheckBox_OnChanged"
+                                          Unchecked="SuppressVmWarningCheckBox_OnChanged" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </ScrollViewer>
         </TabItem>
@@ -1160,15 +1181,43 @@
                                      FontSize="11"
                                      FontFamily="Consolas"
                                      Text="No search yet" />
-                            <Button x:Name="ForceResearchButton"
-                                    Content="Force re-search lyrics"
+                             <Button x:Name="ForceResearchButton"
+                                     Content="Force re-search lyrics"
+                                     Margin="0,12,0,0"
+                                     Padding="12,6"
+                                     HorizontalAlignment="Left"
+                                     Background="#1C2128"
+                                     Foreground="#E6EDF3"
+                                     BorderBrush="#58A6FF"
+                                     Click="ForceResearchButton_OnClick" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="VM Detection Info" Style="{StaticResource SectionTitleStyle}" />
+                            <TextBlock Text="Shows the results of the VM detection checks. Useful for debugging false positives." Style="{StaticResource LabelStyle}" />
+                            <TextBox x:Name="VmDetectionInfoTextBox"
+                                     IsReadOnly="True"
+                                     Margin="0,8,0,0"
+                                     TextWrapping="Wrap"
+                                     MaxHeight="200"
+                                     VerticalScrollBarVisibility="Auto"
+                                     Background="#0A0E14"
+                                     Foreground="#9DB1C4"
+                                     BorderBrush="#365067"
+                                     FontSize="11"
+                                     FontFamily="Consolas"
+                                     Text="No detection data yet" />
+                            <Button x:Name="RefreshVmDetectionButton"
+                                    Content="Refresh detection"
                                     Margin="0,12,0,0"
                                     Padding="12,6"
                                     HorizontalAlignment="Left"
                                     Background="#1C2128"
                                     Foreground="#E6EDF3"
                                     BorderBrush="#58A6FF"
-                                    Click="ForceResearchButton_OnClick" />
+                                    Click="RefreshVmDetectionButton_OnClick" />
                         </StackPanel>
                     </Border>
                 </StackPanel>

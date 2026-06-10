@@ -10,6 +10,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using Lyrictified.DisplayModes;
 using Lyrictified.Interop;
+using Lyrictified.Services;
 using Lyrictified.Settings;
 using Lyrictified.Styling;
 
@@ -56,6 +57,12 @@ public partial class SettingsWindow : Window
         }
 
         LastSearchInfoTextBox.Text = string.IsNullOrWhiteSpace(info) ? "No search yet" : info;
+    }
+
+    public void UpdateVmDetectionInfo()
+    {
+        var result = VmDetectionService.GetVmDetectionResult();
+        VmDetectionInfoTextBox.Text = VmDetectionService.FormatResult(result);
     }
 
     private AppSettings? _lastLoadedSettings;
@@ -106,6 +113,8 @@ public partial class SettingsWindow : Window
             DisplayTtmlLyricsComboBox.SelectedIndex = settings.DisplayTtmlLyrics ? 1 : 0;
             MaxCacheSizeTextBox.Text = settings.MaxCacheSize.ToString();
             AutostartWithWindowsCheckBox.IsChecked = settings.AutostartWithWindows;
+            SuppressVmWarningCheckBox.IsChecked = settings.SuppressVmWarning;
+            SuppressVmWarningCard.Visibility = VmDetectionService.IsRunningInVirtualMachine() ? Visibility.Visible : Visibility.Collapsed;
 
             WindowedShowNextLineComboBox.SelectedIndex = settings.WindowedShowNextLine ? 1 : 0;
             WindowedLyricAlignmentComboBox.SelectedIndex = settings.WindowedLyricAlignment switch
@@ -165,6 +174,7 @@ public partial class SettingsWindow : Window
             UpdateIslandScaleHint();
             UpdateIslandContainerHeightHint();
             UpdateIslandCornerRadiusHint();
+            UpdateVmDetectionInfo();
         }
         finally
         {
@@ -346,6 +356,11 @@ public partial class SettingsWindow : Window
         RaiseSettingsChanged();
     }
 
+    private void SuppressVmWarningCheckBox_OnChanged(object sender, RoutedEventArgs e)
+    {
+        RaiseSettingsChanged();
+    }
+
     private void RaiseSettingsChanged()
     {
         if (_isInitializing)
@@ -393,6 +408,7 @@ public partial class SettingsWindow : Window
             WordByWordMode = WordByWordComboBox.SelectedIndex == 1,
             DisplayTtmlLyrics = DisplayTtmlLyricsComboBox.SelectedIndex == 1,
             AutostartWithWindows = AutostartWithWindowsCheckBox.IsChecked == true,
+            SuppressVmWarning = SuppressVmWarningCheckBox.IsChecked == true,
             WindowedShowNextLine = WindowedShowNextLineComboBox.SelectedIndex == 1,
             WindowedLyricAlignment = (WindowedLyricAlignmentComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() switch
             {
@@ -740,6 +756,11 @@ public partial class SettingsWindow : Window
     private void ForceResearchButton_OnClick(object sender, RoutedEventArgs e)
     {
         ForceLyricsRefreshRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void RefreshVmDetectionButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        UpdateVmDetectionInfo();
     }
 
     private void ForceNoLyricsButton_OnClick(object sender, RoutedEventArgs e)

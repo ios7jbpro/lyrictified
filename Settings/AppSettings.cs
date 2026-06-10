@@ -81,4 +81,6 @@ public sealed class AppSettings
     public List<string> IgnoredMediaAppIds { get; set; } = new();
 
     public string? DebugForceLyricsSource { get; set; }
+
+    public bool SuppressVmWarning { get; set; }
 }

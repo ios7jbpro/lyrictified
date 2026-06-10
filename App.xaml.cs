@@ -21,6 +21,13 @@ public partial class App : Application
         TrySetAppUserModelId();
         base.OnStartup(e);
 
+        var settings = _appSettingsService.Load();
+        if (!settings.SuppressVmWarning && VmDetectionService.IsRunningInVirtualMachine())
+        {
+            Logger.Log("VM detected.");
+            VmDetectionService.ShowVmWarningNotification();
+        }
+
 #if DEBUG
         var chosenBaseAddress = DebugBuildHelper.ShowDialog();
         if (chosenBaseAddress is null)
@@ -31,7 +38,7 @@ public partial class App : Application
         LocalLyricsBaseAddress = chosenBaseAddress;
 #endif
 
-        WindowsAutostartService.Apply(_appSettingsService.Load().AutostartWithWindows);
+        WindowsAutostartService.Apply(settings.AutostartWithWindows);
         RestartDisplayWindow();
     }
 
