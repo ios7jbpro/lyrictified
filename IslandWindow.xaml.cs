@@ -207,9 +207,11 @@ public partial class IslandWindow : Window, ITrayIconHost
             return;
         }
 
+        var currentOpacity = IslandLayer.Opacity;
         IslandLayer.BeginAnimation(OpacityProperty, null);
         var animation = new DoubleAnimation
         {
+            From = currentOpacity,
             To = GetTargetIslandOpacity(),
             Duration = TimeSpan.FromMilliseconds(isHovered ? 120 : 180),
             EasingFunction = new QuadraticEase
