@@ -48,6 +48,15 @@
     </Content>
   </ItemGroup>
 
+  <ItemGroup Condition="'$(Configuration)' != 'Debug'">
+    <Page Remove="DebugStartupDialog.xaml" />
+    <Compile Remove="DebugStartupDialog.xaml.cs" />
+    <Page Remove="DebugServerDialog.xaml" />
+    <Compile Remove="DebugServerDialog.xaml.cs" />
+    <Page Remove="DebugCacheDialog.xaml" />
+    <Compile Remove="DebugCacheDialog.xaml.cs" />
+  </ItemGroup>
+
   <Target Name="BuildInnoSetupInstaller"
           AfterTargets="Build"
           Condition="'$(DesignTimeBuild)' != 'true' and '$(SkipInstallerBuild)' != 'true'">
