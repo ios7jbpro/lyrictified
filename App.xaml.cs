@@ -12,7 +12,7 @@ namespace Lyrictified;
 public partial class App : Application
 {
     public const string AppUserModelId = "Lyrictified.App";
-    public static string LocalLyricsBaseAddress { get; set; } = "https://lyrictifiedserve.ios7.xyz/";
+    public static string LocalLyricsBaseAddress { get; set; } = "https://api.lyrictified.xyz/";
     public static bool IgnoreLocalCache { get; set; }
 
     private static readonly int WM_SHOW_SETTINGS = (int)RegisterWindowMessage("Lyrictified_ShowSettings");

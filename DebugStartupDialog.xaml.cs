@@ -61,7 +61,7 @@ public partial class DebugStartupDialog : Window
 
     private void BtnPublic_OnClick(object sender, RoutedEventArgs e)
     {
-        Result = "https://lyrictifiedserve.ios7.xyz/";
+        Result = "https://api.lyrictified.xyz/";
         IgnoreLocalCache = ShowCacheDialog();
         DialogResult = true;
     }
