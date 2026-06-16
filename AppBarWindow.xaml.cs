@@ -2322,6 +2322,7 @@ public partial class AppBarWindow : Window, ITrayIconHost
         persistedSettings.IslandCornerRadius = incomingSettings.IslandCornerRadius;
         persistedSettings.IslandHoverOpacity = incomingSettings.IslandHoverOpacity;
         persistedSettings.IslandAnimationMode = incomingSettings.IslandAnimationMode;
+        persistedSettings.IslandAnimationManualSpeed = incomingSettings.IslandAnimationManualSpeed;
         persistedSettings.LyricAlignment = incomingSettings.LyricAlignment;
         persistedSettings.ShowAlbumArt = incomingSettings.ShowAlbumArt;
         persistedSettings.AppBarShowProgressBar = incomingSettings.AppBarShowProgressBar;

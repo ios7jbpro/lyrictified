@@ -547,6 +547,7 @@ public partial class TaskbarWindow : Window, ITrayIconHost
         persistedSettings.IslandCornerRadius = incomingSettings.IslandCornerRadius;
         persistedSettings.IslandHoverOpacity = incomingSettings.IslandHoverOpacity;
         persistedSettings.IslandAnimationMode = incomingSettings.IslandAnimationMode;
+        persistedSettings.IslandAnimationManualSpeed = incomingSettings.IslandAnimationManualSpeed;
         persistedSettings.LyricAlignment = incomingSettings.LyricAlignment;
         persistedSettings.ShowAlbumArt = incomingSettings.ShowAlbumArt;
         persistedSettings.WordByWordMode = incomingSettings.WordByWordMode;

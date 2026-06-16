@@ -66,6 +66,7 @@ public partial class IslandWindow : Window, ITrayIconHost
     private const double LoadingSpacerTargetWidth = 24;
     private const double SlideWordOffset = 48;
     private const int SlideWordDurationMs = 130;
+    private const int SlideWordInDurationMs = 100;
     private const int SlideWordStaggerMs = 75;
     private static readonly MediaColor RedFlashColor = MediaColor.FromArgb(230, 200, 40, 40);
 
@@ -557,7 +558,7 @@ public partial class IslandWindow : Window, ITrayIconHost
         var transitionVersion = ++_lyricTransitionVersion;
         CancelLyricTransitionAnimations();
 
-        if (_settings.IslandAnimationMode == IslandAnimationMode.SlideIn)
+        if (_settings.IslandAnimationMode == IslandAnimationMode.SlideIn || _settings.IslandAnimationMode == IslandAnimationMode.SlideInManual)
         {
             await HandleCurrentLineChangedSlideIn(newCurrentLine, transitionVersion);
             return;
@@ -657,11 +658,52 @@ public partial class IslandWindow : Window, ITrayIconHost
         _displayedLyricText = newCurrentLine;
     }
 
+    private double CalculateLyricTempoMultiplier()
+    {
+        var lyrics = _viewModel.Lyrics;
+        if (lyrics.Count < 2)
+        {
+            return 1.0;
+        }
+
+        var gaps = new List<double>();
+        for (var i = 0; i < lyrics.Count - 1; i++)
+        {
+            var gap = (lyrics[i + 1].Timestamp - lyrics[i].Timestamp).TotalSeconds;
+            if (gap > 0.2)
+            {
+                gaps.Add(gap);
+            }
+        }
+
+        if (gaps.Count == 0)
+        {
+            return 1.0;
+        }
+
+        gaps.Sort();
+        var medianGap = gaps[gaps.Count / 2];
+        if (medianGap <= 0)
+        {
+            return 1.0;
+        }
+
+        var multiplier = 3.0 / medianGap;
+        return Math.Clamp(multiplier, 0.5, 2.0);
+    }
+
     private async Task HandleCurrentLineChangedSlideIn(string newCurrentLine, int transitionVersion)
     {
         var outgoingText = _displayedLyricText;
         var hasOutgoing = !string.IsNullOrWhiteSpace(outgoingText);
         var hasIncoming = !string.IsNullOrWhiteSpace(newCurrentLine);
+        var tempo = _settings.IslandAnimationMode == IslandAnimationMode.SlideInManual
+            ? _settings.IslandAnimationManualSpeed
+            : CalculateLyricTempoMultiplier();
+        var outDuration = (int)(SlideWordDurationMs / tempo);
+        var inDuration = (int)(SlideWordInDurationMs / tempo);
+        var stagger = (int)(SlideWordStaggerMs / tempo);
+        var widthDuration = (int)(190 / tempo);
 
         if (!hasIncoming)
         {
@@ -678,7 +720,7 @@ public partial class IslandWindow : Window, ITrayIconHost
             IncomingWordsPanel.Visibility = Visibility.Collapsed;
             ClearWordPanel(IncomingWordsPanel);
 
-            await AnimateSlideWordsAsync(OutgoingWordsPanel, slideOut: true, transitionVersion);
+            await AnimateSlideWordsAsync(OutgoingWordsPanel, slideOut: true, transitionVersion, outDuration, stagger);
 
             if (transitionVersion != _lyricTransitionVersion)
             {
@@ -718,8 +760,8 @@ public partial class IslandWindow : Window, ITrayIconHost
             OutgoingWordsPanel.Visibility = Visibility.Collapsed;
         }
 
-        PopulateWordPanel(IncomingWordsPanel, newCurrentLine, initialYOffset: SlideWordOffset);
-        IncomingWordsPanel.Visibility = Visibility.Visible;
+        IncomingWordsPanel.Visibility = Visibility.Collapsed;
+        ClearWordPanel(IncomingWordsPanel);
 
         if (!_isIslandContentVisible)
         {
@@ -731,14 +773,33 @@ public partial class IslandWindow : Window, ITrayIconHost
             }
         }
 
-        var widthTask = AnimateIslandWidthAsync(newCurrentLine);
-        var slideTask = AnimateSlideWordsParallelAsync(
-            OutgoingWordsPanel,
-            IncomingWordsPanel,
-            hasOutgoing,
-            transitionVersion);
+        // 1. Slide out outgoing words
+        if (hasOutgoing)
+        {
+            await AnimateSlideWordsAsync(OutgoingWordsPanel, slideOut: true, transitionVersion, outDuration, stagger);
 
-        await Task.WhenAll(widthTask, slideTask);
+            if (transitionVersion != _lyricTransitionVersion)
+            {
+                return;
+            }
+
+            ClearWordPanel(OutgoingWordsPanel);
+            OutgoingWordsPanel.Visibility = Visibility.Collapsed;
+        }
+
+        // 2. Resize island
+        await AnimateIslandWidthAsync(newCurrentLine, widthDuration);
+
+        if (transitionVersion != _lyricTransitionVersion)
+        {
+            return;
+        }
+
+        // 3. Slide in new words (slightly faster)
+        PopulateWordPanel(IncomingWordsPanel, newCurrentLine, initialYOffset: SlideWordOffset);
+        IncomingWordsPanel.Visibility = Visibility.Visible;
+
+        await AnimateSlideWordsAsync(IncomingWordsPanel, slideOut: false, transitionVersion, inDuration, stagger);
 
         if (transitionVersion != _lyricTransitionVersion)
         {
@@ -863,23 +924,7 @@ public partial class IslandWindow : Window, ITrayIconHost
         return text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).ToList();
     }
 
-    private async Task AnimateSlideWordsParallelAsync(
-        StackPanel outgoingPanel,
-        StackPanel incomingPanel,
-        bool slideOutgoing,
-        int transitionVersion)
-    {
-        var tasks = new List<Task>();
-        if (slideOutgoing)
-        {
-            tasks.Add(AnimateSlideWordsAsync(outgoingPanel, slideOut: true, transitionVersion));
-        }
-
-        tasks.Add(AnimateSlideWordsAsync(incomingPanel, slideOut: false, transitionVersion));
-        await Task.WhenAll(tasks);
-    }
-
-    private async Task AnimateSlideWordsAsync(StackPanel panel, bool slideOut, int transitionVersion)
+    private async Task AnimateSlideWordsAsync(StackPanel panel, bool slideOut, int transitionVersion, int durationMs = SlideWordDurationMs, int staggerMs = SlideWordStaggerMs)
     {
         var children = panel.Children.OfType<TextBlock>().ToList();
         if (children.Count == 0)
@@ -898,14 +943,14 @@ public partial class IslandWindow : Window, ITrayIconHost
             }
             textBlock.BeginAnimation(OpacityProperty, null);
 
-            var beginTime = TimeSpan.FromMilliseconds(i * SlideWordStaggerMs);
+            var beginTime = TimeSpan.FromMilliseconds(i * staggerMs);
             var yAnimation = slideOut
                 ? new DoubleAnimation
                 {
                     From = 0,
                     To = -SlideWordOffset,
                     BeginTime = beginTime,
-                    Duration = TimeSpan.FromMilliseconds(SlideWordDurationMs),
+                    Duration = TimeSpan.FromMilliseconds(durationMs),
                     EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
                 }
                 : new DoubleAnimation
@@ -913,7 +958,7 @@ public partial class IslandWindow : Window, ITrayIconHost
                     From = SlideWordOffset,
                     To = 0,
                     BeginTime = beginTime,
-                    Duration = TimeSpan.FromMilliseconds(SlideWordDurationMs),
+                    Duration = TimeSpan.FromMilliseconds(durationMs),
                     EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
                 };
 
@@ -923,7 +968,7 @@ public partial class IslandWindow : Window, ITrayIconHost
                     From = 1,
                     To = 0,
                     BeginTime = beginTime,
-                    Duration = TimeSpan.FromMilliseconds(SlideWordDurationMs),
+                    Duration = TimeSpan.FromMilliseconds(durationMs),
                     EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
                 }
                 : new DoubleAnimation
@@ -931,7 +976,7 @@ public partial class IslandWindow : Window, ITrayIconHost
                     From = 0,
                     To = 1,
                     BeginTime = beginTime,
-                    Duration = TimeSpan.FromMilliseconds(SlideWordDurationMs),
+                    Duration = TimeSpan.FromMilliseconds(durationMs),
                     EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
                 };
 
@@ -1052,7 +1097,7 @@ public partial class IslandWindow : Window, ITrayIconHost
         }
     }
 
-    private async Task AnimateIslandWidthAsync(string text)
+    private async Task AnimateIslandWidthAsync(string text, int durationMs = 190)
     {
         var targetWidth = MeasureIslandWidth(text);
         var animationBaseWidth = Math.Max(_islandWidth, targetWidth);
@@ -1072,7 +1117,7 @@ public partial class IslandWindow : Window, ITrayIconHost
         {
             From = fromScale,
             To = toScale,
-            Duration = TimeSpan.FromMilliseconds(190),
+            Duration = TimeSpan.FromMilliseconds(durationMs),
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut }
         };
 
@@ -1614,6 +1659,7 @@ public partial class IslandWindow : Window, ITrayIconHost
         persistedSettings.IslandTimeout = incomingSettings.IslandTimeout;
         persistedSettings.IslandHoverOpacity = incomingSettings.IslandHoverOpacity;
         persistedSettings.IslandAnimationMode = incomingSettings.IslandAnimationMode;
+        persistedSettings.IslandAnimationManualSpeed = incomingSettings.IslandAnimationManualSpeed;
         persistedSettings.LyricAlignment = incomingSettings.LyricAlignment;
         persistedSettings.ShowAlbumArt = incomingSettings.ShowAlbumArt;
         persistedSettings.WordByWordMode = incomingSettings.WordByWordMode;

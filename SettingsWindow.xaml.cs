@@ -144,8 +144,12 @@ public partial class SettingsWindow : Window
             IslandAnimationModeComboBox.SelectedIndex = settings.IslandAnimationMode switch
             {
                 IslandAnimationMode.SlideIn => 1,
+                IslandAnimationMode.SlideInManual => 2,
                 _ => 0
             };
+            IslandAnimationManualSpeedSlider.Value = Math.Clamp(settings.IslandAnimationManualSpeed, 0.5, 2.5);
+            IslandAnimationManualSpeedValueTextBlock.Text = $"{IslandAnimationManualSpeedSlider.Value:F1}x";
+            UpdateIslandAnimationManualSpeedVisibility();
             DebugForceLyricsSourceComboBox.SelectedIndex = settings.DebugForceLyricsSource switch
             {
                 "Local" => 1,
@@ -365,7 +369,29 @@ public partial class SettingsWindow : Window
 
     private void IslandAnimationModeComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        UpdateIslandAnimationManualSpeedVisibility();
         RaiseSettingsChanged();
+    }
+
+    private void UpdateIslandAnimationManualSpeedVisibility()
+    {
+        if (IslandAnimationManualSpeedPanel is not null)
+        {
+            IslandAnimationManualSpeedPanel.Visibility =
+                IslandAnimationModeComboBox.SelectedIndex == 2
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+        }
+    }
+
+    private void IslandAnimationManualSpeedSlider_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (IslandAnimationManualSpeedValueTextBlock is not null)
+        {
+            IslandAnimationManualSpeedValueTextBlock.Text = $"{e.NewValue:F1}x";
+        }
+
+        RaiseTextSettingsChanged();
     }
 
     private void IslandHoverOpacitySlider_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
@@ -421,8 +447,10 @@ public partial class SettingsWindow : Window
             IslandAnimationMode = IslandAnimationModeComboBox.SelectedIndex switch
             {
                 1 => IslandAnimationMode.SlideIn,
+                2 => IslandAnimationMode.SlideInManual,
                 _ => IslandAnimationMode.Default
             },
+            IslandAnimationManualSpeed = IslandAnimationManualSpeedSlider?.Value ?? 1.0,
             LyricAlignment = (LyricAlignmentComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() switch
             {
                 "Left" => LyricAlignment.Left,

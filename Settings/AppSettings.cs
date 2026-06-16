@@ -44,6 +44,8 @@ public sealed class AppSettings
 
     public IslandAnimationMode IslandAnimationMode { get; set; } = IslandAnimationMode.Default;
 
+    public double IslandAnimationManualSpeed { get; set; } = 1.0;
+
     public LyricAlignment LyricAlignment { get; set; } = LyricAlignment.Center;
 
     public LyricAlignment WindowedLyricAlignment { get; set; } = LyricAlignment.Center;
