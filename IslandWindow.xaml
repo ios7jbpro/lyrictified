@@ -112,6 +112,18 @@
                             </Image.RenderTransform>
                         </Image>
                     </Viewbox>
+                    <StackPanel x:Name="OutgoingWordsPanel"
+                                Grid.Column="1"
+                                Orientation="Horizontal"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Visibility="Collapsed" />
+                    <StackPanel x:Name="IncomingWordsPanel"
+                                Grid.Column="1"
+                                Orientation="Horizontal"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Visibility="Collapsed" />
                     <TextBlock x:Name="OutgoingLyricTextBlock"
                                Grid.Column="1"
                                Foreground="#F5F7FA"

@@ -141,6 +141,11 @@ public partial class SettingsWindow : Window
             IslandTimeoutTextBox.Text = settings.IslandTimeout.ToString();
             IslandHoverOpacitySlider.Value = Math.Clamp(GetEffectiveIslandHoverOpacity(settings.IslandHoverOpacity) * 100, 0, 100);
             IslandHoverOpacityValueTextBlock.Text = $"{(int)IslandHoverOpacitySlider.Value}%";
+            IslandAnimationModeComboBox.SelectedIndex = settings.IslandAnimationMode switch
+            {
+                IslandAnimationMode.SlideIn => 1,
+                _ => 0
+            };
             DebugForceLyricsSourceComboBox.SelectedIndex = settings.DebugForceLyricsSource switch
             {
                 "Local" => 1,
@@ -358,6 +363,11 @@ public partial class SettingsWindow : Window
         RaiseTextSettingsChanged();
     }
 
+    private void IslandAnimationModeComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        RaiseSettingsChanged();
+    }
+
     private void IslandHoverOpacitySlider_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         if (IslandHoverOpacityValueTextBlock is not null)
@@ -408,6 +418,11 @@ public partial class SettingsWindow : Window
             IslandHideInFullscreen = IslandHideInFullscreenCheckBox.IsChecked == true,
             IslandTimeout = ParseIslandTimeout(),
             IslandHoverOpacity = GetEffectiveIslandHoverOpacity(IslandHoverOpacitySlider.Value / 100.0),
+            IslandAnimationMode = IslandAnimationModeComboBox.SelectedIndex switch
+            {
+                1 => IslandAnimationMode.SlideIn,
+                _ => IslandAnimationMode.Default
+            },
             LyricAlignment = (LyricAlignmentComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() switch
             {
                 "Left" => LyricAlignment.Left,

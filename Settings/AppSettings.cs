@@ -42,6 +42,8 @@ public sealed class AppSettings
 
     public double IslandHoverOpacity { get; set; } = 0.16;
 
+    public IslandAnimationMode IslandAnimationMode { get; set; } = IslandAnimationMode.Default;
+
     public LyricAlignment LyricAlignment { get; set; } = LyricAlignment.Center;
 
     public LyricAlignment WindowedLyricAlignment { get; set; } = LyricAlignment.Center;

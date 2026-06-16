@@ -980,6 +980,19 @@
 
                     <Border Style="{StaticResource CardStyle}">
                         <StackPanel>
+                            <TextBlock Text="Animation" Style="{StaticResource SectionTitleStyle}" />
+                            <TextBlock Text="How lyrics transition when the line changes." Style="{StaticResource LabelStyle}" />
+                            <ComboBox x:Name="IslandAnimationModeComboBox"
+                                      MinWidth="260"
+                                      SelectionChanged="IslandAnimationModeComboBox_OnSelectionChanged">
+                                <ComboBoxItem Content="Default" />
+                                <ComboBoxItem Content="Slide-in" />
+                            </ComboBox>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
                             <TextBlock Text="Behavior" Style="{StaticResource SectionTitleStyle}" />
                             <Grid Margin="0,0,0,12">
                                 <Grid.ColumnDefinitions>
