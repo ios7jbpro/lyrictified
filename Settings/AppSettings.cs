@@ -46,6 +46,10 @@ public sealed class AppSettings
 
     public double IslandAnimationManualSpeed { get; set; } = 1.0;
 
+    public IslandAnimationMode TaskbarAnimationMode { get; set; } = IslandAnimationMode.Default;
+
+    public double TaskbarAnimationManualSpeed { get; set; } = 1.0;
+
     public LyricAlignment LyricAlignment { get; set; } = LyricAlignment.Center;
 
     public LyricAlignment WindowedLyricAlignment { get; set; } = LyricAlignment.Center;

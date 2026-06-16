@@ -911,6 +911,51 @@
                                        Text="Leave empty to use the default 880px taskbar width cap." />
                         </StackPanel>
                     </Border>
+
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="Animation" Style="{StaticResource SectionTitleStyle}" />
+                            <TextBlock Text="How lyrics transition when the line changes." Style="{StaticResource LabelStyle}" />
+                            <ComboBox x:Name="TaskbarAnimationModeComboBox"
+                                      MinWidth="260"
+                                      SelectionChanged="TaskbarAnimationModeComboBox_OnSelectionChanged">
+                                <ComboBoxItem Content="Default" />
+                                <ComboBoxItem Content="Slide-in" />
+                                <ComboBoxItem Content="Slide-in (manual)" />
+                            </ComboBox>
+                            <Grid x:Name="TaskbarAnimationManualSpeedPanel"
+                                  Margin="0,12,0,0"
+                                  Visibility="Collapsed">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="Animation speed" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" FontWeight="Medium" />
+                                    <TextBlock Text="Control how fast the slide animations play." Style="{StaticResource HintTextStyle}" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" MinWidth="160">
+                                    <Slider x:Name="TaskbarAnimationManualSpeedSlider"
+                                            Minimum="0.5"
+                                            Maximum="2.5"
+                                            Value="1.0"
+                                            Width="120"
+                                            VerticalAlignment="Center"
+                                            TickFrequency="0.1"
+                                            IsSnapToTickEnabled="True"
+                                            ValueChanged="TaskbarAnimationManualSpeedSlider_OnValueChanged" />
+                                    <TextBlock x:Name="TaskbarAnimationManualSpeedValueTextBlock"
+                                               Text="1.0x"
+                                               Foreground="{StaticResource TextPrimaryBrush}"
+                                               FontSize="13"
+                                               Width="40"
+                                               TextAlignment="Center"
+                                               Margin="8,0,0,0"
+                                               VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </ScrollViewer>
         </TabItem>

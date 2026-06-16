@@ -40,33 +40,43 @@
         <Grid Grid.Column="0"
               VerticalAlignment="Center"
               ClipToBounds="True">
-            <Grid x:Name="LyricStage"
-                  Height="24"
-                  VerticalAlignment="Center"
-                  ClipToBounds="True">
-                <TextBlock x:Name="OutgoingLyricTextBlock"
-                           Foreground="#F5F7FA"
-                           FontSize="20"
-                           FontWeight="SemiBold"
-                           VerticalAlignment="Center"
-                           TextTrimming="CharacterEllipsis"
-                           Opacity="0">
-                    <TextBlock.RenderTransform>
-                        <TranslateTransform x:Name="OutgoingLyricTranslateTransform" Y="0" />
-                    </TextBlock.RenderTransform>
-                </TextBlock>
-                <TextBlock x:Name="IncomingLyricTextBlock"
-                           Foreground="#F5F7FA"
-                           FontSize="20"
-                           FontWeight="SemiBold"
-                           VerticalAlignment="Center"
-                           TextTrimming="CharacterEllipsis"
-                           Opacity="1">
-                    <TextBlock.RenderTransform>
-                        <TranslateTransform x:Name="IncomingLyricTranslateTransform" Y="0" />
-                    </TextBlock.RenderTransform>
-                </TextBlock>
-            </Grid>
+                <Grid x:Name="LyricStage"
+                      Height="24"
+                      VerticalAlignment="Center"
+                      ClipToBounds="True">
+                    <StackPanel x:Name="OutgoingWordsPanel"
+                                Orientation="Horizontal"
+                                HorizontalAlignment="Left"
+                                VerticalAlignment="Center"
+                                Visibility="Collapsed" />
+                    <StackPanel x:Name="IncomingWordsPanel"
+                                Orientation="Horizontal"
+                                HorizontalAlignment="Left"
+                                VerticalAlignment="Center"
+                                Visibility="Collapsed" />
+                    <TextBlock x:Name="OutgoingLyricTextBlock"
+                               Foreground="#F5F7FA"
+                               FontSize="20"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis"
+                               Opacity="0">
+                        <TextBlock.RenderTransform>
+                            <TranslateTransform x:Name="OutgoingLyricTranslateTransform" Y="0" />
+                        </TextBlock.RenderTransform>
+                    </TextBlock>
+                    <TextBlock x:Name="IncomingLyricTextBlock"
+                               Foreground="#F5F7FA"
+                               FontSize="20"
+                               FontWeight="SemiBold"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis"
+                               Opacity="1">
+                        <TextBlock.RenderTransform>
+                            <TranslateTransform x:Name="IncomingLyricTranslateTransform" Y="0" />
+                        </TextBlock.RenderTransform>
+                    </TextBlock>
+                </Grid>
             <Grid x:Name="LoadingOverlay"
                   VerticalAlignment="Center"
                   HorizontalAlignment="Right"

@@ -2,7 +2,9 @@ using Microsoft.Win32;
 using System.Runtime.InteropServices;
 using System.ComponentModel;
 using System.IO;
+using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -42,9 +44,15 @@ public partial class TaskbarWindow : Window, ITrayIconHost
     private WinEventDelegate? _foregroundHookDelegate;
     private AppSettings _settings;
     private string _displayedLyricText = string.Empty;
+    private int _lyricTransitionVersion;
     private string? _lastMonitorWarningKey;
     private SettingsWindow? _settingsWindow;
     private TrayIcon? _trayIcon;
+
+    private const double SlideWordOffset = 48;
+    private const int SlideWordDurationMs = 130;
+    private const int SlideWordInDurationMs = 100;
+    private const int SlideWordStaggerMs = 75;
 
     public TaskbarWindow()
     {
@@ -283,6 +291,40 @@ public partial class TaskbarWindow : Window, ITrayIconHost
         EnsureTopmostOrder();
     }
 
+    private double CalculateLyricTempoMultiplier()
+    {
+        var lyrics = _viewModel.Lyrics;
+        if (lyrics.Count < 2)
+        {
+            return 1.0;
+        }
+
+        var gaps = new List<double>();
+        for (var i = 0; i < lyrics.Count - 1; i++)
+        {
+            var gap = (lyrics[i + 1].Timestamp - lyrics[i].Timestamp).TotalSeconds;
+            if (gap > 0.2)
+            {
+                gaps.Add(gap);
+            }
+        }
+
+        if (gaps.Count == 0)
+        {
+            return 1.0;
+        }
+
+        gaps.Sort();
+        var medianGap = gaps[gaps.Count / 2];
+        if (medianGap <= 0)
+        {
+            return 1.0;
+        }
+
+        var multiplier = 3.0 / medianGap;
+        return Math.Clamp(multiplier, 0.5, 2.0);
+    }
+
     private void HandleCurrentLineChanged(string newCurrentLine)
     {
         if (string.Equals(_displayedLyricText, newCurrentLine, StringComparison.Ordinal))
@@ -290,10 +332,15 @@ public partial class TaskbarWindow : Window, ITrayIconHost
             return;
         }
 
-        OutgoingLyricTextBlock.BeginAnimation(OpacityProperty, null);
-        IncomingLyricTextBlock.BeginAnimation(OpacityProperty, null);
-        OutgoingLyricTranslateTransform.BeginAnimation(TranslateTransform.YProperty, null);
-        IncomingLyricTranslateTransform.BeginAnimation(TranslateTransform.YProperty, null);
+        var transitionVersion = ++_lyricTransitionVersion;
+
+        if (_settings.TaskbarAnimationMode == IslandAnimationMode.SlideIn || _settings.TaskbarAnimationMode == IslandAnimationMode.SlideInManual)
+        {
+            _ = HandleCurrentLineChangedSlideIn(newCurrentLine, transitionVersion);
+            return;
+        }
+
+        CancelLyricTransitionAnimations();
 
         OutgoingLyricTextBlock.Text = _displayedLyricText;
         OutgoingLyricTextBlock.Opacity = string.IsNullOrWhiteSpace(_displayedLyricText) ? 0 : 1;
@@ -341,6 +388,287 @@ public partial class TaskbarWindow : Window, ITrayIconHost
         IncomingLyricTranslateTransform.BeginAnimation(TranslateTransform.YProperty, slideIn);
 
         _displayedLyricText = newCurrentLine;
+    }
+
+    private async Task HandleCurrentLineChangedSlideIn(string newCurrentLine, int transitionVersion)
+    {
+        var outgoingText = _displayedLyricText;
+        var hasOutgoing = !string.IsNullOrWhiteSpace(outgoingText);
+        var hasIncoming = !string.IsNullOrWhiteSpace(newCurrentLine);
+        var tempo = _settings.TaskbarAnimationMode == IslandAnimationMode.SlideInManual
+            ? _settings.TaskbarAnimationManualSpeed
+            : CalculateLyricTempoMultiplier();
+        var outDuration = (int)(SlideWordDurationMs / tempo);
+        var inDuration = (int)(SlideWordInDurationMs / tempo);
+        var stagger = (int)(SlideWordStaggerMs / tempo);
+
+        if (!hasIncoming)
+        {
+            if (!hasOutgoing)
+            {
+                _displayedLyricText = string.Empty;
+                RestoreLyricTextBlocks(string.Empty);
+                return;
+            }
+
+            SetLyricWordPanelsActive(true);
+            PopulateWordPanel(OutgoingWordsPanel, outgoingText);
+            OutgoingWordsPanel.Visibility = Visibility.Visible;
+            IncomingWordsPanel.Visibility = Visibility.Collapsed;
+            ClearWordPanel(IncomingWordsPanel);
+
+            await AnimateSlideWordsAsync(OutgoingWordsPanel, slideOut: true, transitionVersion, outDuration, stagger);
+
+            if (transitionVersion != _lyricTransitionVersion)
+            {
+                return;
+            }
+
+            _displayedLyricText = string.Empty;
+            RestoreLyricTextBlocks(string.Empty);
+            return;
+        }
+
+        SetLyricWordPanelsActive(true);
+
+        if (hasOutgoing)
+        {
+            PopulateWordPanel(OutgoingWordsPanel, outgoingText);
+            OutgoingWordsPanel.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            ClearWordPanel(OutgoingWordsPanel);
+            OutgoingWordsPanel.Visibility = Visibility.Collapsed;
+        }
+
+        IncomingWordsPanel.Visibility = Visibility.Collapsed;
+        ClearWordPanel(IncomingWordsPanel);
+
+        // 1. Slide out outgoing words
+        if (hasOutgoing)
+        {
+            await AnimateSlideWordsAsync(OutgoingWordsPanel, slideOut: true, transitionVersion, outDuration, stagger);
+
+            if (transitionVersion != _lyricTransitionVersion)
+            {
+                return;
+            }
+
+            ClearWordPanel(OutgoingWordsPanel);
+            OutgoingWordsPanel.Visibility = Visibility.Collapsed;
+        }
+
+        // 2. Slide in new words (slightly faster)
+        PopulateWordPanel(IncomingWordsPanel, newCurrentLine, initialYOffset: SlideWordOffset);
+        IncomingWordsPanel.Visibility = Visibility.Visible;
+
+        await AnimateSlideWordsAsync(IncomingWordsPanel, slideOut: false, transitionVersion, inDuration, stagger);
+
+        if (transitionVersion != _lyricTransitionVersion)
+        {
+            return;
+        }
+
+        RestoreLyricTextBlocks(newCurrentLine);
+        _displayedLyricText = newCurrentLine;
+    }
+
+    private void CancelLyricTransitionAnimations()
+    {
+        OutgoingLyricTextBlock.BeginAnimation(OpacityProperty, null);
+        IncomingLyricTextBlock.BeginAnimation(OpacityProperty, null);
+        OutgoingLyricTranslateTransform.BeginAnimation(TranslateTransform.YProperty, null);
+        IncomingLyricTranslateTransform.BeginAnimation(TranslateTransform.YProperty, null);
+        CancelSlideWordAnimations(OutgoingWordsPanel);
+        CancelSlideWordAnimations(IncomingWordsPanel);
+    }
+
+    private void SetLyricWordPanelsActive(bool useWordPanels)
+    {
+        if (useWordPanels)
+        {
+            OutgoingLyricTextBlock.Visibility = Visibility.Collapsed;
+            IncomingLyricTextBlock.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        OutgoingLyricTextBlock.Visibility = Visibility.Visible;
+        IncomingLyricTextBlock.Visibility = Visibility.Visible;
+        OutgoingWordsPanel.Visibility = Visibility.Collapsed;
+        IncomingWordsPanel.Visibility = Visibility.Collapsed;
+        ClearWordPanel(OutgoingWordsPanel);
+        ClearWordPanel(IncomingWordsPanel);
+    }
+
+    private void RestoreLyricTextBlocks(string displayedText)
+    {
+        ClearWordPanel(OutgoingWordsPanel);
+        ClearWordPanel(IncomingWordsPanel);
+        OutgoingWordsPanel.Visibility = Visibility.Collapsed;
+        IncomingWordsPanel.Visibility = Visibility.Collapsed;
+
+        OutgoingLyricTextBlock.Visibility = Visibility.Visible;
+        IncomingLyricTextBlock.Visibility = Visibility.Visible;
+        OutgoingLyricTextBlock.BeginAnimation(OpacityProperty, null);
+        IncomingLyricTextBlock.BeginAnimation(OpacityProperty, null);
+        OutgoingLyricTranslateTransform.BeginAnimation(TranslateTransform.YProperty, null);
+        IncomingLyricTranslateTransform.BeginAnimation(TranslateTransform.YProperty, null);
+
+        OutgoingLyricTextBlock.Text = string.Empty;
+        OutgoingLyricTextBlock.Opacity = 0;
+        OutgoingLyricTranslateTransform.Y = 0;
+
+        IncomingLyricTextBlock.Text = displayedText;
+        IncomingLyricTextBlock.Opacity = string.IsNullOrWhiteSpace(displayedText) ? 0 : 1;
+        IncomingLyricTranslateTransform.Y = 0;
+    }
+
+    private void PopulateWordPanel(StackPanel panel, string text, double initialYOffset = 0)
+    {
+        ClearWordPanel(panel);
+        var words = SplitLyricWords(text);
+        for (var i = 0; i < words.Count; i++)
+        {
+            var transform = new TranslateTransform(0, initialYOffset);
+            var wordText = i < words.Count - 1 ? words[i] + " " : words[i];
+            var textBlock = new TextBlock
+            {
+                Text = wordText,
+                Foreground = IncomingLyricTextBlock.Foreground,
+                FontFamily = IncomingLyricTextBlock.FontFamily,
+                FontSize = IncomingLyricTextBlock.FontSize,
+                FontWeight = IncomingLyricTextBlock.FontWeight,
+                FontStyle = IncomingLyricTextBlock.FontStyle,
+                VerticalAlignment = VerticalAlignment.Center,
+                Opacity = initialYOffset == 0 ? 1 : 0,
+                RenderTransform = transform
+            };
+            panel.Children.Add(textBlock);
+        }
+    }
+
+    private static void ClearWordPanel(StackPanel panel)
+    {
+        foreach (var child in panel.Children)
+        {
+            if (child is TextBlock textBlock && textBlock.RenderTransform is TranslateTransform transform)
+            {
+                transform.BeginAnimation(TranslateTransform.YProperty, null);
+                textBlock.BeginAnimation(OpacityProperty, null);
+            }
+        }
+
+        panel.Children.Clear();
+    }
+
+    private static void CancelSlideWordAnimations(StackPanel panel)
+    {
+        foreach (var child in panel.Children)
+        {
+            if (child is TextBlock textBlock && textBlock.RenderTransform is TranslateTransform transform)
+            {
+                transform.BeginAnimation(TranslateTransform.YProperty, null);
+                textBlock.BeginAnimation(OpacityProperty, null);
+            }
+        }
+    }
+
+    private static List<string> SplitLyricWords(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return new List<string>();
+        }
+
+        return text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).ToList();
+    }
+
+    private async Task AnimateSlideWordsAsync(StackPanel panel, bool slideOut, int transitionVersion, int durationMs = SlideWordDurationMs, int staggerMs = SlideWordStaggerMs)
+    {
+        var children = panel.Children.OfType<TextBlock>().ToList();
+        if (children.Count == 0)
+        {
+            return;
+        }
+
+        var animations = new List<Task>();
+        for (var i = 0; i < children.Count; i++)
+        {
+            var textBlock = children[i];
+            var transform = textBlock.RenderTransform as TranslateTransform;
+            if (transform != null)
+            {
+                transform.BeginAnimation(TranslateTransform.YProperty, null);
+            }
+            textBlock.BeginAnimation(OpacityProperty, null);
+
+            var beginTime = TimeSpan.FromMilliseconds(i * staggerMs);
+            var yAnimation = slideOut
+                ? new DoubleAnimation
+                {
+                    From = 0,
+                    To = -SlideWordOffset,
+                    BeginTime = beginTime,
+                    Duration = TimeSpan.FromMilliseconds(durationMs),
+                    EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
+                }
+                : new DoubleAnimation
+                {
+                    From = SlideWordOffset,
+                    To = 0,
+                    BeginTime = beginTime,
+                    Duration = TimeSpan.FromMilliseconds(durationMs),
+                    EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+                };
+
+            var opacityAnimation = slideOut
+                ? new DoubleAnimation
+                {
+                    From = 1,
+                    To = 0,
+                    BeginTime = beginTime,
+                    Duration = TimeSpan.FromMilliseconds(durationMs),
+                    EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
+                }
+                : new DoubleAnimation
+                {
+                    From = 0,
+                    To = 1,
+                    BeginTime = beginTime,
+                    Duration = TimeSpan.FromMilliseconds(durationMs),
+                    EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+                };
+
+            if (transform != null)
+            {
+                animations.Add(AnimateDoubleAsync(transform, TranslateTransform.YProperty, yAnimation));
+            }
+            animations.Add(AnimateDoubleAsync(textBlock, OpacityProperty, opacityAnimation));
+        }
+
+        await Task.WhenAll(animations);
+
+        if (transitionVersion != _lyricTransitionVersion)
+        {
+            return;
+        }
+    }
+
+    private static Task AnimateDoubleAsync(UIElement target, DependencyProperty property, DoubleAnimation animation)
+    {
+        var completion = new TaskCompletionSource();
+        animation.Completed += (_, _) => completion.TrySetResult();
+        target.BeginAnimation(property, animation);
+        return completion.Task;
+    }
+
+    private static Task AnimateDoubleAsync(Animatable target, DependencyProperty property, DoubleAnimation animation)
+    {
+        var completion = new TaskCompletionSource();
+        animation.Completed += (_, _) => completion.TrySetResult();
+        target.BeginAnimation(property, animation);
+        return completion.Task;
     }
 
     private void ApplyLoadingState(bool immediate = false)
@@ -548,6 +876,8 @@ public partial class TaskbarWindow : Window, ITrayIconHost
         persistedSettings.IslandHoverOpacity = incomingSettings.IslandHoverOpacity;
         persistedSettings.IslandAnimationMode = incomingSettings.IslandAnimationMode;
         persistedSettings.IslandAnimationManualSpeed = incomingSettings.IslandAnimationManualSpeed;
+        persistedSettings.TaskbarAnimationMode = incomingSettings.TaskbarAnimationMode;
+        persistedSettings.TaskbarAnimationManualSpeed = incomingSettings.TaskbarAnimationManualSpeed;
         persistedSettings.LyricAlignment = incomingSettings.LyricAlignment;
         persistedSettings.ShowAlbumArt = incomingSettings.ShowAlbumArt;
         persistedSettings.WordByWordMode = incomingSettings.WordByWordMode;

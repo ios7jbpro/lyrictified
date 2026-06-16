@@ -133,6 +133,15 @@ public partial class SettingsWindow : Window
             WindowedDisplayTtmlLyricsComboBox.SelectedIndex = settings.WindowedDisplayTtmlLyrics ? 1 : 0;
 
             TaskbarMaximumWidthTextBox.Text = settings.TaskbarMaximumWidth?.ToString() ?? string.Empty;
+            TaskbarAnimationModeComboBox.SelectedIndex = settings.TaskbarAnimationMode switch
+            {
+                IslandAnimationMode.SlideIn => 1,
+                IslandAnimationMode.SlideInManual => 2,
+                _ => 0
+            };
+            TaskbarAnimationManualSpeedSlider.Value = Math.Clamp(settings.TaskbarAnimationManualSpeed, 0.5, 2.5);
+            TaskbarAnimationManualSpeedValueTextBlock.Text = $"{TaskbarAnimationManualSpeedSlider.Value:F1}x";
+            UpdateTaskbarAnimationManualSpeedVisibility();
             IslandMaximumWidthTextBox.Text = settings.IslandMaximumWidth?.ToString() ?? string.Empty;
             IslandScaleTextBox.Text = (GetEffectiveIslandScale(settings.IslandScale) * 100).ToString("F0");
             IslandContainerHeightTextBox.Text = settings.IslandContainerHeight?.ToString() ?? string.Empty;
@@ -404,6 +413,33 @@ public partial class SettingsWindow : Window
         RaiseTextSettingsChanged();
     }
 
+    private void TaskbarAnimationModeComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        UpdateTaskbarAnimationManualSpeedVisibility();
+        RaiseSettingsChanged();
+    }
+
+    private void UpdateTaskbarAnimationManualSpeedVisibility()
+    {
+        if (TaskbarAnimationManualSpeedPanel is not null)
+        {
+            TaskbarAnimationManualSpeedPanel.Visibility =
+                TaskbarAnimationModeComboBox.SelectedIndex == 2
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+        }
+    }
+
+    private void TaskbarAnimationManualSpeedSlider_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TaskbarAnimationManualSpeedValueTextBlock is not null)
+        {
+            TaskbarAnimationManualSpeedValueTextBlock.Text = $"{e.NewValue:F1}x";
+        }
+
+        RaiseTextSettingsChanged();
+    }
+
     private void AutostartWithWindowsCheckBox_OnChanged(object sender, RoutedEventArgs e)
     {
         RaiseSettingsChanged();
@@ -437,6 +473,13 @@ public partial class SettingsWindow : Window
             IslandPreferredMonitorDeviceName = IslandMonitorComboBox.SelectedValue as string,
             CustomBarHeight = ParseCustomHeight(),
             TaskbarMaximumWidth = ParseTaskbarMaximumWidth(),
+            TaskbarAnimationMode = TaskbarAnimationModeComboBox.SelectedIndex switch
+            {
+                1 => IslandAnimationMode.SlideIn,
+                2 => IslandAnimationMode.SlideInManual,
+                _ => IslandAnimationMode.Default
+            },
+            TaskbarAnimationManualSpeed = TaskbarAnimationManualSpeedSlider?.Value ?? 1.0,
             IslandMaximumWidth = ParseIslandMaximumWidth(),
             IslandScale = ParseIslandScale(),
             IslandContainerHeight = ParseIslandContainerHeight(),
