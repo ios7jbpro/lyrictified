@@ -1243,7 +1243,7 @@
                                                            FontWeight="SemiBold"
                                                            HorizontalAlignment="Center"
                                                            VerticalAlignment="Center" />
-                                                <Ellipse>
+                                                <Ellipse RenderOptions.BitmapScalingMode="HighQuality">
                                                     <Ellipse.Fill>
                                                         <ImageBrush ImageSource="{Binding AvatarImage}" Stretch="UniformToFill" />
                                                     </Ellipse.Fill>
