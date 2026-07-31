@@ -14,6 +14,7 @@ using System.Windows.Threading;
 using System.Windows.Controls;
 using Lyrictified.DisplayModes;
 using Lyrictified.Interop;
+using Lyrictified.Models;
 using Lyrictified.Settings;
 using Lyrictified.ViewModels;
 using WpfBrush = System.Windows.Media.Brush;
@@ -665,7 +666,7 @@ public partial class IslandWindow : Window, ITrayIconHost
         _displayedLyricText = newCurrentLine;
     }
 
-    private double CalculateLyricTempoMultiplier()
+    private double CalculateLocalLyricTempoMultiplier(string incomingLine, string outgoingLine)
     {
         var lyrics = _viewModel.Lyrics;
         if (lyrics.Count < 2)
@@ -673,30 +674,76 @@ public partial class IslandWindow : Window, ITrayIconHost
             return 1.0;
         }
 
-        var gaps = new List<double>();
-        for (var i = 0; i < lyrics.Count - 1; i++)
+        var anchorText = string.IsNullOrWhiteSpace(incomingLine) ? outgoingLine : incomingLine;
+        var anchorIndex = FindLineIndexClosestToPosition(lyrics, anchorText);
+        if (anchorIndex < 0)
         {
-            var gap = (lyrics[i + 1].Timestamp - lyrics[i].Timestamp).TotalSeconds;
-            if (gap > 0.2)
+            return 1.0;
+        }
+
+        var gaps = new List<double>(2);
+        var beforeIndex = FindAdjacentNonEmptyLineIndex(lyrics, anchorIndex, -1);
+        if (beforeIndex >= 0)
+        {
+            gaps.Add((lyrics[anchorIndex].Timestamp - lyrics[beforeIndex].Timestamp).TotalSeconds);
+        }
+
+        var afterIndex = FindAdjacentNonEmptyLineIndex(lyrics, anchorIndex, 1);
+        if (afterIndex >= 0)
+        {
+            gaps.Add((lyrics[afterIndex].Timestamp - lyrics[anchorIndex].Timestamp).TotalSeconds);
+        }
+
+        var usableGaps = gaps.Where(gap => gap > 0.2).ToList();
+        if (usableGaps.Count == 0)
+        {
+            return 1.0;
+        }
+
+        return Math.Clamp(3.0 / usableGaps.Average(), 0.5, 2.0);
+    }
+
+    private int FindLineIndexClosestToPosition(IReadOnlyList<LyricLine> lyrics, string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return -1;
+        }
+
+        var position = _viewModel.EstimatedPosition;
+        var bestIndex = -1;
+        var bestDistance = double.MaxValue;
+        for (var i = 0; i < lyrics.Count; i++)
+        {
+            if (lyrics[i].IsBackground || !string.Equals(lyrics[i].Text, text, StringComparison.Ordinal))
             {
-                gaps.Add(gap);
+                continue;
+            }
+
+            var distance = position is null
+                ? 0
+                : Math.Abs((lyrics[i].Timestamp - position.Value).TotalSeconds);
+            if (distance < bestDistance)
+            {
+                bestIndex = i;
+                bestDistance = distance;
             }
         }
 
-        if (gaps.Count == 0)
+        return bestIndex;
+    }
+
+    private static int FindAdjacentNonEmptyLineIndex(IReadOnlyList<LyricLine> lyrics, int anchorIndex, int direction)
+    {
+        for (var i = anchorIndex + direction; i >= 0 && i < lyrics.Count; i += direction)
         {
-            return 1.0;
+            if (!lyrics[i].IsBackground && !string.IsNullOrWhiteSpace(lyrics[i].Text))
+            {
+                return i;
+            }
         }
 
-        gaps.Sort();
-        var medianGap = gaps[gaps.Count / 2];
-        if (medianGap <= 0)
-        {
-            return 1.0;
-        }
-
-        var multiplier = 3.0 / medianGap;
-        return Math.Clamp(multiplier, 0.5, 2.0);
+        return -1;
     }
 
     private async Task HandleCurrentLineChangedSlideIn(string newCurrentLine, int transitionVersion)
@@ -706,7 +753,7 @@ public partial class IslandWindow : Window, ITrayIconHost
         var hasIncoming = !string.IsNullOrWhiteSpace(newCurrentLine);
         var tempo = _settings.IslandAnimationMode == IslandAnimationMode.SlideInManual
             ? _settings.IslandAnimationManualSpeed
-            : CalculateLyricTempoMultiplier();
+            : CalculateLocalLyricTempoMultiplier(newCurrentLine, outgoingText);
         var outDuration = (int)(SlideWordDurationMs / tempo);
         var inDuration = (int)(SlideWordInDurationMs / tempo);
         var stagger = (int)(SlideWordStaggerMs / tempo);
@@ -822,7 +869,7 @@ public partial class IslandWindow : Window, ITrayIconHost
         var outgoingText = _displayedLyricText;
         var hasOutgoing = !string.IsNullOrWhiteSpace(outgoingText);
         var hasIncoming = !string.IsNullOrWhiteSpace(newCurrentLine);
-        var tempo = CalculateLyricTempoMultiplier();
+        var tempo = CalculateLocalLyricTempoMultiplier(newCurrentLine, outgoingText);
         var outDuration = (int)(FadeLineOutDurationMs / tempo);
         var inDuration = (int)(SlideWordInDurationMs / tempo);
         var stagger = (int)(SlideWordStaggerMs / tempo);
