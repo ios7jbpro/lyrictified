@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using System.Collections.ObjectModel;
@@ -79,7 +80,15 @@ public partial class SettingsWindow : Window
                 var profile = await GitHubClient.GetFromJsonAsync<GitHubProfile>($"users/{contributor.Name}");
                 if (!string.IsNullOrWhiteSpace(profile?.AvatarUrl))
                 {
-                    contributor.AvatarUrl = $"{profile.AvatarUrl.Split('?')[0]}?size=256";
+                    var imageBytes = await GitHubClient.GetByteArrayAsync($"{profile.AvatarUrl.Split('?')[0]}?size=256");
+                    using var stream = new MemoryStream(imageBytes);
+                    var bitmap = new BitmapImage();
+                    bitmap.BeginInit();
+                    bitmap.CacheOption = BitmapCacheOption.OnLoad;
+                    bitmap.StreamSource = stream;
+                    bitmap.EndInit();
+                    bitmap.Freeze();
+                    contributor.AvatarImage = bitmap;
                 }
             }
             catch (Exception ex)
@@ -1080,14 +1089,14 @@ public partial class SettingsWindow : Window
 
         public string Name { get; }
 
-        public string? AvatarUrl
+        public ImageSource? AvatarImage
         {
             get;
             set
             {
                 if (value == field) return;
                 field = value;
-                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AvatarUrl)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AvatarImage)));
             }
         }
 

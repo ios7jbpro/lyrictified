@@ -1223,6 +1223,40 @@
                                        Margin="0,8,0,0" />
                         </StackPanel>
                     </Border>
+
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="Contributors" Style="{StaticResource SectionTitleStyle}" />
+                            <ItemsControl x:Name="ContributorsItemsControl">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" Margin="0,4">
+                                            <Grid Width="40" Height="40">
+                                                <Ellipse Fill="{StaticResource BorderBrush}" />
+                                                <TextBlock Text="{Binding Initial}"
+                                                           Foreground="{StaticResource TextPrimaryBrush}"
+                                                           FontSize="16"
+                                                           FontWeight="SemiBold"
+                                                           HorizontalAlignment="Center"
+                                                           VerticalAlignment="Center" />
+                                                <Ellipse>
+                                                    <Ellipse.Fill>
+                                                        <ImageBrush ImageSource="{Binding AvatarImage}" Stretch="UniformToFill" />
+                                                    </Ellipse.Fill>
+                                                </Ellipse>
+                                            </Grid>
+                                            <TextBlock Text="{Binding Name}"
+                                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                                       FontSize="14"
+                                                       FontWeight="Medium"
+                                                       VerticalAlignment="Center"
+                                                       Margin="12,0,0,0" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </ScrollViewer>
         </TabItem>
