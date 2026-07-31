@@ -1259,7 +1259,7 @@
                                                            FontSize="13"
                                                            Margin="0,4,0,10" />
                                                 <Button Tag="{Binding GitHubUrl}" Click="OpenContributorGitHubButton_OnClick" HorizontalAlignment="Left" Padding="12,6" Background="{StaticResource AccentBrush}" Foreground="White" BorderThickness="0">
-                                                    <Button.Resources><Style TargetType="Button"><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="12"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" /></Border></ControlTemplate></Setter.Value></Setter></Style></Button.Resources>
+                                                    <Button.Resources><Style TargetType="Button"><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button"><Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6" Padding="{TemplateBinding Padding}"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" /></Border></ControlTemplate></Setter.Value></Setter></Style></Button.Resources>
                                                     <TextBlock Text="Open GitHub" />
                                                 </Button>
                                             </StackPanel>
