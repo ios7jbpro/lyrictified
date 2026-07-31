@@ -1224,6 +1224,12 @@
                         </StackPanel>
                     </Border>
 
+                    <TextBlock Text="Beautiful, synced lyrics for your desktop."
+                               Foreground="{StaticResource TextSecondaryBrush}"
+                               FontSize="13"
+                               HorizontalAlignment="Center"
+                               Margin="0,0,0,12" />
+
                     <Border Style="{StaticResource CardStyle}">
                         <StackPanel>
                             <TextBlock Text="Contributors" Style="{StaticResource SectionTitleStyle}" />
