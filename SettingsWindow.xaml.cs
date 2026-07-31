@@ -1,4 +1,6 @@
 using System.IO;
+using System.Net.Http;
+using System.Net.Http.Json;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -18,7 +20,12 @@ namespace Lyrictified;
 
 public partial class SettingsWindow : Window
 {
+    private static readonly HttpClient GitHubClient = CreateGitHubClient();
     private static readonly TimeSpan TextSettingsChangeDelay = TimeSpan.FromMilliseconds(600);
+    private static readonly ContributorItem[] Contributors =
+    [
+        new ContributorItem("ios7jbpro")
+    ];
     private readonly ObservableCollection<DetectedAppRuleItem> _detectedApps = new();
     private readonly DispatcherTimer _textSettingsChangedTimer;
     private bool _isInitializing;
@@ -33,6 +40,8 @@ public partial class SettingsWindow : Window
         _textSettingsChangedTimer.Tick += TextSettingsChangedTimer_OnTick;
         InitializeComponent();
         DetectedAppsListBox.ItemsSource = _detectedApps;
+        ContributorsItemsControl.ItemsSource = Contributors;
+        _ = LoadContributorAvatarsAsync();
 #if DEBUG
         DebugTabItem.Visibility = Visibility.Visible;
 #else
@@ -53,6 +62,34 @@ public partial class SettingsWindow : Window
     public event EventHandler? ForceLyricsRefreshRequested;
     public event EventHandler? DebugForceNoLyricsRequested;
     public event EventHandler? DebugForceSimulateLyricsRequested;
+
+    private static HttpClient CreateGitHubClient()
+    {
+        var client = new HttpClient { BaseAddress = new Uri("https://api.github.com/") };
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("Lyrictified");
+        return client;
+    }
+
+    private static async Task LoadContributorAvatarsAsync()
+    {
+        foreach (var contributor in Contributors)
+        {
+            try
+            {
+                var profile = await GitHubClient.GetFromJsonAsync<GitHubProfile>($"users/{contributor.Name}");
+                if (!string.IsNullOrWhiteSpace(profile?.AvatarUrl))
+                {
+                    contributor.AvatarUrl = $"{profile.AvatarUrl}?size=256";
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Log($"Failed to load GitHub avatar for {contributor.Name}: {ex.Message}");
+            }
+        }
+    }
+
+    private sealed record GitHubProfile(string AvatarUrl);
 
     public void UpdateLastSearchInfo(string info)
     {
@@ -1032,5 +1069,30 @@ public partial class SettingsWindow : Window
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;
+    }
+
+    private sealed class ContributorItem : INotifyPropertyChanged
+    {
+        public ContributorItem(string name)
+        {
+            Name = name;
+        }
+
+        public string Name { get; }
+
+        public string? AvatarUrl
+        {
+            get;
+            set
+            {
+                if (value == field) return;
+                field = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AvatarUrl)));
+            }
+        }
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        public string Initial => Name.Length > 0 ? Name[..1].ToUpperInvariant() : "?";
     }
 }
