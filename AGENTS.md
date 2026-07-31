@@ -83,3 +83,5 @@ dotnet build -c Release
 - `App.LocalLyricsBaseAddress` and `App.IgnoreLocalCache` are mutable statics set during startup (and by the debug dialogs); `LocalLyricsService` captures the base address in its constructor, so it must be set before the first lyrics request.
 - SMTC, tray icon, AppBar registration, and window positioning all require a real Windows desktop session — none of this can be exercised in a headless/CI environment.
 - `AssemblyInfo.cs` and `app.manifest` hold version/identity info; the app version lives in `Lyrictified.csproj` (`<Version>`) and the installer defaults in `Lyrictified.iss` — bump both together.
+
+- **Always** do a commit upon changes, doesn't have to be detailed, explain it in just a few words on the commit title only.
