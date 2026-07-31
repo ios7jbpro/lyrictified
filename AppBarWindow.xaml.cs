@@ -2316,6 +2316,7 @@ public partial class AppBarWindow : Window, ITrayIconHost
         persistedSettings.WindowedWidth = incomingSettings.WindowedWidth;
         persistedSettings.WindowedHeight = incomingSettings.WindowedHeight;
         persistedSettings.TaskbarMaximumWidth = incomingSettings.TaskbarMaximumWidth;
+        persistedSettings.TaskbarHeight = incomingSettings.TaskbarHeight;
         persistedSettings.IslandMaximumWidth = incomingSettings.IslandMaximumWidth;
         persistedSettings.IslandScale = incomingSettings.IslandScale;
         persistedSettings.IslandContainerHeight = incomingSettings.IslandContainerHeight;

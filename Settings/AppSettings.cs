@@ -28,6 +28,8 @@ public sealed class AppSettings
 
     public int? TaskbarMaximumWidth { get; set; }
 
+    public int? TaskbarHeight { get; set; }
+
     public int? IslandMaximumWidth { get; set; }
 
     public double IslandScale { get; set; } = 1.0;

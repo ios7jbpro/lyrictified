@@ -914,6 +914,20 @@
 
                     <Border Style="{StaticResource CardStyle}">
                         <StackPanel>
+                            <TextBlock Text="Height" Style="{StaticResource SectionTitleStyle}" />
+                            <TextBlock Text="Custom height in pixels. Leave empty for default. Lower it to match a smaller Windows 11 taskbar." Style="{StaticResource LabelStyle}" />
+                            <TextBox x:Name="TaskbarHeightTextBox"
+                                     MinWidth="260"
+                                     MaxWidth="260"
+                                     TextChanged="TaskbarHeightTextBox_OnTextChanged" />
+                            <TextBlock x:Name="TaskbarHeightHintTextBlock"
+                                       Style="{StaticResource HintTextStyle}"
+                                       Text="Leave empty to use the default 48px taskbar height." />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
                             <TextBlock Text="Animation" Style="{StaticResource SectionTitleStyle}" />
                             <TextBlock Text="How lyrics transition when the line changes." Style="{StaticResource LabelStyle}" />
                             <ComboBox x:Name="TaskbarAnimationModeComboBox"

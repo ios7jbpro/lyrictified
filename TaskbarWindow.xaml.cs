@@ -283,7 +283,7 @@ public partial class TaskbarWindow : Window, ITrayIconHost
         }
 
         var monitor = _appBarManager.Monitors[Math.Clamp(_appBarManager.CurrentMonitorIndex, 0, _appBarManager.Monitors.Count - 1)];
-        var bounds = TaskbarDisplayMode.GetWindowBounds(monitor, _settings.TaskbarMaximumWidth);
+        var bounds = TaskbarDisplayMode.GetWindowBounds(monitor, _settings.TaskbarMaximumWidth, _settings.TaskbarHeight);
         Left = bounds.Left;
         Top = bounds.Top;
         Width = bounds.Width;
@@ -869,6 +869,7 @@ public partial class TaskbarWindow : Window, ITrayIconHost
         persistedSettings.WindowedWidth = incomingSettings.WindowedWidth;
         persistedSettings.WindowedHeight = incomingSettings.WindowedHeight;
         persistedSettings.TaskbarMaximumWidth = incomingSettings.TaskbarMaximumWidth;
+        persistedSettings.TaskbarHeight = incomingSettings.TaskbarHeight;
         persistedSettings.IslandMaximumWidth = incomingSettings.IslandMaximumWidth;
         persistedSettings.IslandScale = incomingSettings.IslandScale;
         persistedSettings.IslandContainerHeight = incomingSettings.IslandContainerHeight;
