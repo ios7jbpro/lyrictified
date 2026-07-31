@@ -34,6 +34,7 @@ public partial class SettingsWindow : Window
 
     public SettingsWindow()
     {
+        Logger.Log("SettingsWindow constructed");
         _textSettingsChangedTimer = new DispatcherTimer
         {
             Interval = TextSettingsChangeDelay
