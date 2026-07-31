@@ -79,7 +79,7 @@ public partial class SettingsWindow : Window
                 var profile = await GitHubClient.GetFromJsonAsync<GitHubProfile>($"users/{contributor.Name}");
                 if (!string.IsNullOrWhiteSpace(profile?.AvatarUrl))
                 {
-                    contributor.AvatarUrl = $"{profile.AvatarUrl}?size=256";
+                    contributor.AvatarUrl = $"{profile.AvatarUrl.Split('?')[0]}?size=256";
                 }
             }
             catch (Exception ex)
