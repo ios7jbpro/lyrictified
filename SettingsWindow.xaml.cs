@@ -2,6 +2,7 @@ using System.IO;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Runtime.InteropServices;
+using System.Text.Json.Serialization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -102,7 +103,7 @@ public partial class SettingsWindow : Window
         }
     }
 
-    private sealed record GitHubProfile(string AvatarUrl);
+    private sealed record GitHubProfile([property: JsonPropertyName("avatar_url")] string AvatarUrl);
 
     public void UpdateLastSearchInfo(string info)
     {
