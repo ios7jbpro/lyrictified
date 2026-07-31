@@ -73,11 +73,13 @@ public partial class SettingsWindow : Window
 
     private static async Task LoadContributorAvatarsAsync()
     {
+        Logger.Log("Loading contributor avatars");
         foreach (var contributor in Contributors)
         {
             try
             {
                 var profile = await GitHubClient.GetFromJsonAsync<GitHubProfile>($"users/{contributor.Name}");
+                Logger.Log($"GitHub profile loaded: {profile?.AvatarUrl ?? "<none>"}");
                 if (!string.IsNullOrWhiteSpace(profile?.AvatarUrl))
                 {
                     var imageBytes = await GitHubClient.GetByteArrayAsync($"{profile.AvatarUrl.Split('?')[0]}?size=256");
@@ -89,6 +91,7 @@ public partial class SettingsWindow : Window
                     bitmap.EndInit();
                     bitmap.Freeze();
                     contributor.AvatarImage = bitmap;
+                    Logger.Log($"Contributor avatar decoded: {imageBytes.Length} bytes");
                 }
             }
             catch (Exception ex)
