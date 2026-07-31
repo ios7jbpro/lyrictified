@@ -1245,7 +1245,7 @@
                                                            VerticalAlignment="Center" />
                                                 <Ellipse RenderOptions.BitmapScalingMode="HighQuality">
                                                     <Ellipse.Fill>
-                                                        <ImageBrush ImageSource="{Binding AvatarImage}" Stretch="UniformToFill" />
+                                                        <ImageBrush ImageSource="{Binding AvatarImage}" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality" />
                                                     </Ellipse.Fill>
                                                 </Ellipse>
                                             </Grid>

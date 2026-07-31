@@ -87,7 +87,7 @@ public partial class SettingsWindow : Window
                 Logger.Log($"GitHub profile loaded: {profile?.AvatarUrl ?? "<none>"}");
                 if (!string.IsNullOrWhiteSpace(profile?.AvatarUrl))
                 {
-                    var imageBytes = await GitHubClient.GetByteArrayAsync($"{profile.AvatarUrl.Split('?')[0]}?size=512");
+                    var imageBytes = await GitHubClient.GetByteArrayAsync(profile.AvatarUrl);
                     using var stream = new MemoryStream(imageBytes);
                     var bitmap = new BitmapImage();
                     bitmap.BeginInit();
