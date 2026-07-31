@@ -155,6 +155,7 @@ public partial class SettingsWindow : Window
             {
                 IslandAnimationMode.SlideIn => 1,
                 IslandAnimationMode.SlideInManual => 2,
+                IslandAnimationMode.WordFade => 3,
                 _ => 0
             };
             IslandAnimationManualSpeedSlider.Value = Math.Clamp(settings.IslandAnimationManualSpeed, 0.5, 2.5);
@@ -500,6 +501,7 @@ public partial class SettingsWindow : Window
             {
                 1 => IslandAnimationMode.SlideIn,
                 2 => IslandAnimationMode.SlideInManual,
+                3 => IslandAnimationMode.WordFade,
                 _ => IslandAnimationMode.Default
             },
             IslandAnimationManualSpeed = IslandAnimationManualSpeedSlider?.Value ?? 1.0,

@@ -68,6 +68,7 @@ public partial class IslandWindow : Window, ITrayIconHost
     private const int SlideWordDurationMs = 130;
     private const int SlideWordInDurationMs = 100;
     private const int SlideWordStaggerMs = 75;
+    private const int FadeLineOutDurationMs = 160;
     private static readonly MediaColor RedFlashColor = MediaColor.FromArgb(230, 200, 40, 40);
 
     public IslandWindow()
@@ -564,6 +565,12 @@ public partial class IslandWindow : Window, ITrayIconHost
             return;
         }
 
+        if (_settings.IslandAnimationMode == IslandAnimationMode.WordFade)
+        {
+            await HandleCurrentLineChangedWordFade(newCurrentLine, transitionVersion);
+            return;
+        }
+
         OutgoingLyricTextBlock.Text = _displayedLyricText;
         OutgoingLyricTextBlock.Opacity = string.IsNullOrWhiteSpace(_displayedLyricText) ? 0 : 1;
         OutgoingLyricTranslateTransform.Y = 0;
@@ -810,6 +817,109 @@ public partial class IslandWindow : Window, ITrayIconHost
         _displayedLyricText = newCurrentLine;
     }
 
+    private async Task HandleCurrentLineChangedWordFade(string newCurrentLine, int transitionVersion)
+    {
+        var outgoingText = _displayedLyricText;
+        var hasOutgoing = !string.IsNullOrWhiteSpace(outgoingText);
+        var hasIncoming = !string.IsNullOrWhiteSpace(newCurrentLine);
+        var tempo = CalculateLyricTempoMultiplier();
+        var outDuration = (int)(FadeLineOutDurationMs / tempo);
+        var inDuration = (int)(SlideWordInDurationMs / tempo);
+        var stagger = (int)(SlideWordStaggerMs / tempo);
+        var widthDuration = (int)(190 / tempo);
+
+        // The outgoing line always fades out as a whole using the plain text block.
+        SetLyricWordPanelsActive(false);
+        OutgoingLyricTextBlock.Text = outgoingText;
+        OutgoingLyricTextBlock.Opacity = hasOutgoing ? 1 : 0;
+        OutgoingLyricTranslateTransform.Y = 0;
+        IncomingLyricTextBlock.Text = string.Empty;
+        IncomingLyricTextBlock.Opacity = 0;
+
+        // 1. Fade out the whole outgoing line
+        if (hasOutgoing)
+        {
+            await AnimateDoubleAsync(
+                OutgoingLyricTextBlock,
+                OpacityProperty,
+                new DoubleAnimation
+                {
+                    To = 0,
+                    Duration = TimeSpan.FromMilliseconds(outDuration),
+                    EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
+                });
+
+            if (transitionVersion != _lyricTransitionVersion)
+            {
+                return;
+            }
+
+            OutgoingLyricTextBlock.BeginAnimation(OpacityProperty, null);
+            OutgoingLyricTextBlock.Opacity = 0;
+            OutgoingLyricTextBlock.Text = string.Empty;
+        }
+
+        if (!hasIncoming)
+        {
+            _displayedLyricText = string.Empty;
+
+            if (!ShouldHideForEmptyLine())
+            {
+                RestoreLyricTextBlocks(string.Empty);
+                return;
+            }
+
+            await Task.Delay(EmptyLineHideDelay);
+
+            if (transitionVersion != _lyricTransitionVersion)
+            {
+                return;
+            }
+
+            RestoreLyricTextBlocks(string.Empty);
+            await SetIslandContentVisibleAsync(false);
+            return;
+        }
+
+        if (!_isIslandContentVisible)
+        {
+            await SetIslandContentVisibleAsync(true);
+
+            if (transitionVersion != _lyricTransitionVersion)
+            {
+                return;
+            }
+        }
+
+        // 2. Resize island
+        await AnimateIslandWidthAsync(newCurrentLine, widthDuration);
+
+        if (transitionVersion != _lyricTransitionVersion)
+        {
+            return;
+        }
+
+        // 3. Fade in new words one by one (no sliding)
+        SetLyricWordPanelsActive(true);
+        PopulateWordPanel(IncomingWordsPanel, newCurrentLine);
+        foreach (var child in IncomingWordsPanel.Children.OfType<TextBlock>())
+        {
+            child.Opacity = 0;
+        }
+        OutgoingWordsPanel.Visibility = Visibility.Collapsed;
+        IncomingWordsPanel.Visibility = Visibility.Visible;
+
+        await AnimateFadeWordsInAsync(IncomingWordsPanel, transitionVersion, inDuration, stagger);
+
+        if (transitionVersion != _lyricTransitionVersion)
+        {
+            return;
+        }
+
+        RestoreLyricTextBlocks(newCurrentLine);
+        _displayedLyricText = newCurrentLine;
+    }
+
     private void CancelLyricTransitionAnimations()
     {
         OutgoingLyricTextBlock.BeginAnimation(OpacityProperty, null);
@@ -984,6 +1094,41 @@ public partial class IslandWindow : Window, ITrayIconHost
             {
                 animations.Add(AnimateDoubleAsync(transform, TranslateTransform.YProperty, yAnimation));
             }
+            animations.Add(AnimateDoubleAsync(textBlock, OpacityProperty, opacityAnimation));
+        }
+
+        await Task.WhenAll(animations);
+
+        if (transitionVersion != _lyricTransitionVersion)
+        {
+            return;
+        }
+    }
+
+    private async Task AnimateFadeWordsInAsync(StackPanel panel, int transitionVersion, int durationMs = SlideWordInDurationMs, int staggerMs = SlideWordStaggerMs)
+    {
+        var children = panel.Children.OfType<TextBlock>().ToList();
+        if (children.Count == 0)
+        {
+            return;
+        }
+
+        var animations = new List<Task>();
+        for (var i = 0; i < children.Count; i++)
+        {
+            var textBlock = children[i];
+            textBlock.BeginAnimation(OpacityProperty, null);
+
+            var beginTime = TimeSpan.FromMilliseconds(i * staggerMs);
+            var opacityAnimation = new DoubleAnimation
+            {
+                From = 0,
+                To = 1,
+                BeginTime = beginTime,
+                Duration = TimeSpan.FromMilliseconds(durationMs),
+                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+            };
+
             animations.Add(AnimateDoubleAsync(textBlock, OpacityProperty, opacityAnimation));
         }
 

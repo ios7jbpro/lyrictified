@@ -1047,6 +1047,7 @@
                                 <ComboBoxItem Content="Default" />
                                 <ComboBoxItem Content="Slide-in" />
                                 <ComboBoxItem Content="Slide-in (manual)" />
+                                <ComboBoxItem Content="Word-fade" />
                             </ComboBox>
                             <Grid x:Name="IslandAnimationManualSpeedPanel"
                                   Margin="0,12,0,0"
