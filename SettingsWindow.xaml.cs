@@ -27,7 +27,8 @@ public partial class SettingsWindow : Window
     private static readonly TimeSpan TextSettingsChangeDelay = TimeSpan.FromMilliseconds(600);
     private static readonly ContributorItem[] Contributors =
     [
-        new ContributorItem("ios7jbpro", "https://github.com/ios7jbpro")
+        new ContributorItem("ios7jbpro", "https://github.com/ios7jbpro"),
+        new ContributorItem("cotunjr", "https://github.com/cotunjr")
     ];
     private readonly ObservableCollection<DetectedAppRuleItem> _detectedApps = new();
     private readonly DispatcherTimer _textSettingsChangedTimer;
