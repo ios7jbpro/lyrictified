@@ -1,6 +1,7 @@
 using System.IO;
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.Json.Serialization;
 using System.Windows;
@@ -26,7 +27,7 @@ public partial class SettingsWindow : Window
     private static readonly TimeSpan TextSettingsChangeDelay = TimeSpan.FromMilliseconds(600);
     private static readonly ContributorItem[] Contributors =
     [
-        new ContributorItem("ios7jbpro")
+        new ContributorItem("ios7jbpro", "https://github.com/ios7jbpro")
     ];
     private readonly ObservableCollection<DetectedAppRuleItem> _detectedApps = new();
     private readonly DispatcherTimer _textSettingsChangedTimer;
@@ -81,10 +82,12 @@ public partial class SettingsWindow : Window
             try
             {
                 var profile = await GitHubClient.GetFromJsonAsync<GitHubProfile>($"users/{contributor.Name}");
+                var contributors = await GitHubClient.GetFromJsonAsync<GitHubContributor[]>($"repos/ios7jbpro/Lyrictified/contributors");
+                contributor.CommitCount = contributors?.FirstOrDefault(item => string.Equals(item.Login, contributor.Name, StringComparison.OrdinalIgnoreCase))?.Contributions ?? 0;
                 Logger.Log($"GitHub profile loaded: {profile?.AvatarUrl ?? "<none>"}");
                 if (!string.IsNullOrWhiteSpace(profile?.AvatarUrl))
                 {
-                    var imageBytes = await GitHubClient.GetByteArrayAsync($"{profile.AvatarUrl.Split('?')[0]}?size=256");
+                    var imageBytes = await GitHubClient.GetByteArrayAsync($"{profile.AvatarUrl.Split('?')[0]}?size=512");
                     using var stream = new MemoryStream(imageBytes);
                     var bitmap = new BitmapImage();
                     bitmap.BeginInit();
@@ -104,6 +107,15 @@ public partial class SettingsWindow : Window
     }
 
     private sealed record GitHubProfile([property: JsonPropertyName("avatar_url")] string AvatarUrl);
+    private sealed record GitHubContributor([property: JsonPropertyName("login")] string Login, [property: JsonPropertyName("contributions")] int Contributions);
+
+    private void OpenContributorGitHubButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.Button { Tag: string url })
+        {
+            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+        }
+    }
 
     public void UpdateLastSearchInfo(string info)
     {
@@ -1087,12 +1099,28 @@ public partial class SettingsWindow : Window
 
     private sealed class ContributorItem : INotifyPropertyChanged
     {
-        public ContributorItem(string name)
+        public ContributorItem(string name, string githubUrl)
         {
             Name = name;
+            GitHubUrl = githubUrl;
         }
 
         public string Name { get; }
+
+        public string GitHubUrl { get; }
+
+        public int CommitCount
+        {
+            get;
+            set
+            {
+                if (value == field) return;
+                field = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CommitSummary)));
+            }
+        }
+
+        public string CommitSummary => $"{CommitCount:N0} commits pushed to Lyrictified";
 
         public ImageSource? AvatarImage
         {
