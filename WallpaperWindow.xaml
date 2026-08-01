@@ -57,53 +57,17 @@
                       HorizontalAlignment="Stretch"
                       VerticalAlignment="Center"
                       ClipToBounds="False">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <Border x:Name="LoadingSpacer"
-                            Grid.Column="0"
-                            Width="0"
-                            VerticalAlignment="Stretch" />
-                    <Viewbox x:Name="LoadingIcon"
-                             Grid.Column="0"
-                             Width="20"
-                             Height="20"
-                             Margin="0,0,4,0"
-                             HorizontalAlignment="Center"
-                             VerticalAlignment="Center"
-                             Opacity="0"
-                             Visibility="Collapsed"
-                             IsHitTestVisible="False"
-                             Panel.ZIndex="2">
-                        <Image x:Name="LoadingSpinnerImage"
-                               Width="20"
-                               Height="20"
-                               Source="Assets/loading.png"
-                               Stretch="Uniform"
-                               Opacity="1"
-                               RenderTransformOrigin="0.5,0.5">
-                            <Image.RenderTransform>
-                                <RotateTransform x:Name="LoadingSpinnerRotateTransform"
-                                                 Angle="0" />
-                            </Image.RenderTransform>
-                        </Image>
-                    </Viewbox>
                     <StackPanel x:Name="OutgoingWordsPanel"
-                                Grid.Column="1"
                                 Orientation="Horizontal"
                                 HorizontalAlignment="Center"
                                 VerticalAlignment="Center"
                                 Visibility="Collapsed" />
                     <StackPanel x:Name="IncomingWordsPanel"
-                                Grid.Column="1"
                                 Orientation="Horizontal"
                                 HorizontalAlignment="Center"
                                 VerticalAlignment="Center"
                                 Visibility="Collapsed" />
                     <TextBlock x:Name="OutgoingLyricTextBlock"
-                               Grid.Column="1"
                                Foreground="#F5F7FA"
                                FontSize="20"
                                FontWeight="SemiBold"
@@ -118,7 +82,6 @@
                         </TextBlock.RenderTransform>
                     </TextBlock>
                     <TextBlock x:Name="IncomingLyricTextBlock"
-                               Grid.Column="1"
                                Foreground="#F5F7FA"
                                FontSize="20"
                                FontWeight="SemiBold"
@@ -132,26 +95,6 @@
                             <TranslateTransform x:Name="IncomingLyricTranslateTransform" Y="0" />
                         </TextBlock.RenderTransform>
                     </TextBlock>
-                    <Border x:Name="PauseSpacer"
-                            Grid.Column="2"
-                            Width="0"
-                            VerticalAlignment="Stretch" />
-                    <Viewbox x:Name="PauseIcon"
-                             Grid.Column="2"
-                             Width="20"
-                             Height="20"
-                             Margin="4,0,0,0"
-                             HorizontalAlignment="Center"
-                             VerticalAlignment="Center"
-                             Opacity="0"
-                             Visibility="Collapsed"
-                             IsHitTestVisible="False"
-                             Panel.ZIndex="2">
-                        <Canvas Width="20" Height="20">
-                            <Rectangle x:Name="PauseBar1" Width="5" Height="14" Canvas.Left="4" Canvas.Top="3" RadiusX="2" RadiusY="2" Fill="#F5F7FA" />
-                            <Rectangle x:Name="PauseBar2" Width="5" Height="14" Canvas.Left="11" Canvas.Top="3" RadiusX="2" RadiusY="2" Fill="#F5F7FA" />
-                        </Canvas>
-                    </Viewbox>
                 </Grid>
             </Grid>
         </Grid>

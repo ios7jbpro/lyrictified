@@ -29,13 +29,6 @@ public partial class WallpaperWindow : Window, ITrayIconHost
     private static readonly TimeSpan MonitorWarningDuration = TimeSpan.FromSeconds(4);
     private static readonly TimeSpan EmptyLineHideDelay = TimeSpan.FromMilliseconds(260);
     private static readonly TimeSpan EmptyLineUpcomingLyricGrace = TimeSpan.FromMilliseconds(1600);
-    private static WpfBrush GetLoadingTextBrush()
-    {
-        var color = IsWindowsLightTheme()
-            ? MediaColor.FromRgb(100, 106, 114)
-            : MediaColor.FromRgb(150, 156, 164);
-        return new SolidColorBrush(color);
-    }
 
     private readonly MainViewModel _viewModel;
     private readonly DispatcherTimer _monitorWarningTimer;
@@ -48,8 +41,6 @@ public partial class WallpaperWindow : Window, ITrayIconHost
     private string? _lastMonitorWarningKey;
     private int _lyricTransitionVersion;
     private bool _isWallpaperContentVisible = true;
-    private bool _isPauseVisualActive;
-    private bool _isNoLyricsAnimationActive;
     private bool _isTimeoutHidden;
     private SettingsWindow? _settingsWindow;
     private TrayIcon? _trayIcon;
@@ -57,8 +48,6 @@ public partial class WallpaperWindow : Window, ITrayIconHost
     private static BitmapImage? _flashImage;
     private static MediaColor? _appliedFlashColor;
     private static readonly Random FlashRandom = new();
-    private const double PauseSpacerTargetWidth = 24;
-    private const double LoadingSpacerTargetWidth = 24;
     private const double SlideWordOffset = 48;
     private const int SlideWordDurationMs = 130;
     private const int SlideWordInDurationMs = 100;
@@ -85,7 +74,6 @@ public partial class WallpaperWindow : Window, ITrayIconHost
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         DataContext = _viewModel;
 
-        LoadingSpinnerImage.Source = new BitmapImage(new Uri(Path.Combine(AppContext.BaseDirectory, "Assets", "loading.png"), UriKind.Absolute));
         _baseFlashImage = LoadFlashImage();
         _flashImage = _baseFlashImage;
 
@@ -108,7 +96,6 @@ public partial class WallpaperWindow : Window, ITrayIconHost
         ApplyMonitorSetting();
         PositionWindow();
         ApplyAppearance();
-        ApplyPlaybackStateVisual(immediate: true);
         WorkspaceVisibilityManager.PinToAllWorkspaces(this);
         _trayIcon = new TrayIcon(this);
 
@@ -121,8 +108,6 @@ public partial class WallpaperWindow : Window, ITrayIconHost
         IncomingLyricTextBlock.Text = _viewModel.TaskbarCurrentLine;
         _displayedLyricText = _viewModel.TaskbarCurrentLine;
         UpdateWallpaperContentVisibility(_displayedLyricText);
-        ApplyLoadingState(immediate: true);
-        ApplyPlaybackStateVisual(immediate: true);
         await _viewModel.InitializeAsync();
     }
 
@@ -173,18 +158,6 @@ public partial class WallpaperWindow : Window, ITrayIconHost
             }
         }
 
-        if (e.PropertyName == nameof(MainViewModel.IsLoadingLyrics))
-        {
-            if (Dispatcher.CheckAccess())
-            {
-                ApplyLoadingState();
-            }
-            else
-            {
-                _ = Dispatcher.InvokeAsync(() => ApplyLoadingState());
-            }
-        }
-
         if (e.PropertyName == nameof(MainViewModel.IsPlaybackPaused))
         {
             if (Dispatcher.CheckAccess())
@@ -205,19 +178,6 @@ public partial class WallpaperWindow : Window, ITrayIconHost
                 ApplyTargetWallpaperOpacity();
             }
             _timeoutTimer.Stop();
-        }
-
-        if (e.PropertyName == nameof(MainViewModel.NoTimedLyricsFound)
-            || e.PropertyName == nameof(MainViewModel.IsLoadingLyrics))
-        {
-            if (Dispatcher.CheckAccess())
-            {
-                HandleNoLyricsState();
-            }
-            else
-            {
-                _ = Dispatcher.InvokeAsync(() => HandleNoLyricsState());
-            }
         }
     }
 
@@ -246,14 +206,9 @@ public partial class WallpaperWindow : Window, ITrayIconHost
             : new SolidColorBrush(MediaColor.FromArgb(0, 0, 0, 0));
         var lyricColor = GetCustomLyricColor();
         ApplyFlashColor(lyricColor);
-        PauseBar1.Fill = new SolidColorBrush(lyricColor);
-        PauseBar2.Fill = new SolidColorBrush(lyricColor);
-        if (!_viewModel.IsLoadingLyrics)
-        {
-            var lyricBrush = new SolidColorBrush(lyricColor);
-            IncomingLyricTextBlock.Foreground = lyricBrush;
-            OutgoingLyricTextBlock.Foreground = lyricBrush;
-        }
+        var lyricBrush = new SolidColorBrush(lyricColor);
+        IncomingLyricTextBlock.Foreground = lyricBrush;
+        OutgoingLyricTextBlock.Foreground = lyricBrush;
     }
 
     private MediaColor GetCustomLyricColor()
@@ -408,8 +363,13 @@ public partial class WallpaperWindow : Window, ITrayIconHost
             return;
         }
 
-        if (_isNoLyricsAnimationActive)
+        if (_viewModel.Lyrics.Count == 0)
         {
+            ++_lyricTransitionVersion;
+            CancelLyricTransitionAnimations();
+            _displayedLyricText = string.Empty;
+            RestoreLyricTextBlocks(string.Empty);
+            await SetWallpaperContentVisibleAsync(false);
             return;
         }
 
@@ -1492,7 +1452,7 @@ public partial class WallpaperWindow : Window, ITrayIconHost
 
     private void UpdateWallpaperContentVisibility(string text)
     {
-        _isWallpaperContentVisible = !string.IsNullOrWhiteSpace(text);
+        _isWallpaperContentVisible = !string.IsNullOrWhiteSpace(text) && _viewModel.Lyrics.Count > 0;
         WallpaperLayer.BeginAnimation(OpacityProperty, null);
         WallpaperLayer.Opacity = GetTargetWallpaperOpacity();
     }
@@ -1546,80 +1506,8 @@ public partial class WallpaperWindow : Window, ITrayIconHost
         return completion.Task;
     }
 
-    private void ApplyLoadingState(bool immediate = false)
-    {
-        var isLoading = _viewModel.IsLoadingLyrics;
-
-        LoadingIcon.BeginAnimation(OpacityProperty, null);
-        LoadingSpacer.BeginAnimation(WidthProperty, null);
-        LoadingSpinnerRotateTransform.BeginAnimation(RotateTransform.AngleProperty, null);
-
-        if (isLoading)
-        {
-            IncomingLyricTextBlock.Foreground = GetLoadingTextBrush();
-            OutgoingLyricTextBlock.Foreground = GetLoadingTextBrush();
-            LyricStage.Opacity = 0.58;
-            LoadingIcon.Visibility = Visibility.Visible;
-
-            var iconFade = new DoubleAnimation
-            {
-                To = 1,
-                Duration = TimeSpan.FromMilliseconds(immediate ? 1 : 150),
-                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
-            };
-
-            var spacerAnimation = new DoubleAnimation
-            {
-                To = LoadingSpacerTargetWidth,
-                Duration = TimeSpan.FromMilliseconds(immediate ? 1 : 150),
-                EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
-            };
-
-            var spinnerRotation = new DoubleAnimation
-            {
-                From = 0,
-                To = 360,
-                Duration = TimeSpan.FromMilliseconds(850),
-                RepeatBehavior = RepeatBehavior.Forever
-            };
-
-            LoadingIcon.BeginAnimation(OpacityProperty, iconFade);
-            LoadingSpacer.BeginAnimation(WidthProperty, spacerAnimation);
-            LoadingSpinnerRotateTransform.BeginAnimation(RotateTransform.AngleProperty, spinnerRotation);
-            return;
-        }
-
-        LyricStage.Opacity = 1;
-        ApplyAppearance();
-
-        var iconFadeOut = new DoubleAnimation
-        {
-            To = 0,
-            Duration = TimeSpan.FromMilliseconds(immediate ? 1 : 180),
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
-        };
-
-        var spacerFadeOut = new DoubleAnimation
-        {
-            To = 0,
-            Duration = TimeSpan.FromMilliseconds(immediate ? 1 : 180),
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
-        };
-
-        iconFadeOut.Completed += (_, _) =>
-        {
-            LoadingIcon.Visibility = Visibility.Collapsed;
-            LoadingSpinnerRotateTransform.Angle = 0;
-        };
-
-        LoadingIcon.BeginAnimation(OpacityProperty, iconFadeOut);
-        LoadingSpacer.BeginAnimation(WidthProperty, spacerFadeOut);
-    }
-
     private void HandlePlaybackPausedChanged(bool isPaused)
     {
-        AnimatePlaybackStateChange(isPaused);
-
         if (isPaused && _settings.WallpaperTimeout > 0)
         {
             _timeoutTimer.Interval = TimeSpan.FromSeconds(_settings.WallpaperTimeout);
@@ -1648,8 +1536,6 @@ public partial class WallpaperWindow : Window, ITrayIconHost
 
     private double GetTargetWallpaperOpacity()
     {
-        if (_isNoLyricsAnimationActive)
-            return 1;
         if (!_isWallpaperContentVisible)
             return 0;
         if (_isTimeoutHidden)
@@ -1659,9 +1545,6 @@ public partial class WallpaperWindow : Window, ITrayIconHost
 
     private void ApplyTargetWallpaperOpacity(TimeSpan? duration = null)
     {
-        if (_isNoLyricsAnimationActive)
-            return;
-
         var target = GetTargetWallpaperOpacity();
         if (Math.Abs(WallpaperLayer.Opacity - target) < 0.001)
         {
@@ -1677,171 +1560,6 @@ public partial class WallpaperWindow : Window, ITrayIconHost
             EasingFunction = new QuadraticEase { EasingMode = target > 0 ? EasingMode.EaseOut : EasingMode.EaseIn }
         };
         WallpaperLayer.BeginAnimation(OpacityProperty, animation);
-    }
-
-    private void AnimatePlaybackStateChange(bool isPaused)
-    {
-        if (_isPauseVisualActive == isPaused)
-        {
-            return;
-        }
-
-        PauseIcon.BeginAnimation(OpacityProperty, null);
-        PauseSpacer.BeginAnimation(WidthProperty, null);
-
-        var spacerAnimation = new DoubleAnimation
-        {
-            From = PauseSpacer.ActualWidth,
-            To = isPaused ? PauseSpacerTargetWidth : 0,
-            Duration = TimeSpan.FromMilliseconds(isPaused ? 260 : 150),
-            EasingFunction = new CubicEase
-            {
-                EasingMode = isPaused ? EasingMode.EaseOut : EasingMode.EaseIn
-            }
-        };
-
-        var iconAnimation = new DoubleAnimation
-        {
-            From = PauseIcon.Opacity,
-            To = isPaused ? 1 : 0,
-            BeginTime = isPaused ? TimeSpan.FromMilliseconds(110) : TimeSpan.Zero,
-            Duration = TimeSpan.FromMilliseconds(isPaused ? 190 : 90),
-            EasingFunction = new QuadraticEase
-            {
-                EasingMode = isPaused ? EasingMode.EaseOut : EasingMode.EaseIn
-            }
-        };
-
-        spacerAnimation.Completed += (_, _) =>
-        {
-            PauseSpacer.Width = isPaused ? PauseSpacerTargetWidth : 0;
-        };
-
-        iconAnimation.Completed += (_, _) =>
-        {
-            PauseIcon.Opacity = isPaused ? 1 : 0;
-            if (!isPaused)
-            {
-                PauseIcon.Visibility = Visibility.Collapsed;
-            }
-        };
-
-        // Toggle visibility before animating the pause icon.
-        PauseIcon.Visibility = isPaused ? Visibility.Visible : Visibility.Collapsed;
-
-        if (isPaused)
-        {
-            PauseSpacer.BeginAnimation(WidthProperty, spacerAnimation);
-        }
-        else
-        {
-            PauseSpacer.BeginAnimation(WidthProperty, null);
-            PauseSpacer.Width = 0;
-        }
-
-        PauseIcon.BeginAnimation(OpacityProperty, iconAnimation);
-        _isPauseVisualActive = isPaused;
-    }
-
-    private void ApplyPlaybackStateVisual(bool immediate)
-    {
-        _isPauseVisualActive = _viewModel.IsPlaybackPaused;
-        PauseSpacer.BeginAnimation(WidthProperty, null);
-        PauseIcon.BeginAnimation(OpacityProperty, null);
-
-        if (immediate)
-        {
-            PauseSpacer.Width = _isPauseVisualActive ? PauseSpacerTargetWidth : 0;
-            PauseIcon.Opacity = _isPauseVisualActive ? 1 : 0;
-            PauseIcon.Visibility = _isPauseVisualActive ? Visibility.Visible : Visibility.Collapsed;
-            return;
-        }
-
-        AnimatePlaybackStateChange(_viewModel.IsPlaybackPaused);
-    }
-
-    private void HandleNoLyricsState()
-    {
-        if (_viewModel.IsLoadingLyrics)
-        {
-            CancelNoLyricsAnimation();
-            return;
-        }
-
-        if (_viewModel.NoTimedLyricsFound && !_isNoLyricsAnimationActive)
-        {
-            StartNoLyricsAnimation();
-        }
-        else if (!_viewModel.NoTimedLyricsFound && _isNoLyricsAnimationActive)
-        {
-            CancelNoLyricsAnimation();
-        }
-    }
-
-    private void StartNoLyricsAnimation()
-    {
-        if (_isNoLyricsAnimationActive)
-        {
-            return;
-        }
-
-        _isNoLyricsAnimationActive = true;
-
-        // 1. Vibrate the lyric text
-        WallpaperLayerVibrateTransform.BeginAnimation(TranslateTransform.XProperty, null);
-        var vibrate = new DoubleAnimationUsingKeyFrames
-        {
-            Duration = TimeSpan.FromMilliseconds(500)
-        };
-        vibrate.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(0))));
-        vibrate.KeyFrames.Add(new LinearDoubleKeyFrame(-4, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(60))));
-        vibrate.KeyFrames.Add(new LinearDoubleKeyFrame(4, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(120))));
-        vibrate.KeyFrames.Add(new LinearDoubleKeyFrame(-3, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(180))));
-        vibrate.KeyFrames.Add(new LinearDoubleKeyFrame(3, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(240))));
-        vibrate.KeyFrames.Add(new LinearDoubleKeyFrame(-2, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(300))));
-        vibrate.KeyFrames.Add(new LinearDoubleKeyFrame(2, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(360))));
-        vibrate.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(420))));
-        WallpaperLayerVibrateTransform.BeginAnimation(TranslateTransform.XProperty, vibrate);
-
-        // 2. Fade out the lyrics after 2 seconds
-        WallpaperLayer.BeginAnimation(OpacityProperty, null);
-        WallpaperLayer.Opacity = 1;
-        var fadeOut = new DoubleAnimation
-        {
-            To = 0,
-            BeginTime = TimeSpan.FromSeconds(2),
-            Duration = TimeSpan.FromMilliseconds(400),
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
-        };
-        WallpaperLayer.BeginAnimation(OpacityProperty, fadeOut);
-    }
-
-    private void CancelNoLyricsAnimation()
-    {
-        if (!_isNoLyricsAnimationActive)
-        {
-            return;
-        }
-
-        _isNoLyricsAnimationActive = false;
-
-        // Stop all animations
-        WallpaperLayerVibrateTransform.BeginAnimation(TranslateTransform.XProperty, null);
-        WallpaperLayer.BeginAnimation(OpacityProperty, null);
-
-        // Restore visual state
-        WallpaperLayerVibrateTransform.X = 0;
-        var targetOpacity = GetTargetWallpaperOpacity();
-        WallpaperLayer.Opacity = targetOpacity;
-
-        // Fade the lyrics back in
-        var fadeIn = new DoubleAnimation
-        {
-            To = targetOpacity,
-            Duration = TimeSpan.FromMilliseconds(300),
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
-        };
-        WallpaperLayer.BeginAnimation(OpacityProperty, fadeIn);
     }
 
     private void MonitorWarningTimer_OnTick(object? sender, EventArgs e)
