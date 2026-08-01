@@ -1031,10 +1031,11 @@ public partial class IslandWindow : Window, ITrayIconHost
     {
         ClearWordPanel(panel);
         var words = SplitLyricWords(text);
+        var characterBased = ContainsCharacterBasedScript(text);
         for (var i = 0; i < words.Count; i++)
         {
             var transform = new TranslateTransform(0, initialYOffset);
-            var wordText = i < words.Count - 1 ? words[i] + " " : words[i];
+            var wordText = characterBased || i == words.Count - 1 ? words[i] : words[i] + " ";
             var textBlock = new TextBlock
             {
                 Text = wordText,
