@@ -80,8 +80,8 @@ public partial class IslandWindow : Window, ITrayIconHost
     private const int FlashOutMs = 150;
     private const int FlashStaggerMs = 90;
     private const int FlashPopLeadMs = 45;
-    private const double FlashGlowSize = 12;
-    private const double FlashGlowScale = 4;
+    private const double FlashLayoutBox = 2;
+    private const double FlashGlowScale = 24;
     private const double FlashGlowMaxOpacity = 0.45;
     private static readonly MediaColor RedFlashColor = MediaColor.FromArgb(230, 200, 40, 40);
 
@@ -1375,8 +1375,8 @@ public partial class IslandWindow : Window, ITrayIconHost
         brush.GradientStops.Add(new GradientStop(MediaColor.FromArgb(0, 255, 255, 255), 1.0));
         return new Border
         {
-            Width = FlashGlowSize,
-            Height = FlashGlowSize,
+            Width = FlashLayoutBox,
+            Height = FlashLayoutBox,
             Background = brush,
             HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
             VerticalAlignment = System.Windows.VerticalAlignment.Center,
@@ -1460,11 +1460,12 @@ public partial class IslandWindow : Window, ITrayIconHost
             3 => FlashIconSizeTriple,
             _ => FlashIconSize
         };
+        var scale = size / FlashLayoutBox;
         var image = new System.Windows.Controls.Image
         {
             Source = _flashImage,
-            Width = size,
-            Height = size,
+            Width = FlashLayoutBox,
+            Height = FlashLayoutBox,
             Opacity = 0,
             Stretch = Stretch.Uniform,
             HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
@@ -1476,8 +1477,9 @@ public partial class IslandWindow : Window, ITrayIconHost
         var offsetY = FlashRandom.NextDouble() * 18 - 9;
         var angle = FlashRandom.NextDouble() * 120 - 60;
         var transformGroup = new TransformGroup();
-        transformGroup.Children.Add(new TranslateTransform(offsetX, offsetY));
+        transformGroup.Children.Add(new ScaleTransform(scale, scale));
         transformGroup.Children.Add(new RotateTransform(angle));
+        transformGroup.Children.Add(new TranslateTransform(offsetX, offsetY));
         image.RenderTransform = transformGroup;
         RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.HighQuality);
         return image;
@@ -1485,11 +1487,12 @@ public partial class IslandWindow : Window, ITrayIconHost
 
     private System.Windows.Controls.Image CreateFlashImage(System.Windows.HorizontalAlignment horizontalAlignment, System.Windows.VerticalAlignment verticalAlignment)
     {
+        var scale = FlashIconSize / FlashLayoutBox;
         var image = new System.Windows.Controls.Image
         {
             Source = _flashImage,
-            Width = FlashIconSize,
-            Height = FlashIconSize,
+            Width = FlashLayoutBox,
+            Height = FlashLayoutBox,
             Opacity = 0,
             Stretch = Stretch.Uniform,
             HorizontalAlignment = horizontalAlignment,
@@ -1501,8 +1504,9 @@ public partial class IslandWindow : Window, ITrayIconHost
         var offsetY = FlashRandom.NextDouble() * 8 - 4;
         var angle = FlashRandom.NextDouble() * 60 - 30;
         var transformGroup = new TransformGroup();
-        transformGroup.Children.Add(new TranslateTransform(offsetX, offsetY));
+        transformGroup.Children.Add(new ScaleTransform(scale, scale));
         transformGroup.Children.Add(new RotateTransform(angle));
+        transformGroup.Children.Add(new TranslateTransform(offsetX, offsetY));
         image.RenderTransform = transformGroup;
         RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.HighQuality);
         return image;
