@@ -46,6 +46,10 @@ public partial class SettingsWindow : Window
         InitializeComponent();
         DetectedAppsListBox.ItemsSource = _detectedApps;
         ContributorsItemsControl.ItemsSource = Contributors;
+        IslandAnimationDefaultTile.Tag = LoadAnimationModeImage("island-animation-default.png");
+        IslandAnimationSlideInTile.Tag = LoadAnimationModeImage("island-animation-slide-in.png");
+        IslandAnimationSlideInManualTile.Tag = LoadAnimationModeImage("island-animation-slide-in-manual.png");
+        IslandAnimationWordFadeTile.Tag = LoadAnimationModeImage("island-animation-fade-in.png");
         _ = LoadContributorAvatarsAsync();
 #if DEBUG
         DebugTabItem.Visibility = Visibility.Visible;
@@ -73,6 +77,17 @@ public partial class SettingsWindow : Window
         var client = new HttpClient { BaseAddress = new Uri("https://api.github.com/") };
         client.DefaultRequestHeaders.UserAgent.ParseAdd("Lyrictified");
         return client;
+    }
+
+    private static BitmapImage LoadAnimationModeImage(string imageName)
+    {
+        var bitmap = new BitmapImage();
+        bitmap.BeginInit();
+        bitmap.CacheOption = BitmapCacheOption.OnLoad;
+        bitmap.UriSource = new Uri(Path.Combine(AppContext.BaseDirectory, "Assets", imageName), UriKind.Absolute);
+        bitmap.EndInit();
+        bitmap.Freeze();
+        return bitmap;
     }
 
     private static async Task LoadContributorAvatarsAsync()
@@ -210,13 +225,7 @@ public partial class SettingsWindow : Window
             IslandTimeoutTextBox.Text = settings.IslandTimeout.ToString();
             IslandHoverOpacitySlider.Value = Math.Clamp(GetEffectiveIslandHoverOpacity(settings.IslandHoverOpacity) * 100, 0, 100);
             IslandHoverOpacityValueTextBlock.Text = $"{(int)IslandHoverOpacitySlider.Value}%";
-            IslandAnimationModeComboBox.SelectedIndex = settings.IslandAnimationMode switch
-            {
-                IslandAnimationMode.SlideIn => 1,
-                IslandAnimationMode.SlideInManual => 2,
-                IslandAnimationMode.WordFade => 3,
-                _ => 0
-            };
+            SetIslandAnimationModeSelection(settings.IslandAnimationMode);
             IslandAnimationManualSpeedSlider.Value = Math.Clamp(settings.IslandAnimationManualSpeed, 0.5, 2.5);
             IslandAnimationManualSpeedValueTextBlock.Text = $"{IslandAnimationManualSpeedSlider.Value:F1}x";
             UpdateIslandAnimationManualSpeedVisibility();
@@ -444,10 +453,38 @@ public partial class SettingsWindow : Window
         RaiseTextSettingsChanged();
     }
 
-    private void IslandAnimationModeComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void IslandAnimationTile_OnChecked(object sender, RoutedEventArgs e)
     {
         UpdateIslandAnimationManualSpeedVisibility();
         RaiseSettingsChanged();
+    }
+
+    private void SetIslandAnimationModeSelection(IslandAnimationMode mode)
+    {
+        IslandAnimationDefaultTile.IsChecked = mode == IslandAnimationMode.Default;
+        IslandAnimationSlideInTile.IsChecked = mode == IslandAnimationMode.SlideIn;
+        IslandAnimationSlideInManualTile.IsChecked = mode == IslandAnimationMode.SlideInManual;
+        IslandAnimationWordFadeTile.IsChecked = mode == IslandAnimationMode.WordFade;
+    }
+
+    private IslandAnimationMode GetSelectedIslandAnimationMode()
+    {
+        if (IslandAnimationSlideInTile.IsChecked == true)
+        {
+            return IslandAnimationMode.SlideIn;
+        }
+
+        if (IslandAnimationSlideInManualTile.IsChecked == true)
+        {
+            return IslandAnimationMode.SlideInManual;
+        }
+
+        if (IslandAnimationWordFadeTile.IsChecked == true)
+        {
+            return IslandAnimationMode.WordFade;
+        }
+
+        return IslandAnimationMode.Default;
     }
 
     private void UpdateIslandAnimationManualSpeedVisibility()
@@ -455,7 +492,7 @@ public partial class SettingsWindow : Window
         if (IslandAnimationManualSpeedPanel is not null)
         {
             IslandAnimationManualSpeedPanel.Visibility =
-                IslandAnimationModeComboBox.SelectedIndex == 2
+                IslandAnimationSlideInManualTile.IsChecked == true
                     ? Visibility.Visible
                     : Visibility.Collapsed;
         }
@@ -556,13 +593,7 @@ public partial class SettingsWindow : Window
             IslandHideInFullscreen = IslandHideInFullscreenCheckBox.IsChecked == true,
             IslandTimeout = ParseIslandTimeout(),
             IslandHoverOpacity = GetEffectiveIslandHoverOpacity(IslandHoverOpacitySlider.Value / 100.0),
-            IslandAnimationMode = IslandAnimationModeComboBox.SelectedIndex switch
-            {
-                1 => IslandAnimationMode.SlideIn,
-                2 => IslandAnimationMode.SlideInManual,
-                3 => IslandAnimationMode.WordFade,
-                _ => IslandAnimationMode.Default
-            },
+            IslandAnimationMode = GetSelectedIslandAnimationMode(),
             IslandAnimationManualSpeed = IslandAnimationManualSpeedSlider?.Value ?? 1.0,
             LyricAlignment = (LyricAlignmentComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() switch
             {

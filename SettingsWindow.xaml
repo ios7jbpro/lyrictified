@@ -205,6 +205,75 @@
             <Setter Property="TextWrapping" Value="Wrap" />
         </Style>
 
+        <Style x:Key="AnimationModeTileStyle" TargetType="RadioButton">
+            <Setter Property="Margin" Value="0,0,10,10" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="TileBorder"
+                                Background="{StaticResource CardBrush}"
+                                BorderBrush="{StaticResource BorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="10"
+                                Padding="10"
+                                Cursor="Hand">
+                            <StackPanel>
+                                <Border Background="{StaticResource InputBackgroundBrush}"
+                                        BorderBrush="{StaticResource BorderBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="6"
+                                        Height="110"
+                                        Margin="0,0,0,8"
+                                        ClipToBounds="True">
+                                    <Grid>
+                                        <Image Source="Assets/island-settings-background.jpg"
+                                               Stretch="UniformToFill"
+                                               RenderOptions.BitmapScalingMode="HighQuality" />
+                                        <Grid Margin="10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="3*" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="*" />
+                                                <RowDefinition Height="2*" />
+                                                <RowDefinition Height="*" />
+                                            </Grid.RowDefinitions>
+                                            <Image x:Name="ModeImage"
+                                                   Grid.Column="1"
+                                                   Grid.Row="1"
+                                                   Source="{TemplateBinding Tag}"
+                                                   Stretch="Uniform"
+                                                   RenderOptions.BitmapScalingMode="HighQuality" />
+                                        </Grid>
+                                    </Grid>
+                                </Border>
+                                <TextBlock x:Name="TileTitle"
+                                           Text="{TemplateBinding Content}"
+                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                           FontSize="12"
+                                           FontWeight="Medium"
+                                           HorizontalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="TileBorder" Property="BorderBrush" Value="{StaticResource AccentHoverBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="TileBorder" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                                <Setter TargetName="TileBorder" Property="Background" Value="#16273D" />
+                                <Setter TargetName="TileTitle" Property="Foreground" Value="{StaticResource AccentBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style TargetType="TabControl">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="Transparent" />
@@ -1041,14 +1110,30 @@
                         <StackPanel>
                             <TextBlock Text="Animation" Style="{StaticResource SectionTitleStyle}" />
                             <TextBlock Text="How lyrics transition when the line changes." Style="{StaticResource LabelStyle}" />
-                            <ComboBox x:Name="IslandAnimationModeComboBox"
-                                      MinWidth="260"
-                                      SelectionChanged="IslandAnimationModeComboBox_OnSelectionChanged">
-                                <ComboBoxItem Content="Default" />
-                                <ComboBoxItem Content="Slide-in" />
-                                <ComboBoxItem Content="Slide-in (manual)" />
-                                <ComboBoxItem Content="Word-fade" />
-                            </ComboBox>
+                            <UniformGrid x:Name="IslandAnimationModeGrid"
+                                         Columns="2"
+                                         Margin="0,6,0,0">
+                                <RadioButton x:Name="IslandAnimationDefaultTile"
+                                             GroupName="IslandAnimationModeGroup"
+                                             Content="Default"
+                                             Style="{StaticResource AnimationModeTileStyle}"
+                                             Checked="IslandAnimationTile_OnChecked" />
+                                <RadioButton x:Name="IslandAnimationSlideInTile"
+                                             GroupName="IslandAnimationModeGroup"
+                                             Content="Slide-in"
+                                             Style="{StaticResource AnimationModeTileStyle}"
+                                             Checked="IslandAnimationTile_OnChecked" />
+                                <RadioButton x:Name="IslandAnimationSlideInManualTile"
+                                             GroupName="IslandAnimationModeGroup"
+                                             Content="Slide-in (manual)"
+                                             Style="{StaticResource AnimationModeTileStyle}"
+                                             Checked="IslandAnimationTile_OnChecked" />
+                                <RadioButton x:Name="IslandAnimationWordFadeTile"
+                                             GroupName="IslandAnimationModeGroup"
+                                             Content="Word-fade"
+                                             Style="{StaticResource AnimationModeTileStyle}"
+                                             Checked="IslandAnimationTile_OnChecked" />
+                            </UniformGrid>
                             <Grid x:Name="IslandAnimationManualSpeedPanel"
                                   Margin="0,12,0,0"
                                   Visibility="Collapsed">
