@@ -4,5 +4,6 @@ public enum WallpaperHorizontalAlignment
 {
     Left,
     Center,
-    Right
+    Right,
+    Custom
 }

@@ -247,14 +247,21 @@ public partial class SettingsWindow : Window
             {
                 WallpaperHorizontalAlignment.Left => 0,
                 WallpaperHorizontalAlignment.Right => 2,
+                WallpaperHorizontalAlignment.Custom => 3,
                 _ => 1
             };
             WallpaperVerticalPositionComboBox.SelectedIndex = settings.WallpaperVerticalAlignment switch
             {
                 WallpaperVerticalAlignment.Bottom => 2,
                 WallpaperVerticalAlignment.Center => 1,
+                WallpaperVerticalAlignment.Custom => 3,
                 _ => 0
             };
+            WallpaperCustomXTextBox.Text = settings.WallpaperCustomX?.ToString() ?? string.Empty;
+            WallpaperCustomYTextBox.Text = settings.WallpaperCustomY?.ToString() ?? string.Empty;
+            WallpaperTextColorTextBox.Text = settings.WallpaperTextColor ?? "#F5F7FA";
+            UpdateWallpaperColorPreview();
+            UpdateWallpaperCustomPositionVisibility();
             SetWallpaperAnimationModeSelection(settings.WallpaperAnimationMode);
             WallpaperAnimationManualSpeedSlider.Value = Math.Clamp(settings.WallpaperAnimationManualSpeed, 0.5, 2.5);
             WallpaperAnimationManualSpeedValueTextBlock.Text = $"{WallpaperAnimationManualSpeedSlider.Value:F1}x";
@@ -578,12 +585,30 @@ public partial class SettingsWindow : Window
 
     private void WallpaperHorizontalPositionComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        UpdateWallpaperCustomPositionVisibility();
         RaiseSettingsChanged();
     }
 
     private void WallpaperVerticalPositionComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
+        UpdateWallpaperCustomPositionVisibility();
         RaiseSettingsChanged();
+    }
+
+    private void WallpaperCustomXTextBox_OnTextChanged(object sender, TextChangedEventArgs e)
+    {
+        RaiseTextSettingsChanged();
+    }
+
+    private void WallpaperCustomYTextBox_OnTextChanged(object sender, TextChangedEventArgs e)
+    {
+        RaiseTextSettingsChanged();
+    }
+
+    private void WallpaperTextColorTextBox_OnTextChanged(object sender, TextChangedEventArgs e)
+    {
+        UpdateWallpaperColorPreview();
+        RaiseTextSettingsChanged();
     }
 
     private void WallpaperMaximumWidthTextBox_OnTextChanged(object sender, TextChangedEventArgs e)
@@ -764,14 +789,19 @@ public partial class SettingsWindow : Window
             {
                 "Left" => WallpaperHorizontalAlignment.Left,
                 "Right" => WallpaperHorizontalAlignment.Right,
+                "Custom" => WallpaperHorizontalAlignment.Custom,
                 _ => WallpaperHorizontalAlignment.Center
             },
             WallpaperVerticalAlignment = (WallpaperVerticalPositionComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() switch
             {
                 "Bottom" => WallpaperVerticalAlignment.Bottom,
                 "Center" => WallpaperVerticalAlignment.Center,
+                "Custom" => WallpaperVerticalAlignment.Custom,
                 _ => WallpaperVerticalAlignment.Top
             },
+            WallpaperCustomX = ParseWallpaperCustomX(),
+            WallpaperCustomY = ParseWallpaperCustomY(),
+            WallpaperTextColor = ParseWallpaperTextColor(),
             LyricAlignment = (LyricAlignmentComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() switch
             {
                 "Left" => LyricAlignment.Left,
@@ -992,6 +1022,80 @@ public partial class SettingsWindow : Window
         }
 
         return 10;
+    }
+
+    private int? ParseWallpaperCustomX()
+    {
+        if (string.IsNullOrWhiteSpace(WallpaperCustomXTextBox.Text))
+        {
+            return null;
+        }
+
+        return int.TryParse(WallpaperCustomXTextBox.Text, out var parsed) ? parsed : null;
+    }
+
+    private int? ParseWallpaperCustomY()
+    {
+        if (string.IsNullOrWhiteSpace(WallpaperCustomYTextBox.Text))
+        {
+            return null;
+        }
+
+        return int.TryParse(WallpaperCustomYTextBox.Text, out var parsed) ? parsed : null;
+    }
+
+    private string? ParseWallpaperTextColor()
+    {
+        var text = WallpaperTextColorTextBox.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+
+        try
+        {
+            if (System.Windows.Media.ColorConverter.ConvertFromString(text) is System.Windows.Media.Color)
+            {
+                return text;
+            }
+        }
+        catch
+        {
+            // Invalid hex value; fall back to the default color.
+        }
+
+        return "#F5F7FA";
+    }
+
+    private void UpdateWallpaperCustomPositionVisibility()
+    {
+        if (WallpaperCustomPositionPanel is null || WallpaperHorizontalPositionComboBox is null || WallpaperVerticalPositionComboBox is null)
+        {
+            return;
+        }
+
+        var isCustom = WallpaperHorizontalPositionComboBox.SelectedIndex == 3 || WallpaperVerticalPositionComboBox.SelectedIndex == 3;
+        WallpaperCustomPositionPanel.Visibility = isCustom ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void UpdateWallpaperColorPreview()
+    {
+        if (WallpaperColorPreviewBorder is null || WallpaperTextColorTextBox is null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (System.Windows.Media.ColorConverter.ConvertFromString(WallpaperTextColorTextBox.Text?.Trim()) is System.Windows.Media.Color color)
+            {
+                WallpaperColorPreviewBorder.Background = new SolidColorBrush(color);
+            }
+        }
+        catch
+        {
+            // Keep the previous preview when the hex value is invalid.
+        }
     }
 
     private static double GetEffectiveWallpaperScale(double scale)

@@ -4,5 +4,6 @@ public enum WallpaperVerticalAlignment
 {
     Top,
     Center,
-    Bottom
+    Bottom,
+    Custom
 }

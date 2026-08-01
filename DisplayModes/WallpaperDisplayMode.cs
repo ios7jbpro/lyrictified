@@ -61,7 +61,9 @@ public static class WallpaperDisplayMode
         double scale,
         int? configuredContainerHeight,
         WallpaperHorizontalAlignment horizontalAlignment,
-        WallpaperVerticalAlignment verticalAlignment)
+        WallpaperVerticalAlignment verticalAlignment,
+        int? customX,
+        int? customY)
     {
         var monitorWidth = monitor.Bounds.right - monitor.Bounds.left;
         var monitorHeight = monitor.Bounds.bottom - monitor.Bounds.top;
@@ -73,6 +75,7 @@ public static class WallpaperDisplayMode
         {
             WallpaperHorizontalAlignment.Left => monitor.Bounds.left + EdgeMargin,
             WallpaperHorizontalAlignment.Right => monitor.Bounds.right - width - EdgeMargin,
+            WallpaperHorizontalAlignment.Custom => monitor.Bounds.left + (customX ?? 0) - (width / 2),
             _ => monitor.Bounds.left + ((monitorWidth - width) / 2)
         };
         var height = GetEffectiveContainerHeight(configuredContainerHeight, effectiveScale);
@@ -80,6 +83,7 @@ public static class WallpaperDisplayMode
         {
             WallpaperVerticalAlignment.Bottom => monitor.Bounds.bottom - height - EdgeMargin,
             WallpaperVerticalAlignment.Center => monitor.Bounds.top + ((monitorHeight - height) / 2),
+            WallpaperVerticalAlignment.Custom => monitor.Bounds.top + (customY ?? 0) - (height / 2),
             _ => monitor.Bounds.top + EdgeMargin
         };
         return (left, top, width, height);

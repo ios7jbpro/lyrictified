@@ -1289,6 +1289,7 @@
                                     <ComboBoxItem Tag="Left" Content="Left" />
                                     <ComboBoxItem Tag="Center" Content="Center" />
                                     <ComboBoxItem Tag="Right" Content="Right" />
+                                    <ComboBoxItem Tag="Custom" Content="Custom..." />
                                 </ComboBox>
                             </Grid>
                             <Grid>
@@ -1308,7 +1309,77 @@
                                     <ComboBoxItem Tag="Top" Content="Top" />
                                     <ComboBoxItem Tag="Center" Content="Center" />
                                     <ComboBoxItem Tag="Bottom" Content="Bottom" />
+                                    <ComboBoxItem Tag="Custom" Content="Custom..." />
                                 </ComboBox>
+                            </Grid>
+                            <Grid x:Name="WallpaperCustomPositionPanel"
+                                  Margin="0,12,0,0"
+                                  Visibility="Collapsed">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="X position" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" FontWeight="Medium" />
+                                    <TextBlock Text="Horizontal center on the selected monitor (pixels)." Style="{StaticResource HintTextStyle}" />
+                                </StackPanel>
+                                <TextBox x:Name="WallpaperCustomXTextBox"
+                                         Grid.Column="1"
+                                         Width="80"
+                                         VerticalAlignment="Center"
+                                         TextAlignment="Center"
+                                         MaxLength="5"
+                                         PreviewTextInput="MaxCacheSizeTextBox_PreviewTextInput"
+                                         DataObject.Pasting="MaxCacheSizeTextBox_Pasting"
+                                         TextChanged="WallpaperCustomXTextBox_OnTextChanged" />
+                                <StackPanel Grid.Column="2" Margin="16,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Y position" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" FontWeight="Medium" />
+                                    <TextBlock Text="Vertical center on the selected monitor (pixels)." Style="{StaticResource HintTextStyle}" />
+                                </StackPanel>
+                                <TextBox x:Name="WallpaperCustomYTextBox"
+                                         Grid.Column="3"
+                                         Width="80"
+                                         VerticalAlignment="Center"
+                                         TextAlignment="Center"
+                                         MaxLength="5"
+                                         PreviewTextInput="MaxCacheSizeTextBox_PreviewTextInput"
+                                         DataObject.Pasting="MaxCacheSizeTextBox_Pasting"
+                                         TextChanged="WallpaperCustomYTextBox_OnTextChanged" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="Color" Style="{StaticResource SectionTitleStyle}" />
+                            <TextBlock Text="Choose the color of the lyrics. Applied to the text, glow, and flash effects." Style="{StaticResource LabelStyle}" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="Lyrics color" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" FontWeight="Medium" />
+                                    <TextBlock Text="Enter a hex color like #F5F7FA. Leave empty for the default." Style="{StaticResource HintTextStyle}" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Border x:Name="WallpaperColorPreviewBorder"
+                                            Width="30"
+                                            Height="30"
+                                            CornerRadius="6"
+                                            Background="#F5F7FA"
+                                            BorderBrush="{StaticResource BorderBrush}"
+                                            BorderThickness="1"
+                                            Margin="0,0,8,0" />
+                                    <TextBox x:Name="WallpaperTextColorTextBox"
+                                             Width="120"
+                                             VerticalAlignment="Center"
+                                             TextAlignment="Center"
+                                             MaxLength="9"
+                                             TextChanged="WallpaperTextColorTextBox_OnTextChanged" />
+                                </StackPanel>
                             </Grid>
                         </StackPanel>
                     </Border>

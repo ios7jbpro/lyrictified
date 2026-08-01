@@ -46,7 +46,6 @@ public partial class WallpaperWindow : Window, ITrayIconHost
     private AppSettings _settings;
     private string _displayedLyricText = string.Empty;
     private string? _lastMonitorWarningKey;
-    private double _wallpaperWidth = 160;
     private int _lyricTransitionVersion;
     private bool _isWallpaperContentVisible = true;
     private bool _isPauseVisualActive;
@@ -54,7 +53,9 @@ public partial class WallpaperWindow : Window, ITrayIconHost
     private bool _isTimeoutHidden;
     private SettingsWindow? _settingsWindow;
     private TrayIcon? _trayIcon;
+    private static BitmapImage? _baseFlashImage;
     private static BitmapImage? _flashImage;
+    private static MediaColor? _appliedFlashColor;
     private static readonly Random FlashRandom = new();
     private const double PauseSpacerTargetWidth = 24;
     private const double LoadingSpacerTargetWidth = 24;
@@ -85,7 +86,8 @@ public partial class WallpaperWindow : Window, ITrayIconHost
         DataContext = _viewModel;
 
         LoadingSpinnerImage.Source = new BitmapImage(new Uri(Path.Combine(AppContext.BaseDirectory, "Assets", "loading.png"), UriKind.Absolute));
-        _flashImage = LoadFlashImage();
+        _baseFlashImage = LoadFlashImage();
+        _flashImage = _baseFlashImage;
 
         _monitorWarningTimer = new DispatcherTimer { Interval = MonitorWarningDuration };
         _monitorWarningTimer.Tick += MonitorWarningTimer_OnTick;
@@ -118,7 +120,6 @@ public partial class WallpaperWindow : Window, ITrayIconHost
     {
         IncomingLyricTextBlock.Text = _viewModel.TaskbarCurrentLine;
         _displayedLyricText = _viewModel.TaskbarCurrentLine;
-        UpdateWallpaperWidth(_displayedLyricText, immediate: true);
         UpdateWallpaperContentVisibility(_displayedLyricText);
         ApplyLoadingState(immediate: true);
         ApplyPlaybackStateVisual(immediate: true);
@@ -243,12 +244,45 @@ public partial class WallpaperWindow : Window, ITrayIconHost
         RootGrid.Background = IsSettingsWindowVisible()
             ? new SolidColorBrush(MediaColor.FromArgb(180, 10, 14, 20))
             : new SolidColorBrush(MediaColor.FromArgb(0, 0, 0, 0));
+        var lyricColor = GetCustomLyricColor();
+        ApplyFlashColor(lyricColor);
+        PauseBar1.Fill = new SolidColorBrush(lyricColor);
+        PauseBar2.Fill = new SolidColorBrush(lyricColor);
         if (!_viewModel.IsLoadingLyrics)
         {
-            var lyricBrush = new SolidColorBrush(MediaColor.FromRgb(245, 247, 250));
+            var lyricBrush = new SolidColorBrush(lyricColor);
             IncomingLyricTextBlock.Foreground = lyricBrush;
             OutgoingLyricTextBlock.Foreground = lyricBrush;
         }
+    }
+
+    private MediaColor GetCustomLyricColor()
+    {
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(_settings.WallpaperTextColor)
+                && System.Windows.Media.ColorConverter.ConvertFromString(_settings.WallpaperTextColor) is MediaColor color)
+            {
+                return color;
+            }
+        }
+        catch
+        {
+            // Fall back to the default lyric color on invalid hex values.
+        }
+
+        return MediaColor.FromRgb(245, 247, 250);
+    }
+
+    private void ApplyFlashColor(MediaColor color)
+    {
+        if (_appliedFlashColor is MediaColor appliedColor && appliedColor == color)
+        {
+            return;
+        }
+
+        _flashImage = _baseFlashImage is null ? null : CreateTintedFlashImage(_baseFlashImage, color);
+        _appliedFlashColor = color;
     }
 
     private void ApplyMonitorSetting()
@@ -304,16 +338,14 @@ public partial class WallpaperWindow : Window, ITrayIconHost
             GetEffectiveWallpaperScale(),
             _settings.WallpaperContainerHeight,
             _settings.WallpaperHorizontalAlignment,
-            _settings.WallpaperVerticalAlignment);
+            _settings.WallpaperVerticalAlignment,
+            _settings.WallpaperCustomX,
+            _settings.WallpaperCustomY);
         Left = bounds.Left;
         Top = bounds.Top;
         Width = bounds.Width;
         Height = bounds.Height;
         ApplyWallpaperScale();
-        UpdateWallpaperWidth(_displayedLyricText, immediate: true);
-        _ = Dispatcher.InvokeAsync(
-            () => UpdateWallpaperWidth(_displayedLyricText, immediate: true),
-            DispatcherPriority.Loaded);
     }
 
     private void ApplyWallpaperScale()
@@ -453,13 +485,6 @@ public partial class WallpaperWindow : Window, ITrayIconHost
             return;
         }
 
-        await AnimateWallpaperWidthAsync(newCurrentLine);
-
-        if (transitionVersion != _lyricTransitionVersion)
-        {
-            return;
-        }
-
         if (!_isWallpaperContentVisible)
         {
             await SetWallpaperContentVisibleAsync(true);
@@ -588,7 +613,6 @@ public partial class WallpaperWindow : Window, ITrayIconHost
         var outDuration = (int)(SlideWordDurationMs / tempo);
         var inDuration = (int)(SlideWordInDurationMs / tempo);
         var stagger = (int)(SlideWordStaggerMs / tempo);
-        var widthDuration = (int)(190 / tempo);
 
         if (!hasIncoming)
         {
@@ -672,14 +696,6 @@ public partial class WallpaperWindow : Window, ITrayIconHost
             OutgoingWordsPanel.Visibility = Visibility.Collapsed;
         }
 
-        // 2. Resize wallpaper text area
-        await AnimateWallpaperWidthAsync(newCurrentLine, widthDuration);
-
-        if (transitionVersion != _lyricTransitionVersion)
-        {
-            return;
-        }
-
         // 3. Slide in new words (slightly faster)
         PopulateWordPanel(IncomingWordsPanel, newCurrentLine, initialYOffset: SlideWordOffset);
         IncomingWordsPanel.Visibility = Visibility.Visible;
@@ -704,7 +720,6 @@ public partial class WallpaperWindow : Window, ITrayIconHost
         var outDuration = (int)(FadeLineOutDurationMs / tempo);
         var inDuration = (int)(SlideWordInDurationMs / tempo);
         var stagger = (int)(SlideWordStaggerMs / tempo);
-        var widthDuration = (int)(190 / tempo);
 
         // The outgoing line always fades out as a whole using the plain text block.
         SetLyricWordPanelsActive(false);
@@ -767,14 +782,6 @@ public partial class WallpaperWindow : Window, ITrayIconHost
             {
                 return;
             }
-        }
-
-        // 2. Resize wallpaper text area
-        await AnimateWallpaperWidthAsync(newCurrentLine, widthDuration);
-
-        if (transitionVersion != _lyricTransitionVersion)
-        {
-            return;
         }
 
         // 3. Fade in new words one by one (no sliding)
@@ -806,7 +813,6 @@ public partial class WallpaperWindow : Window, ITrayIconHost
         var tempo = CalculateLocalLyricTempoMultiplier(newCurrentLine, outgoingText);
         var outDuration = (int)(FadeLineOutDurationMs / tempo);
         var stagger = (int)(FlashStaggerMs / tempo);
-        var widthDuration = (int)(190 / tempo);
 
         // The outgoing line always fades out as a whole using the plain text block.
         SetLyricWordPanelsActive(false);
@@ -869,14 +875,6 @@ public partial class WallpaperWindow : Window, ITrayIconHost
             {
                 return;
             }
-        }
-
-        // 2. Resize wallpaper text area
-        await AnimateWallpaperWidthAsync(newCurrentLine, widthDuration);
-
-        if (transitionVersion != _lyricTransitionVersion)
-        {
-            return;
         }
 
         // 3. Pop in new words one by one, flashing as each appears.
@@ -910,7 +908,6 @@ public partial class WallpaperWindow : Window, ITrayIconHost
         IncomingLyricTextBlock.BeginAnimation(OpacityProperty, null);
         OutgoingLyricTranslateTransform.BeginAnimation(TranslateTransform.YProperty, null);
         IncomingLyricTranslateTransform.BeginAnimation(TranslateTransform.YProperty, null);
-        WallpaperTextClip.BeginAnimation(WidthProperty, null);
         CancelSlideWordAnimations(OutgoingWordsPanel);
         CancelSlideWordAnimations(IncomingWordsPanel);
     }
@@ -1164,14 +1161,15 @@ public partial class WallpaperWindow : Window, ITrayIconHost
 
     private static Border CreateFlashGlow()
     {
+        var glowColor = GetFlashGlowColor();
         var brush = new RadialGradientBrush
         {
             Center = new System.Windows.Point(0.5, 0.5),
             GradientOrigin = new System.Windows.Point(0.5, 0.5)
         };
-        brush.GradientStops.Add(new GradientStop(Colors.White, 0.0));
-        brush.GradientStops.Add(new GradientStop(MediaColor.FromArgb(90, 255, 255, 255), 0.5));
-        brush.GradientStops.Add(new GradientStop(MediaColor.FromArgb(0, 255, 255, 255), 1.0));
+        brush.GradientStops.Add(new GradientStop(glowColor, 0.0));
+        brush.GradientStops.Add(new GradientStop(MediaColor.FromArgb(90, glowColor.R, glowColor.G, glowColor.B), 0.5));
+        brush.GradientStops.Add(new GradientStop(MediaColor.FromArgb(0, glowColor.R, glowColor.G, glowColor.B), 1.0));
         return new Border
         {
             Width = FlashLayoutBox,
@@ -1184,6 +1182,63 @@ public partial class WallpaperWindow : Window, ITrayIconHost
             RenderTransformOrigin = new System.Windows.Point(0.5, 0.5),
             RenderTransform = new ScaleTransform(FlashGlowScale, FlashGlowScale)
         };
+    }
+
+    private static MediaColor GetFlashGlowColor()
+    {
+        var defaultColor = MediaColor.FromRgb(245, 247, 250);
+        if (_appliedFlashColor is MediaColor appliedColor)
+        {
+            return appliedColor;
+        }
+
+        return defaultColor;
+    }
+
+    private static BitmapImage CreateTintedFlashImage(BitmapImage source, MediaColor color)
+    {
+        using var sourceStream = new MemoryStream();
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(source));
+        encoder.Save(sourceStream);
+        sourceStream.Position = 0;
+
+        using var original = new System.Drawing.Bitmap(sourceStream);
+        using var tinted = new System.Drawing.Bitmap(original.Width, original.Height);
+        using (var graphics = System.Drawing.Graphics.FromImage(tinted))
+        using (var attributes = new System.Drawing.Imaging.ImageAttributes())
+        {
+            var matrix = new float[5][]
+            {
+                new float[] { color.R / 255f, 0, 0, 0, 0 },
+                new float[] { color.G / 255f, 0, 0, 0, 0 },
+                new float[] { color.B / 255f, 0, 0, 0, 0 },
+                new float[] { 0, 0, 0, 1, 0 },
+                new float[] { 0, 0, 0, 0, 1 }
+            };
+            attributes.SetColorMatrix(new System.Drawing.Imaging.ColorMatrix(matrix));
+            graphics.DrawImage(
+                original,
+                new System.Drawing.Rectangle(0, 0, original.Width, original.Height),
+                0,
+                0,
+                original.Width,
+                original.Height,
+                System.Drawing.GraphicsUnit.Pixel,
+                attributes);
+        }
+
+        using var outStream = new MemoryStream();
+        tinted.Save(outStream, System.Drawing.Imaging.ImageFormat.Png);
+        outStream.Position = 0;
+
+        var result = new BitmapImage();
+        result.BeginInit();
+        result.CacheOption = BitmapCacheOption.OnLoad;
+        result.StreamSource = outStream;
+        result.EndInit();
+        result.Freeze();
+        return result;
     }
 
     private void PopulateFlashWordPanel(StackPanel panel, string text)
@@ -1482,47 +1537,6 @@ public partial class WallpaperWindow : Window, ITrayIconHost
         return completion.Task;
     }
 
-    private void UpdateWallpaperWidth(string text, bool immediate)
-    {
-        var width = MeasureWallpaperWidth(text);
-        _wallpaperWidth = width;
-
-        WallpaperTextClip.BeginAnimation(WidthProperty, null);
-        WallpaperTextClip.Width = width;
-        ApplyLyricTextWidth(width);
-    }
-
-    private async Task AnimateWallpaperWidthAsync(string text, int durationMs = 190)
-    {
-        var targetWidth = MeasureWallpaperWidth(text);
-        if (Math.Abs(_wallpaperWidth - targetWidth) < 0.01)
-        {
-            return;
-        }
-
-        WallpaperTextClip.BeginAnimation(WidthProperty, null);
-        var animation = new DoubleAnimation
-        {
-            From = _wallpaperWidth,
-            To = targetWidth,
-            Duration = TimeSpan.FromMilliseconds(durationMs),
-            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut }
-        };
-
-        await AnimateDoubleAsync(WallpaperTextClip, WidthProperty, animation);
-
-        WallpaperTextClip.BeginAnimation(WidthProperty, null);
-        WallpaperTextClip.Width = targetWidth;
-        ApplyLyricTextWidth(targetWidth);
-        _wallpaperWidth = targetWidth;
-    }
-
-    private void ApplyLyricTextWidth(double wallpaperWidth)
-    {
-        var textWidth = Math.Max(0, wallpaperWidth - WallpaperDisplayMode.BackgroundHorizontalPadding);
-        LyricStage.Width = textWidth;
-    }
-
     private static Task AnimateDoubleAsync(UIElement target, DependencyProperty property, DoubleAnimation animation)
     {
         var completion = new TaskCompletionSource();
@@ -1537,47 +1551,6 @@ public partial class WallpaperWindow : Window, ITrayIconHost
         animation.Completed += (_, _) => completion.TrySetResult();
         target.BeginAnimation(property, animation);
         return completion.Task;
-    }
-
-    private double GetExtraIconSpace()
-    {
-        var extra = 0.0;
-        if (LoadingIcon.Visibility == Visibility.Visible)
-            extra += LoadingSpacerTargetWidth;
-        if (PauseIcon.Visibility == Visibility.Visible)
-            extra += PauseSpacerTargetWidth;
-        return extra;
-    }
-
-    private double MeasureWallpaperWidth(string text)
-    {
-        var availableWidth = Math.Max(
-            WallpaperDisplayMode.MinimumBackgroundWidth,
-            RootGrid.ActualWidth > 0
-                ? RootGrid.ActualWidth / GetEffectiveWallpaperScale()
-                : ActualWidth / GetEffectiveWallpaperScale());
-
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            return Math.Min(WallpaperDisplayMode.MinimumBackgroundWidth, availableWidth);
-        }
-
-        var pixelsPerDip = VisualTreeHelper.GetDpi(this).PixelsPerDip;
-        var formattedText = new FormattedText(
-            text,
-            CultureInfo.CurrentUICulture,
-            System.Windows.FlowDirection.LeftToRight,
-            new Typeface(
-                IncomingLyricTextBlock.FontFamily,
-                IncomingLyricTextBlock.FontStyle,
-                IncomingLyricTextBlock.FontWeight,
-                IncomingLyricTextBlock.FontStretch),
-            IncomingLyricTextBlock.FontSize,
-            WpfBrushes.White,
-            pixelsPerDip);
-
-        var desiredWidth = formattedText.WidthIncludingTrailingWhitespace + WallpaperDisplayMode.BackgroundHorizontalPadding + GetExtraIconSpace();
-        return Math.Clamp(desiredWidth, WallpaperDisplayMode.MinimumBackgroundWidth, availableWidth);
     }
 
     private void ApplyLoadingState(bool immediate = false)
@@ -1620,13 +1593,11 @@ public partial class WallpaperWindow : Window, ITrayIconHost
             LoadingIcon.BeginAnimation(OpacityProperty, iconFade);
             LoadingSpacer.BeginAnimation(WidthProperty, spacerAnimation);
             LoadingSpinnerRotateTransform.BeginAnimation(RotateTransform.AngleProperty, spinnerRotation);
-            UpdateWallpaperWidth(_displayedLyricText, false);
             return;
         }
 
         LyricStage.Opacity = 1;
         ApplyAppearance();
-        UpdateWallpaperWidth(_displayedLyricText, false);
 
         var iconFadeOut = new DoubleAnimation
         {
@@ -1762,7 +1733,7 @@ public partial class WallpaperWindow : Window, ITrayIconHost
             }
         };
 
-        // Toggle visibility before measuring so GetExtraIconSpace reflects the target state.
+        // Toggle visibility before animating the pause icon.
         PauseIcon.Visibility = isPaused ? Visibility.Visible : Visibility.Collapsed;
 
         if (isPaused)
@@ -1776,7 +1747,6 @@ public partial class WallpaperWindow : Window, ITrayIconHost
         }
 
         PauseIcon.BeginAnimation(OpacityProperty, iconAnimation);
-        UpdateWallpaperWidth(_displayedLyricText, false);
         _isPauseVisualActive = isPaused;
     }
 
@@ -2042,6 +2012,9 @@ public partial class WallpaperWindow : Window, ITrayIconHost
         persistedSettings.WallpaperTimeout = incomingSettings.WallpaperTimeout;
         persistedSettings.WallpaperHorizontalAlignment = incomingSettings.WallpaperHorizontalAlignment;
         persistedSettings.WallpaperVerticalAlignment = incomingSettings.WallpaperVerticalAlignment;
+        persistedSettings.WallpaperCustomX = incomingSettings.WallpaperCustomX;
+        persistedSettings.WallpaperCustomY = incomingSettings.WallpaperCustomY;
+        persistedSettings.WallpaperTextColor = incomingSettings.WallpaperTextColor;
         persistedSettings.TaskbarAnimationMode = incomingSettings.TaskbarAnimationMode;
         persistedSettings.TaskbarAnimationManualSpeed = incomingSettings.TaskbarAnimationManualSpeed;
         persistedSettings.LyricAlignment = incomingSettings.LyricAlignment;

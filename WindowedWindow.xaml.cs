@@ -1960,6 +1960,9 @@ public partial class WindowedWindow : Window, ITrayIconHost
         persistedSettings.WallpaperTimeout = incomingSettings.WallpaperTimeout;
         persistedSettings.WallpaperHorizontalAlignment = incomingSettings.WallpaperHorizontalAlignment;
         persistedSettings.WallpaperVerticalAlignment = incomingSettings.WallpaperVerticalAlignment;
+        persistedSettings.WallpaperCustomX = incomingSettings.WallpaperCustomX;
+        persistedSettings.WallpaperCustomY = incomingSettings.WallpaperCustomY;
+        persistedSettings.WallpaperTextColor = incomingSettings.WallpaperTextColor;
         persistedSettings.TaskbarAnimationMode = incomingSettings.TaskbarAnimationMode;
         persistedSettings.TaskbarAnimationManualSpeed = incomingSettings.TaskbarAnimationManualSpeed;
         persistedSettings.LyricAlignment = incomingSettings.LyricAlignment;

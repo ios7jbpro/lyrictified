@@ -66,6 +66,12 @@ public sealed class AppSettings
 
     public WallpaperVerticalAlignment WallpaperVerticalAlignment { get; set; } = WallpaperVerticalAlignment.Top;
 
+    public int? WallpaperCustomX { get; set; }
+
+    public int? WallpaperCustomY { get; set; }
+
+    public string? WallpaperTextColor { get; set; }
+
     public IslandAnimationMode TaskbarAnimationMode { get; set; } = IslandAnimationMode.Default;
 
     public double TaskbarAnimationManualSpeed { get; set; } = 1.0;
