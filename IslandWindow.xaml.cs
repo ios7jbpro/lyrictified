@@ -81,7 +81,7 @@ public partial class IslandWindow : Window, ITrayIconHost
     private const int FlashStaggerMs = 90;
     private const int FlashPopLeadMs = 45;
     private const double FlashLayoutBox = 2;
-    private const double FlashGlowFactor = 2.4;
+    private const double FlashGlowScale = 24;
     private const double FlashGlowMaxOpacity = 0.45;
     private static readonly MediaColor RedFlashColor = MediaColor.FromArgb(230, 200, 40, 40);
 
@@ -1363,19 +1363,16 @@ public partial class IslandWindow : Window, ITrayIconHost
         return bitmap;
     }
 
-    private static Border CreateFlashGlow(double wordWidth)
+    private static Border CreateFlashGlow()
     {
         var brush = new RadialGradientBrush
         {
             Center = new System.Windows.Point(0.5, 0.5),
             GradientOrigin = new System.Windows.Point(0.5, 0.5)
         };
-        brush.GradientStops.Add(new GradientStop(MediaColor.FromArgb(0, 255, 255, 255), 0.0));
-        brush.GradientStops.Add(new GradientStop(MediaColor.FromArgb(0, 255, 255, 255), 0.50));
-        brush.GradientStops.Add(new GradientStop(MediaColor.FromArgb(150, 255, 255, 255), 0.62));
-        brush.GradientStops.Add(new GradientStop(MediaColor.FromArgb(45, 255, 255, 255), 0.85));
+        brush.GradientStops.Add(new GradientStop(Colors.White, 0.0));
+        brush.GradientStops.Add(new GradientStop(MediaColor.FromArgb(90, 255, 255, 255), 0.5));
         brush.GradientStops.Add(new GradientStop(MediaColor.FromArgb(0, 255, 255, 255), 1.0));
-        var scale = (Math.Max(wordWidth, FlashLayoutBox) * FlashGlowFactor) / FlashLayoutBox;
         return new Border
         {
             Width = FlashLayoutBox,
@@ -1386,7 +1383,7 @@ public partial class IslandWindow : Window, ITrayIconHost
             Opacity = 0,
             IsHitTestVisible = false,
             RenderTransformOrigin = new System.Windows.Point(0.5, 0.5),
-            RenderTransform = new ScaleTransform(scale, scale)
+            RenderTransform = new ScaleTransform(FlashGlowScale, FlashGlowScale)
         };
     }
 
@@ -1412,8 +1409,7 @@ public partial class IslandWindow : Window, ITrayIconHost
             };
 
             var wordGrid = new Grid();
-            textBlock.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
-            wordGrid.Children.Add(CreateFlashGlow(textBlock.DesiredSize.Width));
+            wordGrid.Children.Add(CreateFlashGlow());
             wordGrid.Children.Add(textBlock);
             wordGrid.Children.Add(CreateFlashImage(System.Windows.HorizontalAlignment.Right, System.Windows.VerticalAlignment.Top));
             wordGrid.Children.Add(CreateFlashImage(System.Windows.HorizontalAlignment.Left, System.Windows.VerticalAlignment.Bottom));
@@ -1443,8 +1439,7 @@ public partial class IslandWindow : Window, ITrayIconHost
             };
 
             var wordGrid = new Grid();
-            textBlock.Measure(new System.Windows.Size(double.PositiveInfinity, double.PositiveInfinity));
-            wordGrid.Children.Add(CreateFlashGlow(textBlock.DesiredSize.Width));
+            wordGrid.Children.Add(CreateFlashGlow());
             wordGrid.Children.Add(textBlock);
 
             var starCount = FlashRandom.Next(1, 4);
@@ -1505,10 +1500,8 @@ public partial class IslandWindow : Window, ITrayIconHost
             IsHitTestVisible = false,
             RenderTransformOrigin = new System.Windows.Point(0.5, 0.5)
         };
-        var inwardX = horizontalAlignment == System.Windows.HorizontalAlignment.Right ? -FlashIconSize / 2 : FlashIconSize / 2;
-        var inwardY = verticalAlignment == System.Windows.VerticalAlignment.Top ? FlashIconSize / 2 : -FlashIconSize / 2;
-        var offsetX = inwardX + (FlashRandom.NextDouble() * 8 - 4);
-        var offsetY = inwardY + (FlashRandom.NextDouble() * 8 - 4);
+        var offsetX = FlashRandom.NextDouble() * 8 - 4;
+        var offsetY = FlashRandom.NextDouble() * 8 - 4;
         var angle = FlashRandom.NextDouble() * 60 - 30;
         var transformGroup = new TransformGroup();
         transformGroup.Children.Add(new ScaleTransform(scale, scale));
