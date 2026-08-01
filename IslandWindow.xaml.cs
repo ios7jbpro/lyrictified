@@ -65,6 +65,7 @@ public partial class IslandWindow : Window, ITrayIconHost
     private readonly DispatcherTimer _timeoutTimer;
     private bool _isTimeoutHidden;
     private static BitmapImage? _flashImage;
+    private static readonly Random FlashRandom = new();
     private const double PauseSpacerTargetWidth = 24;
     private const double LoadingSpacerTargetWidth = 24;
     private const double SlideWordOffset = 48;
@@ -1082,6 +1083,7 @@ public partial class IslandWindow : Window, ITrayIconHost
 
         RestoreLyricTextBlocks(newCurrentLine);
         _displayedLyricText = newCurrentLine;
+        _ = AnimateIslandCornerFlashAsync();
     }
 
     private void CancelLyricTransitionAnimations()
@@ -1387,8 +1389,16 @@ public partial class IslandWindow : Window, ITrayIconHost
             Stretch = Stretch.Uniform,
             HorizontalAlignment = horizontalAlignment,
             VerticalAlignment = verticalAlignment,
-            IsHitTestVisible = false
+            IsHitTestVisible = false,
+            RenderTransformOrigin = new System.Windows.Point(0.5, 0.5)
         };
+        var offsetX = FlashRandom.NextDouble() * 8 - 4;
+        var offsetY = FlashRandom.NextDouble() * 8 - 4;
+        var angle = FlashRandom.NextDouble() * 60 - 30;
+        var transformGroup = new TransformGroup();
+        transformGroup.Children.Add(new TranslateTransform(offsetX, offsetY));
+        transformGroup.Children.Add(new RotateTransform(angle));
+        image.RenderTransform = transformGroup;
         RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.HighQuality);
         return image;
     }
@@ -1459,6 +1469,18 @@ public partial class IslandWindow : Window, ITrayIconHost
             Duration = TimeSpan.FromMilliseconds(FlashOutMs),
             EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
         });
+    }
+
+    private async Task AnimateIslandCornerFlashAsync()
+    {
+        IslandFlashTopRight.BeginAnimation(OpacityProperty, null);
+        IslandFlashBottomLeft.BeginAnimation(OpacityProperty, null);
+        IslandFlashTopRight.Opacity = 0;
+        IslandFlashBottomLeft.Opacity = 0;
+
+        await Task.WhenAll(
+            AnimateFlashEffectAsync(IslandFlashTopRight, TimeSpan.Zero),
+            AnimateFlashEffectAsync(IslandFlashBottomLeft, TimeSpan.FromMilliseconds(60)));
     }
 
     private bool ShouldHideForEmptyLine()
@@ -1550,13 +1572,17 @@ public partial class IslandWindow : Window, ITrayIconHost
 
         IslandBackground.BeginAnimation(WidthProperty, null);
         IslandTextClip.BeginAnimation(WidthProperty, null);
-        IslandBackgroundScaleTransform.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-        IslandBackgroundTranslateTransform.BeginAnimation(TranslateTransform.XProperty, null);
         IslandBackground.Width = width;
         IslandTextClip.Width = width;
         ApplyLyricTextWidth(width);
-        IslandBackgroundScaleTransform.ScaleX = 1;
-        IslandBackgroundTranslateTransform.X = 0;
+
+        if (immediate)
+        {
+            IslandBackgroundTranslateTransform.BeginAnimation(TranslateTransform.XProperty, null);
+            IslandBackgroundScaleTransform.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            IslandBackgroundScaleTransform.ScaleX = 1;
+            IslandBackgroundTranslateTransform.X = 0;
+        }
     }
 
     private async Task AnimateIslandWidthAsync(string text, int durationMs = 190)
@@ -1844,21 +1870,28 @@ public partial class IslandWindow : Window, ITrayIconHost
             }
         };
 
+        // Toggle visibility before measuring so GetExtraIconSpace reflects the target state.
+        PauseIcon.Visibility = isPaused ? Visibility.Visible : Visibility.Collapsed;
+
         if (isPaused)
         {
-            PauseIcon.Visibility = Visibility.Visible;
-        }
-
-        PauseSpacer.BeginAnimation(WidthProperty, spacerAnimation);
-        PauseIcon.BeginAnimation(OpacityProperty, iconAnimation);
-        if (!string.IsNullOrWhiteSpace(_displayedLyricText))
-        {
-            UpdateIslandWidth(_displayedLyricText, false);
+            PauseSpacer.BeginAnimation(WidthProperty, spacerAnimation);
         }
         else
         {
+            PauseSpacer.BeginAnimation(WidthProperty, null);
+            PauseSpacer.Width = 0;
+        }
+
+        PauseIcon.BeginAnimation(OpacityProperty, iconAnimation);
+        if (string.IsNullOrWhiteSpace(_displayedLyricText))
+        {
             IslandBackgroundScaleTransform.BeginAnimation(ScaleTransform.ScaleXProperty, null);
             IslandBackgroundScaleTransform.ScaleX = 1;
+        }
+        else
+        {
+            UpdateIslandWidth(_displayedLyricText, false);
         }
         _isPauseVisualActive = isPaused;
     }

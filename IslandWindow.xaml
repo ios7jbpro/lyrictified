@@ -176,6 +176,28 @@
                     </Viewbox>
                 </Grid>
             </Grid>
+            <Image x:Name="IslandFlashTopRight"
+                   Source="Assets/island-flash.png"
+                   Width="22"
+                   Height="22"
+                   HorizontalAlignment="Right"
+                   VerticalAlignment="Top"
+                   Margin="0,-4,-4,0"
+                   Opacity="0"
+                   Stretch="Uniform"
+                   IsHitTestVisible="False"
+                   RenderOptions.BitmapScalingMode="HighQuality" />
+            <Image x:Name="IslandFlashBottomLeft"
+                   Source="Assets/island-flash.png"
+                   Width="22"
+                   Height="22"
+                   HorizontalAlignment="Left"
+                   VerticalAlignment="Bottom"
+                   Margin="-4,0,0,-4"
+                   Opacity="0"
+                   Stretch="Uniform"
+                   IsHitTestVisible="False"
+                   RenderOptions.BitmapScalingMode="HighQuality" />
         </Grid>
     </Grid>
 </Window>
