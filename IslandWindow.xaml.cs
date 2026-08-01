@@ -1087,10 +1087,21 @@ public partial class IslandWindow : Window, ITrayIconHost
 
         if (ContainsCharacterBasedScript(text))
         {
-            return text.EnumerateRunes()
-                .Where(rune => !Rune.IsWhiteSpace(rune))
-                .Select(rune => rune.ToString())
-                .ToList();
+            var characters = new List<string>();
+            foreach (var rune in text.EnumerateRunes())
+            {
+                var value = rune.ToString();
+                if (Rune.IsWhiteSpace(rune) && characters.Count > 0)
+                {
+                    characters[^1] += value;
+                }
+                else if (!Rune.IsWhiteSpace(rune))
+                {
+                    characters.Add(value);
+                }
+            }
+
+            return characters;
         }
 
         return text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).ToList();
