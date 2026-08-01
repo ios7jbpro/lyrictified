@@ -10,7 +10,6 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
-using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using System.Windows.Controls;
@@ -80,8 +79,9 @@ public partial class IslandWindow : Window, ITrayIconHost
     private const int FlashInMs = 90;
     private const int FlashOutMs = 150;
     private const int FlashStaggerMs = 90;
-    private const double FlashGlowBlurRadius = 30;
-    private const double FlashGlowMaxOpacity = 0.9;
+    private const double FlashGlowSize = 12;
+    private const double FlashGlowScale = 4;
+    private const double FlashGlowMaxOpacity = 0.85;
     private static readonly MediaColor RedFlashColor = MediaColor.FromArgb(230, 200, 40, 40);
 
     public IslandWindow()
@@ -1362,14 +1362,27 @@ public partial class IslandWindow : Window, ITrayIconHost
         return bitmap;
     }
 
-    private static DropShadowEffect CreateFlashGlow()
+    private static Border CreateFlashGlow()
     {
-        return new DropShadowEffect
+        var brush = new RadialGradientBrush
         {
-            Color = Colors.White,
-            BlurRadius = FlashGlowBlurRadius,
-            ShadowDepth = 0,
-            Opacity = 0
+            Center = new System.Windows.Point(0.5, 0.5),
+            GradientOrigin = new System.Windows.Point(0.5, 0.5)
+        };
+        brush.GradientStops.Add(new GradientStop(Colors.White, 0.0));
+        brush.GradientStops.Add(new GradientStop(MediaColor.FromArgb(120, 255, 255, 255), 0.5));
+        brush.GradientStops.Add(new GradientStop(MediaColor.FromArgb(0, 255, 255, 255), 1.0));
+        return new Border
+        {
+            Width = FlashGlowSize,
+            Height = FlashGlowSize,
+            Background = brush,
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+            VerticalAlignment = System.Windows.VerticalAlignment.Center,
+            Opacity = 0,
+            IsHitTestVisible = false,
+            RenderTransformOrigin = new System.Windows.Point(0.5, 0.5),
+            RenderTransform = new ScaleTransform(FlashGlowScale, FlashGlowScale)
         };
     }
 
@@ -1391,11 +1404,11 @@ public partial class IslandWindow : Window, ITrayIconHost
                 FontStyle = IncomingLyricTextBlock.FontStyle,
                 VerticalAlignment = VerticalAlignment.Center,
                 Opacity = 0,
-                Padding = new Thickness(0, 2, 0, 2),
-                Effect = CreateFlashGlow()
+                Padding = new Thickness(0, 2, 0, 2)
             };
 
             var wordGrid = new Grid();
+            wordGrid.Children.Add(CreateFlashGlow());
             wordGrid.Children.Add(textBlock);
             wordGrid.Children.Add(CreateFlashImage(System.Windows.HorizontalAlignment.Right, System.Windows.VerticalAlignment.Top));
             wordGrid.Children.Add(CreateFlashImage(System.Windows.HorizontalAlignment.Left, System.Windows.VerticalAlignment.Bottom));
@@ -1421,11 +1434,11 @@ public partial class IslandWindow : Window, ITrayIconHost
                 FontStyle = IncomingLyricTextBlock.FontStyle,
                 VerticalAlignment = VerticalAlignment.Center,
                 Opacity = 0,
-                Padding = new Thickness(0, 2, 0, 2),
-                Effect = CreateFlashGlow()
+                Padding = new Thickness(0, 2, 0, 2)
             };
 
             var wordGrid = new Grid();
+            wordGrid.Children.Add(CreateFlashGlow());
             wordGrid.Children.Add(textBlock);
 
             var starCount = FlashRandom.Next(1, 4);
@@ -1514,9 +1527,10 @@ public partial class IslandWindow : Window, ITrayIconHost
             {
                 flashImage.BeginAnimation(OpacityProperty, null);
             }
-            if (textBlock?.Effect is DropShadowEffect glow)
+            var glow = grid.Children.OfType<Border>().FirstOrDefault();
+            if (glow is not null)
             {
-                glow.BeginAnimation(DropShadowEffect.OpacityProperty, null);
+                glow.BeginAnimation(OpacityProperty, null);
                 glow.Opacity = 0;
             }
 
@@ -1531,11 +1545,11 @@ public partial class IslandWindow : Window, ITrayIconHost
                     BeginTime = beginTime,
                     Duration = TimeSpan.Zero
                 }));
+            }
 
-                if (textBlock.Effect is DropShadowEffect wordGlow)
-                {
-                    animations.Add(AnimateFlashGlowAsync(wordGlow, beginTime));
-                }
+            if (glow is not null)
+            {
+                animations.Add(AnimateFlashGlowAsync(glow, beginTime));
             }
 
             foreach (var flashImage in flashImages)
@@ -1572,9 +1586,9 @@ public partial class IslandWindow : Window, ITrayIconHost
         });
     }
 
-    private static async Task AnimateFlashGlowAsync(DropShadowEffect glow, TimeSpan beginTime)
+    private static async Task AnimateFlashGlowAsync(Border glow, TimeSpan beginTime)
     {
-        await AnimateDoubleAsync(glow, DropShadowEffect.OpacityProperty, new DoubleAnimation
+        await AnimateDoubleAsync(glow, OpacityProperty, new DoubleAnimation
         {
             From = 0,
             To = FlashGlowMaxOpacity,
@@ -1583,7 +1597,7 @@ public partial class IslandWindow : Window, ITrayIconHost
             EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
         });
 
-        await AnimateDoubleAsync(glow, DropShadowEffect.OpacityProperty, new DoubleAnimation
+        await AnimateDoubleAsync(glow, OpacityProperty, new DoubleAnimation
         {
             From = FlashGlowMaxOpacity,
             To = 0,
