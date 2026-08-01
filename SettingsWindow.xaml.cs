@@ -120,11 +120,6 @@ public partial class SettingsWindow : Window
 
     public void UpdateLastSearchInfo(string info)
     {
-        if (_isInitializing)
-        {
-            return;
-        }
-
         LastSearchInfoTextBox.Text = string.IsNullOrWhiteSpace(info) ? "No search yet" : info;
     }
 
