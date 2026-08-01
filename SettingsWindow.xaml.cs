@@ -51,6 +51,7 @@ public partial class SettingsWindow : Window
         IslandAnimationSlideInManualTile.Tag = LoadAnimationModeImage("island-animation-slide-in-manual.png");
         IslandAnimationWordFadeTile.Tag = LoadAnimationModeImage("island-animation-fade-in.png");
         IslandAnimationFlashInTile.Tag = LoadAnimationModeImage("island-animation-flash-in.png");
+        IslandAnimationFlashInRandomTile.Tag = LoadAnimationModeImage("island-animation-flash-in-random.png");
         _ = LoadContributorAvatarsAsync();
 #if DEBUG
         DebugTabItem.Visibility = Visibility.Visible;

@@ -10,6 +10,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using System.Windows.Controls;
@@ -79,6 +80,8 @@ public partial class IslandWindow : Window, ITrayIconHost
     private const int FlashInMs = 90;
     private const int FlashOutMs = 150;
     private const int FlashStaggerMs = 90;
+    private const double FlashGlowBlurRadius = 30;
+    private const double FlashGlowMaxOpacity = 0.9;
     private static readonly MediaColor RedFlashColor = MediaColor.FromArgb(230, 200, 40, 40);
 
     public IslandWindow()
@@ -1359,6 +1362,17 @@ public partial class IslandWindow : Window, ITrayIconHost
         return bitmap;
     }
 
+    private static DropShadowEffect CreateFlashGlow()
+    {
+        return new DropShadowEffect
+        {
+            Color = Colors.White,
+            BlurRadius = FlashGlowBlurRadius,
+            ShadowDepth = 0,
+            Opacity = 0
+        };
+    }
+
     private void PopulateFlashWordPanel(StackPanel panel, string text)
     {
         ClearWordPanel(panel);
@@ -1377,7 +1391,8 @@ public partial class IslandWindow : Window, ITrayIconHost
                 FontStyle = IncomingLyricTextBlock.FontStyle,
                 VerticalAlignment = VerticalAlignment.Center,
                 Opacity = 0,
-                Padding = new Thickness(0, 2, 0, 2)
+                Padding = new Thickness(0, 2, 0, 2),
+                Effect = CreateFlashGlow()
             };
 
             var wordGrid = new Grid();
@@ -1406,7 +1421,8 @@ public partial class IslandWindow : Window, ITrayIconHost
                 FontStyle = IncomingLyricTextBlock.FontStyle,
                 VerticalAlignment = VerticalAlignment.Center,
                 Opacity = 0,
-                Padding = new Thickness(0, 2, 0, 2)
+                Padding = new Thickness(0, 2, 0, 2),
+                Effect = CreateFlashGlow()
             };
 
             var wordGrid = new Grid();
@@ -1498,6 +1514,11 @@ public partial class IslandWindow : Window, ITrayIconHost
             {
                 flashImage.BeginAnimation(OpacityProperty, null);
             }
+            if (textBlock?.Effect is DropShadowEffect glow)
+            {
+                glow.BeginAnimation(DropShadowEffect.OpacityProperty, null);
+                glow.Opacity = 0;
+            }
 
             var beginTime = TimeSpan.FromMilliseconds(i * staggerMs);
 
@@ -1510,6 +1531,11 @@ public partial class IslandWindow : Window, ITrayIconHost
                     BeginTime = beginTime,
                     Duration = TimeSpan.Zero
                 }));
+
+                if (textBlock.Effect is DropShadowEffect wordGlow)
+                {
+                    animations.Add(AnimateFlashGlowAsync(wordGlow, beginTime));
+                }
             }
 
             foreach (var flashImage in flashImages)
@@ -1540,6 +1566,26 @@ public partial class IslandWindow : Window, ITrayIconHost
         await AnimateDoubleAsync(image, OpacityProperty, new DoubleAnimation
         {
             From = 1,
+            To = 0,
+            Duration = TimeSpan.FromMilliseconds(FlashOutMs),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
+        });
+    }
+
+    private static async Task AnimateFlashGlowAsync(DropShadowEffect glow, TimeSpan beginTime)
+    {
+        await AnimateDoubleAsync(glow, DropShadowEffect.OpacityProperty, new DoubleAnimation
+        {
+            From = 0,
+            To = FlashGlowMaxOpacity,
+            BeginTime = beginTime,
+            Duration = TimeSpan.FromMilliseconds(FlashInMs),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+        });
+
+        await AnimateDoubleAsync(glow, DropShadowEffect.OpacityProperty, new DoubleAnimation
+        {
+            From = FlashGlowMaxOpacity,
             To = 0,
             Duration = TimeSpan.FromMilliseconds(FlashOutMs),
             EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
