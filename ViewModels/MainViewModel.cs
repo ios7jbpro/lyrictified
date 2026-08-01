@@ -242,6 +242,7 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
 
         _forceLyricsRefresh = true;
         await HandleSongAsync(_currentSong);
+        OnPropertyChanged(nameof(LastSearchInfo));
     }
 
     public void ForceNoLyrics()

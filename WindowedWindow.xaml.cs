@@ -181,6 +181,11 @@ public partial class WindowedWindow : Window, ITrayIconHost
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(MainViewModel.LastSearchInfo))
+        {
+            UpdateLastSearchInfo();
+            return;
+        }
         void OnUi(Action action)
         {
             if (Dispatcher.CheckAccess())

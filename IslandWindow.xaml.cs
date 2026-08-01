@@ -371,6 +371,11 @@ public partial class IslandWindow : Window, ITrayIconHost
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(MainViewModel.LastSearchInfo))
+        {
+            _settingsWindow?.UpdateLastSearchInfo(_viewModel.LastSearchInfo);
+            return;
+        }
         if (e.PropertyName == nameof(MainViewModel.TaskbarCurrentLine))
         {
             if (Dispatcher.CheckAccess())

@@ -241,6 +241,11 @@ public partial class AppBarWindow : Window, ITrayIconHost
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(MainViewModel.LastSearchInfo))
+        {
+            UpdateLastSearchInfo();
+            return;
+        }
         if (e.PropertyName == nameof(MainViewModel.CurrentLine)
             || e.PropertyName == nameof(MainViewModel.TaskbarCurrentLine))
         {
