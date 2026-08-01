@@ -707,26 +707,19 @@ public partial class IslandWindow : Window, ITrayIconHost
             return 1.0;
         }
 
-        var gaps = new List<double>(2);
-        var beforeIndex = FindAdjacentNonEmptyLineIndex(lyrics, anchorIndex, -1);
-        if (beforeIndex >= 0)
-        {
-            gaps.Add((lyrics[anchorIndex].Timestamp - lyrics[beforeIndex].Timestamp).TotalSeconds);
-        }
-
         var afterIndex = FindAdjacentNonEmptyLineIndex(lyrics, anchorIndex, 1);
-        if (afterIndex >= 0)
-        {
-            gaps.Add((lyrics[afterIndex].Timestamp - lyrics[anchorIndex].Timestamp).TotalSeconds);
-        }
-
-        var usableGaps = gaps.Where(gap => gap > 0.2).ToList();
-        if (usableGaps.Count == 0)
+        if (afterIndex < 0)
         {
             return 1.0;
         }
 
-        return Math.Clamp(3.0 / usableGaps.Average(), 0.5, 2.0);
+        var gap = (lyrics[afterIndex].Timestamp - lyrics[anchorIndex].Timestamp).TotalSeconds;
+        if (gap <= 0.2)
+        {
+            return 1.0;
+        }
+
+        return Math.Clamp(3.0 / gap, 0.5, 2.0);
     }
 
     private int FindLineIndexClosestToPosition(IReadOnlyList<LyricLine> lyrics, string text)
