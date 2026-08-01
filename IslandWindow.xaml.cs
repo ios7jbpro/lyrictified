@@ -79,9 +79,10 @@ public partial class IslandWindow : Window, ITrayIconHost
     private const int FlashInMs = 90;
     private const int FlashOutMs = 150;
     private const int FlashStaggerMs = 90;
+    private const int FlashPopLeadMs = 45;
     private const double FlashGlowSize = 12;
     private const double FlashGlowScale = 4;
-    private const double FlashGlowMaxOpacity = 0.85;
+    private const double FlashGlowMaxOpacity = 0.45;
     private static readonly MediaColor RedFlashColor = MediaColor.FromArgb(230, 200, 40, 40);
 
     public IslandWindow()
@@ -1370,7 +1371,7 @@ public partial class IslandWindow : Window, ITrayIconHost
             GradientOrigin = new System.Windows.Point(0.5, 0.5)
         };
         brush.GradientStops.Add(new GradientStop(Colors.White, 0.0));
-        brush.GradientStops.Add(new GradientStop(MediaColor.FromArgb(120, 255, 255, 255), 0.5));
+        brush.GradientStops.Add(new GradientStop(MediaColor.FromArgb(90, 255, 255, 255), 0.5));
         brush.GradientStops.Add(new GradientStop(MediaColor.FromArgb(0, 255, 255, 255), 1.0));
         return new Border
         {
@@ -1535,6 +1536,7 @@ public partial class IslandWindow : Window, ITrayIconHost
             }
 
             var beginTime = TimeSpan.FromMilliseconds(i * staggerMs);
+            var wordTime = beginTime + TimeSpan.FromMilliseconds(FlashPopLeadMs);
 
             if (textBlock is not null)
             {
@@ -1542,7 +1544,7 @@ public partial class IslandWindow : Window, ITrayIconHost
                 {
                     From = 0,
                     To = 1,
-                    BeginTime = beginTime,
+                    BeginTime = wordTime,
                     Duration = TimeSpan.Zero
                 }));
             }
