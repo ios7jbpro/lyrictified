@@ -187,6 +187,7 @@ public partial class App : Application
         Window nextWindow = settings.DisplayMode switch
         {
             DisplayMode.Island => new IslandWindow(),
+            DisplayMode.Wallpaper => new WallpaperWindow(),
             DisplayMode.Taskbar => new TaskbarWindow(),
             DisplayMode.Windowed => new WindowedWindow(),
             _ => new AppBarWindow()

@@ -6,7 +6,6 @@ using System.ComponentModel;
 using System.IO;
 using System.Windows;
 using System.Text;
-using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
@@ -25,10 +24,9 @@ using WpfApplication = System.Windows.Application;
 
 namespace Lyrictified;
 
-public partial class IslandWindow : Window, ITrayIconHost
+public partial class WallpaperWindow : Window, ITrayIconHost
 {
     private static readonly TimeSpan MonitorWarningDuration = TimeSpan.FromSeconds(4);
-    private static readonly TimeSpan HoverPollInterval = TimeSpan.FromMilliseconds(80);
     private static readonly TimeSpan EmptyLineHideDelay = TimeSpan.FromMilliseconds(260);
     private static readonly TimeSpan EmptyLineUpcomingLyricGrace = TimeSpan.FromMilliseconds(1600);
     private static WpfBrush GetLoadingTextBrush()
@@ -38,32 +36,24 @@ public partial class IslandWindow : Window, ITrayIconHost
             : MediaColor.FromRgb(150, 156, 164);
         return new SolidColorBrush(color);
     }
-    private const uint EVENT_SYSTEM_FOREGROUND = 0x0003;
-    private const uint WINEVENT_OUTOFCONTEXT = 0x0000;
 
     private readonly MainViewModel _viewModel;
     private readonly DispatcherTimer _monitorWarningTimer;
-    private readonly DispatcherTimer _hoverTimer;
+    private readonly DispatcherTimer _timeoutTimer;
     private readonly AppSettingsService _appSettingsService;
     private AppBarManager? _appBarManager;
     private HwndSource? _hwndSource;
-    private IntPtr _foregroundHook;
-    private WinEventDelegate? _foregroundHookDelegate;
     private AppSettings _settings;
     private string _displayedLyricText = string.Empty;
     private string? _lastMonitorWarningKey;
-    private double _islandWidth = 160;
+    private double _wallpaperWidth = 160;
     private int _lyricTransitionVersion;
-    private bool _isPointerOverIsland;
-    private bool _isIslandContentVisible = true;
+    private bool _isWallpaperContentVisible = true;
     private bool _isPauseVisualActive;
     private bool _isNoLyricsAnimationActive;
-    private bool _isFullscreenHidden;
+    private bool _isTimeoutHidden;
     private SettingsWindow? _settingsWindow;
     private TrayIcon? _trayIcon;
-    private readonly DispatcherTimer _fullscreenTimer;
-    private readonly DispatcherTimer _timeoutTimer;
-    private bool _isTimeoutHidden;
     private static BitmapImage? _flashImage;
     private static readonly Random FlashRandom = new();
     private const double PauseSpacerTargetWidth = 24;
@@ -83,9 +73,8 @@ public partial class IslandWindow : Window, ITrayIconHost
     private const double FlashLayoutBox = 2;
     private const double FlashGlowScale = 24;
     private const double FlashGlowMaxOpacity = 0.45;
-    private static readonly MediaColor RedFlashColor = MediaColor.FromArgb(230, 200, 40, 40);
 
-    public IslandWindow()
+    public WallpaperWindow()
     {
         InitializeComponent();
         _appSettingsService = new AppSettingsService();
@@ -100,41 +89,24 @@ public partial class IslandWindow : Window, ITrayIconHost
 
         _monitorWarningTimer = new DispatcherTimer { Interval = MonitorWarningDuration };
         _monitorWarningTimer.Tick += MonitorWarningTimer_OnTick;
-        _hoverTimer = new DispatcherTimer { Interval = HoverPollInterval };
-        _hoverTimer.Tick += HoverTimer_OnTick;
-        _fullscreenTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
-        _fullscreenTimer.Tick += FullscreenTimer_OnTick;
-        _timeoutTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(_settings.IslandTimeout) };
+        _timeoutTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(_settings.WallpaperTimeout) };
         _timeoutTimer.Tick += TimeoutTimer_OnTick;
 
         SourceInitialized += OnSourceInitialized;
         Loaded += OnLoaded;
         Closing += OnClosing;
-        Activated += OnWindowActivated;
-        Deactivated += OnWindowDeactivated;
     }
 
     private void OnSourceInitialized(object? sender, EventArgs e)
     {
         _hwndSource = PresentationSource.FromVisual(this) as HwndSource;
-        _foregroundHookDelegate = OnForegroundWindowChanged;
-        _foregroundHook = SetWinEventHook(
-            EVENT_SYSTEM_FOREGROUND,
-            EVENT_SYSTEM_FOREGROUND,
-            IntPtr.Zero,
-            _foregroundHookDelegate,
-            0,
-            0,
-            WINEVENT_OUTOFCONTEXT);
-        _appBarManager = new AppBarManager(this, IslandDisplayMode.WindowHeight);
+        _appBarManager = new AppBarManager(this, WallpaperDisplayMode.WindowHeight);
         ApplyClickThroughWindowStyle();
+        AttachToWallpaperLayer();
         ApplyMonitorSetting();
         PositionWindow();
         ApplyAppearance();
         ApplyPlaybackStateVisual(immediate: true);
-        EnsureTopmostOrder();
-        _hoverTimer.Start();
-        _fullscreenTimer.Start();
         WorkspaceVisibilityManager.PinToAllWorkspaces(this);
         _trayIcon = new TrayIcon(this);
 
@@ -146,11 +118,10 @@ public partial class IslandWindow : Window, ITrayIconHost
     {
         IncomingLyricTextBlock.Text = _viewModel.TaskbarCurrentLine;
         _displayedLyricText = _viewModel.TaskbarCurrentLine;
-        UpdateIslandWidth(_displayedLyricText, immediate: true);
-        UpdateIslandContentVisibility(_displayedLyricText);
+        UpdateWallpaperWidth(_displayedLyricText, immediate: true);
+        UpdateWallpaperContentVisibility(_displayedLyricText);
         ApplyLoadingState(immediate: true);
         ApplyPlaybackStateVisual(immediate: true);
-        EnsureTopmostOrder();
         await _viewModel.InitializeAsync();
     }
 
@@ -158,21 +129,11 @@ public partial class IslandWindow : Window, ITrayIconHost
     {
         _monitorWarningTimer.Stop();
         _monitorWarningTimer.Tick -= MonitorWarningTimer_OnTick;
-        _hoverTimer.Stop();
-        _hoverTimer.Tick -= HoverTimer_OnTick;
-        _fullscreenTimer.Stop();
-        _fullscreenTimer.Tick -= FullscreenTimer_OnTick;
         _timeoutTimer.Stop();
         _timeoutTimer.Tick -= TimeoutTimer_OnTick;
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
         SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
         SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
-        if (_foregroundHook != IntPtr.Zero)
-        {
-            UnhookWinEvent(_foregroundHook);
-            _foregroundHook = IntPtr.Zero;
-        }
-        _foregroundHookDelegate = null;
         _settingsWindow?.Close();
         _appBarManager?.Dispose();
         _trayIcon?.Dispose();
@@ -184,203 +145,12 @@ public partial class IslandWindow : Window, ITrayIconHost
         _appBarManager?.RefreshMonitors();
         ApplyMonitorSetting();
         PositionWindow();
-        EnsureTopmostOrder();
         RefreshSettingsWindowOptions();
-    }
-
-    private void HoverTimer_OnTick(object? sender, EventArgs e)
-    {
-        if (_isNoLyricsAnimationActive)
-        {
-            return;
-        }
-
-        if (!GetCursorPos(out var point))
-        {
-            return;
-        }
-
-        var scale = GetEffectiveIslandScale();
-        var scaledWidth = _islandWidth * scale;
-        var islandLeft = Left + ((ActualWidth - scaledWidth) / 2);
-        var scaledHeight = IslandLayer.ActualHeight * scale;
-        var islandTop = Top + ((ActualHeight - scaledHeight) / 2);
-        var islandRight = islandLeft + scaledWidth;
-        var islandBottom = islandTop + scaledHeight;
-        var isPointerOverIsland =
-            point.X >= islandLeft
-            && point.X <= islandRight
-            && point.Y >= islandTop
-            && point.Y <= islandBottom;
-
-        if (isPointerOverIsland == _isPointerOverIsland)
-        {
-            return;
-        }
-
-        _isPointerOverIsland = isPointerOverIsland;
-        AnimateIslandHoverOpacity(isPointerOverIsland);
-    }
-
-    private void AnimateIslandHoverOpacity(bool isHovered)
-    {
-        if (_isNoLyricsAnimationActive || _isFullscreenHidden || _isTimeoutHidden)
-        {
-            return;
-        }
-
-        var currentOpacity = IslandLayer.Opacity;
-        IslandLayer.BeginAnimation(OpacityProperty, null);
-        var animation = new DoubleAnimation
-        {
-            From = currentOpacity,
-            To = GetTargetIslandOpacity(),
-            Duration = TimeSpan.FromMilliseconds(isHovered ? 120 : 180),
-            EasingFunction = new QuadraticEase
-            {
-                EasingMode = isHovered ? EasingMode.EaseOut : EasingMode.EaseIn
-            }
-        };
-
-        IslandLayer.BeginAnimation(OpacityProperty, animation);
-    }
-
-    private void FullscreenTimer_OnTick(object? sender, EventArgs e)
-    {
-        if (!_settings.IslandHideInFullscreen)
-        {
-            if (_isFullscreenHidden)
-            {
-                ShowFromFullscreenHide();
-            }
-
-            return;
-        }
-
-        var isFullscreen = IsForegroundWindowFullscreenOnIslandMonitor();
-        if (isFullscreen && !_isFullscreenHidden)
-        {
-            HideForFullscreen();
-        }
-        else if (!isFullscreen && _isFullscreenHidden)
-        {
-            ShowFromFullscreenHide();
-        }
-    }
-
-    private void HideForFullscreen()
-    {
-        _isFullscreenHidden = true;
-        IslandLayer.BeginAnimation(OpacityProperty, null);
-        var animation = new DoubleAnimation
-        {
-            To = 0,
-            Duration = TimeSpan.FromMilliseconds(300),
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
-        };
-        IslandLayer.BeginAnimation(OpacityProperty, animation);
-    }
-
-    private void ShowFromFullscreenHide()
-    {
-        _isFullscreenHidden = false;
-        IslandLayer.BeginAnimation(OpacityProperty, null);
-        var animation = new DoubleAnimation
-        {
-            To = GetTargetIslandOpacity(),
-            Duration = TimeSpan.FromMilliseconds(300),
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
-        };
-        IslandLayer.BeginAnimation(OpacityProperty, animation);
-    }
-
-    private bool IsForegroundWindowFullscreenOnIslandMonitor()
-    {
-        if (_appBarManager is null || _appBarManager.Monitors.Count == 0)
-        {
-            return false;
-        }
-
-        var foregroundHwnd = GetForegroundWindow();
-        if (foregroundHwnd == IntPtr.Zero)
-        {
-            return false;
-        }
-
-        if (foregroundHwnd == _hwndSource?.Handle)
-        {
-            return false;
-        }
-
-        if (!GetWindowRect(foregroundHwnd, out var windowRect))
-        {
-            return false;
-        }
-
-        var monitor = _appBarManager.Monitors[Math.Clamp(_appBarManager.CurrentMonitorIndex, 0, _appBarManager.Monitors.Count - 1)];
-        var bounds = monitor.Bounds;
-        var monitorWidth = bounds.right - bounds.left;
-        var monitorHeight = bounds.bottom - bounds.top;
-        var windowWidth = windowRect.right - windowRect.left;
-        var windowHeight = windowRect.bottom - windowRect.top;
-
-        // Check if the window covers the entire monitor
-        if (windowWidth < monitorWidth - 8 || windowHeight < monitorHeight - 8)
-        {
-            return false;
-        }
-
-        if (Math.Abs(windowRect.left - bounds.left) > 8 || Math.Abs(windowRect.top - bounds.top) > 8)
-        {
-            return false;
-        }
-
-        // Also verify it's not a desktop window
-        var desktopHwnd = GetShellWindow();
-        if (foregroundHwnd == desktopHwnd)
-        {
-            return false;
-        }
-
-        return true;
     }
 
     private void OnUserPreferenceChanged(object sender, UserPreferenceChangedEventArgs e)
     {
         ApplyAppearance();
-        EnsureTopmostOrder();
-    }
-
-    private void OnWindowActivated(object? sender, EventArgs e)
-    {
-        ScheduleTopmostRefreshBurst();
-    }
-
-    private void OnWindowDeactivated(object? sender, EventArgs e)
-    {
-        ScheduleTopmostRefreshBurst();
-    }
-
-    private void OnForegroundWindowChanged(
-        IntPtr hWinEventHook,
-        uint eventType,
-        IntPtr hwnd,
-        int idObject,
-        int idChild,
-        uint dwEventThread,
-        uint dwmsEventTime)
-    {
-        if (eventType != EVENT_SYSTEM_FOREGROUND || hwnd == IntPtr.Zero)
-        {
-            return;
-        }
-
-        if (hwnd == (_hwndSource?.Handle ?? IntPtr.Zero))
-        {
-            return;
-        }
-
-        _ = Dispatcher.BeginInvoke(ScheduleTopmostRefreshBurst, DispatcherPriority.Background);
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -431,7 +201,7 @@ public partial class IslandWindow : Window, ITrayIconHost
             if (_isTimeoutHidden)
             {
                 _isTimeoutHidden = false;
-                ApplyTargetIslandOpacity();
+                ApplyTargetWallpaperOpacity();
             }
             _timeoutTimer.Stop();
         }
@@ -473,7 +243,6 @@ public partial class IslandWindow : Window, ITrayIconHost
         RootGrid.Background = IsSettingsWindowVisible()
             ? new SolidColorBrush(MediaColor.FromArgb(180, 10, 14, 20))
             : new SolidColorBrush(MediaColor.FromArgb(0, 0, 0, 0));
-        ApplyIslandCornerRadius();
         if (!_viewModel.IsLoadingLyrics)
         {
             var lyricBrush = new SolidColorBrush(MediaColor.FromRgb(245, 247, 250));
@@ -489,13 +258,13 @@ public partial class IslandWindow : Window, ITrayIconHost
             return;
         }
 
-        var preferredMonitorDeviceName = _settings.IslandPreferredMonitorDeviceName ?? _settings.PreferredMonitorDeviceName;
+        var preferredMonitorDeviceName = _settings.WallpaperPreferredMonitorDeviceName ?? _settings.PreferredMonitorDeviceName;
 
         if (string.IsNullOrWhiteSpace(preferredMonitorDeviceName))
         {
             if (_appBarManager.CurrentMonitorDeviceName is not null)
             {
-                _settings.IslandPreferredMonitorDeviceName = _appBarManager.CurrentMonitorDeviceName;
+                _settings.WallpaperPreferredMonitorDeviceName = _appBarManager.CurrentMonitorDeviceName;
                 _appSettingsService.Save(_settings);
             }
 
@@ -529,39 +298,73 @@ public partial class IslandWindow : Window, ITrayIconHost
         }
 
         var monitor = _appBarManager.Monitors[Math.Clamp(_appBarManager.CurrentMonitorIndex, 0, _appBarManager.Monitors.Count - 1)];
-        var bounds = IslandDisplayMode.GetWindowBounds(
+        var bounds = WallpaperDisplayMode.GetWindowBounds(
             monitor,
-            _settings.IslandMaximumWidth,
-            GetEffectiveIslandScale(),
-            _settings.IslandContainerHeight);
+            _settings.WallpaperMaximumWidth,
+            GetEffectiveWallpaperScale(),
+            _settings.WallpaperContainerHeight);
         Left = bounds.Left;
         Top = bounds.Top;
         Width = bounds.Width;
         Height = bounds.Height;
-        ApplyIslandScale();
-        UpdateIslandWidth(_displayedLyricText, immediate: true);
+        ApplyWallpaperScale();
+        UpdateWallpaperWidth(_displayedLyricText, immediate: true);
         _ = Dispatcher.InvokeAsync(
-            () => UpdateIslandWidth(_displayedLyricText, immediate: true),
+            () => UpdateWallpaperWidth(_displayedLyricText, immediate: true),
             DispatcherPriority.Loaded);
-        EnsureTopmostOrder();
     }
 
-    private void ApplyIslandScale()
+    private void ApplyWallpaperScale()
     {
-        var scale = GetEffectiveIslandScale();
-        IslandLayerScaleTransform.ScaleX = scale;
-        IslandLayerScaleTransform.ScaleY = scale;
+        var scale = GetEffectiveWallpaperScale();
+        WallpaperLayerScaleTransform.ScaleX = scale;
+        WallpaperLayerScaleTransform.ScaleY = scale;
     }
 
-    private double GetEffectiveIslandScale()
+    private double GetEffectiveWallpaperScale()
     {
-        return IslandDisplayMode.GetEffectiveScale(_settings.IslandScale);
+        return WallpaperDisplayMode.GetEffectiveScale(_settings.WallpaperScale);
     }
 
-    private void ApplyIslandCornerRadius()
+    private void AttachToWallpaperLayer()
     {
-        var radius = IslandDisplayMode.GetEffectiveCornerRadius(_settings.IslandCornerRadius);
-        IslandBackground.CornerRadius = new CornerRadius(radius);
+        var hwnd = _hwndSource?.Handle ?? new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        var workerW = FindWallpaperWorkerW();
+        if (workerW != IntPtr.Zero)
+        {
+            _ = SetParent(hwnd, workerW);
+        }
+    }
+
+    private static IntPtr FindWallpaperWorkerW()
+    {
+        var progman = FindWindow("Progman", null);
+        if (progman == IntPtr.Zero)
+        {
+            return IntPtr.Zero;
+        }
+
+        _ = SendMessageTimeout(progman, 0x052C, new IntPtr(0xD), IntPtr.Zero, 0x0002, 1000, out _);
+
+        IntPtr workerW = IntPtr.Zero;
+        while (true)
+        {
+            workerW = FindWindowEx(IntPtr.Zero, workerW, "WorkerW", null);
+            if (workerW == IntPtr.Zero)
+            {
+                return IntPtr.Zero;
+            }
+
+            if (FindWindowEx(workerW, IntPtr.Zero, "SHELLDLL_DefView", null) != IntPtr.Zero)
+            {
+                return FindWindowEx(IntPtr.Zero, workerW, "WorkerW", null);
+            }
+        }
     }
 
     private async void HandleCurrentLineChanged(string newCurrentLine)
@@ -579,20 +382,20 @@ public partial class IslandWindow : Window, ITrayIconHost
         var transitionVersion = ++_lyricTransitionVersion;
         CancelLyricTransitionAnimations();
 
-        if (_settings.IslandAnimationMode == IslandAnimationMode.SlideIn || _settings.IslandAnimationMode == IslandAnimationMode.SlideInManual)
+        if (_settings.WallpaperAnimationMode == IslandAnimationMode.SlideIn || _settings.WallpaperAnimationMode == IslandAnimationMode.SlideInManual)
         {
             await HandleCurrentLineChangedSlideIn(newCurrentLine, transitionVersion);
             return;
         }
 
-        if (_settings.IslandAnimationMode == IslandAnimationMode.WordFade)
+        if (_settings.WallpaperAnimationMode == IslandAnimationMode.WordFade)
         {
             await HandleCurrentLineChangedWordFade(newCurrentLine, transitionVersion);
             return;
         }
 
-        if (_settings.IslandAnimationMode == IslandAnimationMode.FlashIn
-            || _settings.IslandAnimationMode == IslandAnimationMode.FlashInRandom)
+        if (_settings.WallpaperAnimationMode == IslandAnimationMode.FlashIn
+            || _settings.WallpaperAnimationMode == IslandAnimationMode.FlashInRandom)
         {
             await HandleCurrentLineChangedFlashIn(newCurrentLine, transitionVersion);
             return;
@@ -644,20 +447,20 @@ public partial class IslandWindow : Window, ITrayIconHost
                 return;
             }
 
-            await SetIslandContentVisibleAsync(false);
+            await SetWallpaperContentVisibleAsync(false);
             return;
         }
 
-        await AnimateIslandWidthAsync(newCurrentLine);
+        await AnimateWallpaperWidthAsync(newCurrentLine);
 
         if (transitionVersion != _lyricTransitionVersion)
         {
             return;
         }
 
-        if (!_isIslandContentVisible)
+        if (!_isWallpaperContentVisible)
         {
-            await SetIslandContentVisibleAsync(true);
+            await SetWallpaperContentVisibleAsync(true);
 
             if (transitionVersion != _lyricTransitionVersion)
             {
@@ -777,8 +580,8 @@ public partial class IslandWindow : Window, ITrayIconHost
         var outgoingText = _displayedLyricText;
         var hasOutgoing = !string.IsNullOrWhiteSpace(outgoingText);
         var hasIncoming = !string.IsNullOrWhiteSpace(newCurrentLine);
-        var tempo = _settings.IslandAnimationMode == IslandAnimationMode.SlideInManual
-            ? _settings.IslandAnimationManualSpeed
+        var tempo = _settings.WallpaperAnimationMode == IslandAnimationMode.SlideInManual
+            ? _settings.WallpaperAnimationManualSpeed
             : CalculateLocalLyricTempoMultiplier(newCurrentLine, outgoingText);
         var outDuration = (int)(SlideWordDurationMs / tempo);
         var inDuration = (int)(SlideWordInDurationMs / tempo);
@@ -823,7 +626,7 @@ public partial class IslandWindow : Window, ITrayIconHost
             }
 
             RestoreLyricTextBlocks(string.Empty);
-            await SetIslandContentVisibleAsync(false);
+            await SetWallpaperContentVisibleAsync(false);
             return;
         }
 
@@ -843,9 +646,9 @@ public partial class IslandWindow : Window, ITrayIconHost
         IncomingWordsPanel.Visibility = Visibility.Collapsed;
         ClearWordPanel(IncomingWordsPanel);
 
-        if (!_isIslandContentVisible)
+        if (!_isWallpaperContentVisible)
         {
-            await SetIslandContentVisibleAsync(true);
+            await SetWallpaperContentVisibleAsync(true);
 
             if (transitionVersion != _lyricTransitionVersion)
             {
@@ -867,8 +670,8 @@ public partial class IslandWindow : Window, ITrayIconHost
             OutgoingWordsPanel.Visibility = Visibility.Collapsed;
         }
 
-        // 2. Resize island
-        await AnimateIslandWidthAsync(newCurrentLine, widthDuration);
+        // 2. Resize wallpaper text area
+        await AnimateWallpaperWidthAsync(newCurrentLine, widthDuration);
 
         if (transitionVersion != _lyricTransitionVersion)
         {
@@ -950,13 +753,13 @@ public partial class IslandWindow : Window, ITrayIconHost
             }
 
             RestoreLyricTextBlocks(string.Empty);
-            await SetIslandContentVisibleAsync(false);
+            await SetWallpaperContentVisibleAsync(false);
             return;
         }
 
-        if (!_isIslandContentVisible)
+        if (!_isWallpaperContentVisible)
         {
-            await SetIslandContentVisibleAsync(true);
+            await SetWallpaperContentVisibleAsync(true);
 
             if (transitionVersion != _lyricTransitionVersion)
             {
@@ -964,8 +767,8 @@ public partial class IslandWindow : Window, ITrayIconHost
             }
         }
 
-        // 2. Resize island
-        await AnimateIslandWidthAsync(newCurrentLine, widthDuration);
+        // 2. Resize wallpaper text area
+        await AnimateWallpaperWidthAsync(newCurrentLine, widthDuration);
 
         if (transitionVersion != _lyricTransitionVersion)
         {
@@ -1052,13 +855,13 @@ public partial class IslandWindow : Window, ITrayIconHost
             }
 
             RestoreLyricTextBlocks(string.Empty);
-            await SetIslandContentVisibleAsync(false);
+            await SetWallpaperContentVisibleAsync(false);
             return;
         }
 
-        if (!_isIslandContentVisible)
+        if (!_isWallpaperContentVisible)
         {
-            await SetIslandContentVisibleAsync(true);
+            await SetWallpaperContentVisibleAsync(true);
 
             if (transitionVersion != _lyricTransitionVersion)
             {
@@ -1066,17 +869,17 @@ public partial class IslandWindow : Window, ITrayIconHost
             }
         }
 
-        // 2. Resize island
-        await AnimateIslandWidthAsync(newCurrentLine, widthDuration);
+        // 2. Resize wallpaper text area
+        await AnimateWallpaperWidthAsync(newCurrentLine, widthDuration);
 
         if (transitionVersion != _lyricTransitionVersion)
         {
             return;
         }
 
-        // 3. Pop in new words one by one, flashing the corners as each appears.
+        // 3. Pop in new words one by one, flashing as each appears.
         SetLyricWordPanelsActive(true);
-        if (_settings.IslandAnimationMode == IslandAnimationMode.FlashInRandom)
+        if (_settings.WallpaperAnimationMode == IslandAnimationMode.FlashInRandom)
         {
             PopulateRandomFlashWordPanel(IncomingWordsPanel, newCurrentLine);
         }
@@ -1097,7 +900,6 @@ public partial class IslandWindow : Window, ITrayIconHost
 
         RestoreLyricTextBlocks(newCurrentLine);
         _displayedLyricText = newCurrentLine;
-        _ = AnimateIslandCornerFlashAsync();
     }
 
     private void CancelLyricTransitionAnimations()
@@ -1106,12 +908,7 @@ public partial class IslandWindow : Window, ITrayIconHost
         IncomingLyricTextBlock.BeginAnimation(OpacityProperty, null);
         OutgoingLyricTranslateTransform.BeginAnimation(TranslateTransform.YProperty, null);
         IncomingLyricTranslateTransform.BeginAnimation(TranslateTransform.YProperty, null);
-        IslandBackground.BeginAnimation(WidthProperty, null);
-        IslandTextClip.BeginAnimation(WidthProperty, null);
-        IslandBackgroundScaleTransform.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-        IslandBackgroundTranslateTransform.BeginAnimation(TranslateTransform.XProperty, null);
-        IslandBackgroundScaleTransform.ScaleX = 1;
-        IslandBackgroundTranslateTransform.X = 0;
+        WallpaperTextClip.BeginAnimation(WidthProperty, null);
         CancelSlideWordAnimations(OutgoingWordsPanel);
         CancelSlideWordAnimations(IncomingWordsPanel);
     }
@@ -1612,18 +1409,6 @@ public partial class IslandWindow : Window, ITrayIconHost
         });
     }
 
-    private async Task AnimateIslandCornerFlashAsync()
-    {
-        IslandFlashTopRight.BeginAnimation(OpacityProperty, null);
-        IslandFlashBottomLeft.BeginAnimation(OpacityProperty, null);
-        IslandFlashTopRight.Opacity = 0;
-        IslandFlashBottomLeft.Opacity = 0;
-
-        await Task.WhenAll(
-            AnimateFlashEffectAsync(IslandFlashTopRight, TimeSpan.Zero),
-            AnimateFlashEffectAsync(IslandFlashBottomLeft, TimeSpan.FromMilliseconds(60)));
-    }
-
     private bool ShouldHideForEmptyLine()
     {
         if (_viewModel.IsLoadingLyrics)
@@ -1655,37 +1440,26 @@ public partial class IslandWindow : Window, ITrayIconHost
         return nextNonEmptyLine.Timestamp - position.Value > EmptyLineUpcomingLyricGrace;
     }
 
-    private void UpdateIslandContentVisibility(string text)
+    private void UpdateWallpaperContentVisibility(string text)
     {
-        _isIslandContentVisible = !string.IsNullOrWhiteSpace(text);
-        if (_isFullscreenHidden)
-        {
-            return;
-        }
-
-        IslandLayer.BeginAnimation(OpacityProperty, null);
-        IslandLayer.Opacity = GetTargetIslandOpacity();
+        _isWallpaperContentVisible = !string.IsNullOrWhiteSpace(text);
+        WallpaperLayer.BeginAnimation(OpacityProperty, null);
+        WallpaperLayer.Opacity = GetTargetWallpaperOpacity();
     }
 
-    private Task SetIslandContentVisibleAsync(bool isVisible)
+    private Task SetWallpaperContentVisibleAsync(bool isVisible)
     {
-        if (_isFullscreenHidden && isVisible)
+        var targetOpacity = GetTargetWallpaperOpacity();
+
+        if (_isWallpaperContentVisible == isVisible && Math.Abs(WallpaperLayer.Opacity - targetOpacity) < 0.001)
         {
-            _isIslandContentVisible = isVisible;
+            WallpaperLayer.Opacity = targetOpacity;
             return Task.CompletedTask;
         }
 
-        var targetOpacity = GetTargetIslandOpacity();
-
-        if (_isIslandContentVisible == isVisible && Math.Abs(IslandLayer.Opacity - targetOpacity) < 0.001)
-        {
-            IslandLayer.Opacity = targetOpacity;
-            return Task.CompletedTask;
-        }
-
-        _isIslandContentVisible = isVisible;
-        targetOpacity = GetTargetIslandOpacity();
-        IslandLayer.BeginAnimation(OpacityProperty, null);
+        _isWallpaperContentVisible = isVisible;
+        targetOpacity = GetTargetWallpaperOpacity();
+        WallpaperLayer.BeginAnimation(OpacityProperty, null);
         var completion = new TaskCompletionSource();
         var animation = new DoubleAnimation
         {
@@ -1698,75 +1472,52 @@ public partial class IslandWindow : Window, ITrayIconHost
         };
         animation.Completed += (_, _) =>
         {
-            IslandLayer.BeginAnimation(OpacityProperty, null);
-            IslandLayer.Opacity = targetOpacity;
+            WallpaperLayer.BeginAnimation(OpacityProperty, null);
+            WallpaperLayer.Opacity = targetOpacity;
             completion.TrySetResult();
         };
-        IslandLayer.BeginAnimation(OpacityProperty, animation);
+        WallpaperLayer.BeginAnimation(OpacityProperty, animation);
         return completion.Task;
     }
 
-    private void UpdateIslandWidth(string text, bool immediate)
+    private void UpdateWallpaperWidth(string text, bool immediate)
     {
-        var width = MeasureIslandWidth(text);
-        _islandWidth = width;
+        var width = MeasureWallpaperWidth(text);
+        _wallpaperWidth = width;
 
-        IslandBackground.BeginAnimation(WidthProperty, null);
-        IslandTextClip.BeginAnimation(WidthProperty, null);
-        IslandBackground.Width = width;
-        IslandTextClip.Width = width;
+        WallpaperTextClip.BeginAnimation(WidthProperty, null);
+        WallpaperTextClip.Width = width;
         ApplyLyricTextWidth(width);
-
-        if (immediate)
-        {
-            IslandBackgroundTranslateTransform.BeginAnimation(TranslateTransform.XProperty, null);
-            IslandBackgroundScaleTransform.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-            IslandBackgroundScaleTransform.ScaleX = 1;
-            IslandBackgroundTranslateTransform.X = 0;
-        }
     }
 
-    private async Task AnimateIslandWidthAsync(string text, int durationMs = 190)
+    private async Task AnimateWallpaperWidthAsync(string text, int durationMs = 190)
     {
-        var targetWidth = MeasureIslandWidth(text);
-        var animationBaseWidth = Math.Max(_islandWidth, targetWidth);
-        var fromScale = _islandWidth / animationBaseWidth;
-        var toScale = targetWidth / animationBaseWidth;
-
-        IslandBackground.BeginAnimation(WidthProperty, null);
-        IslandTextClip.BeginAnimation(WidthProperty, null);
-        IslandBackgroundTranslateTransform.BeginAnimation(TranslateTransform.XProperty, null);
-        IslandBackground.Width = animationBaseWidth;
-        IslandTextClip.Width = animationBaseWidth;
-        ApplyLyricTextWidth(animationBaseWidth);
-        IslandBackgroundScaleTransform.ScaleX = fromScale;
-        IslandBackgroundTranslateTransform.X = 0;
-
-        var scaleAnimation = new DoubleAnimation
+        var targetWidth = MeasureWallpaperWidth(text);
+        if (Math.Abs(_wallpaperWidth - targetWidth) < 0.01)
         {
-            From = fromScale,
-            To = toScale,
+            return;
+        }
+
+        WallpaperTextClip.BeginAnimation(WidthProperty, null);
+        var animation = new DoubleAnimation
+        {
+            From = _wallpaperWidth,
+            To = targetWidth,
             Duration = TimeSpan.FromMilliseconds(durationMs),
             EasingFunction = new CubicEase { EasingMode = EasingMode.EaseInOut }
         };
 
-        await AnimateDoubleAsync(IslandBackgroundScaleTransform, ScaleTransform.ScaleXProperty, scaleAnimation);
+        await AnimateDoubleAsync(WallpaperTextClip, WidthProperty, animation);
 
-        IslandBackground.BeginAnimation(WidthProperty, null);
-        IslandTextClip.BeginAnimation(WidthProperty, null);
-        IslandBackgroundScaleTransform.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-        IslandBackgroundTranslateTransform.BeginAnimation(TranslateTransform.XProperty, null);
-        IslandBackground.Width = targetWidth;
-        IslandTextClip.Width = targetWidth;
+        WallpaperTextClip.BeginAnimation(WidthProperty, null);
+        WallpaperTextClip.Width = targetWidth;
         ApplyLyricTextWidth(targetWidth);
-        IslandBackgroundScaleTransform.ScaleX = 1;
-        IslandBackgroundTranslateTransform.X = 0;
-        _islandWidth = targetWidth;
+        _wallpaperWidth = targetWidth;
     }
 
-    private void ApplyLyricTextWidth(double islandWidth)
+    private void ApplyLyricTextWidth(double wallpaperWidth)
     {
-        var textWidth = Math.Max(0, islandWidth - IslandDisplayMode.BackgroundHorizontalPadding);
+        var textWidth = Math.Max(0, wallpaperWidth - WallpaperDisplayMode.BackgroundHorizontalPadding);
         LyricStage.Width = textWidth;
     }
 
@@ -1796,17 +1547,17 @@ public partial class IslandWindow : Window, ITrayIconHost
         return extra;
     }
 
-    private double MeasureIslandWidth(string text)
+    private double MeasureWallpaperWidth(string text)
     {
         var availableWidth = Math.Max(
-            IslandDisplayMode.MinimumBackgroundWidth,
+            WallpaperDisplayMode.MinimumBackgroundWidth,
             RootGrid.ActualWidth > 0
-                ? RootGrid.ActualWidth / GetEffectiveIslandScale()
-                : ActualWidth / GetEffectiveIslandScale());
+                ? RootGrid.ActualWidth / GetEffectiveWallpaperScale()
+                : ActualWidth / GetEffectiveWallpaperScale());
 
         if (string.IsNullOrWhiteSpace(text))
         {
-            return Math.Min(IslandDisplayMode.MinimumBackgroundWidth, availableWidth);
+            return Math.Min(WallpaperDisplayMode.MinimumBackgroundWidth, availableWidth);
         }
 
         var pixelsPerDip = VisualTreeHelper.GetDpi(this).PixelsPerDip;
@@ -1823,8 +1574,8 @@ public partial class IslandWindow : Window, ITrayIconHost
             WpfBrushes.White,
             pixelsPerDip);
 
-        var desiredWidth = formattedText.WidthIncludingTrailingWhitespace + IslandDisplayMode.BackgroundHorizontalPadding + GetExtraIconSpace();
-        return Math.Clamp(desiredWidth, IslandDisplayMode.MinimumBackgroundWidth, availableWidth);
+        var desiredWidth = formattedText.WidthIncludingTrailingWhitespace + WallpaperDisplayMode.BackgroundHorizontalPadding + GetExtraIconSpace();
+        return Math.Clamp(desiredWidth, WallpaperDisplayMode.MinimumBackgroundWidth, availableWidth);
     }
 
     private void ApplyLoadingState(bool immediate = false)
@@ -1867,13 +1618,13 @@ public partial class IslandWindow : Window, ITrayIconHost
             LoadingIcon.BeginAnimation(OpacityProperty, iconFade);
             LoadingSpacer.BeginAnimation(WidthProperty, spacerAnimation);
             LoadingSpinnerRotateTransform.BeginAnimation(RotateTransform.AngleProperty, spinnerRotation);
-            UpdateIslandWidth(_displayedLyricText, false);
+            UpdateWallpaperWidth(_displayedLyricText, false);
             return;
         }
 
         LyricStage.Opacity = 1;
         ApplyAppearance();
-        UpdateIslandWidth(_displayedLyricText, false);
+        UpdateWallpaperWidth(_displayedLyricText, false);
 
         var iconFadeOut = new DoubleAnimation
         {
@@ -1903,9 +1654,9 @@ public partial class IslandWindow : Window, ITrayIconHost
     {
         AnimatePlaybackStateChange(isPaused);
 
-        if (isPaused && _settings.IslandTimeout > 0)
+        if (isPaused && _settings.WallpaperTimeout > 0)
         {
-            _timeoutTimer.Interval = TimeSpan.FromSeconds(_settings.IslandTimeout);
+            _timeoutTimer.Interval = TimeSpan.FromSeconds(_settings.WallpaperTimeout);
             _timeoutTimer.Start();
         }
         else
@@ -1914,7 +1665,7 @@ public partial class IslandWindow : Window, ITrayIconHost
             if (_isTimeoutHidden)
             {
                 _isTimeoutHidden = false;
-                ApplyTargetIslandOpacity();
+                ApplyTargetWallpaperOpacity();
             }
         }
     }
@@ -1922,46 +1673,44 @@ public partial class IslandWindow : Window, ITrayIconHost
     private void TimeoutTimer_OnTick(object? sender, EventArgs e)
     {
         _timeoutTimer.Stop();
-        if (_viewModel.IsPlaybackPaused && _settings.IslandTimeout > 0)
+        if (_viewModel.IsPlaybackPaused && _settings.WallpaperTimeout > 0)
         {
             _isTimeoutHidden = true;
-            ApplyTargetIslandOpacity(TimeSpan.FromMilliseconds(400));
+            ApplyTargetWallpaperOpacity(TimeSpan.FromMilliseconds(400));
         }
     }
 
-    private double GetTargetIslandOpacity()
+    private double GetTargetWallpaperOpacity()
     {
         if (_isNoLyricsAnimationActive)
             return 1;
-        if (_isFullscreenHidden)
-            return 0;
-        if (!_isIslandContentVisible)
+        if (!_isWallpaperContentVisible)
             return 0;
         if (_isTimeoutHidden)
             return 0;
-        return _isPointerOverIsland ? IslandDisplayMode.GetEffectiveHoverOpacity(_settings.IslandHoverOpacity) : 1;
+        return 1;
     }
 
-    private void ApplyTargetIslandOpacity(TimeSpan? duration = null)
+    private void ApplyTargetWallpaperOpacity(TimeSpan? duration = null)
     {
         if (_isNoLyricsAnimationActive)
             return;
 
-        var target = GetTargetIslandOpacity();
-        if (Math.Abs(IslandLayer.Opacity - target) < 0.001)
+        var target = GetTargetWallpaperOpacity();
+        if (Math.Abs(WallpaperLayer.Opacity - target) < 0.001)
         {
-            IslandLayer.Opacity = target;
+            WallpaperLayer.Opacity = target;
             return;
         }
 
-        IslandLayer.BeginAnimation(OpacityProperty, null);
+        WallpaperLayer.BeginAnimation(OpacityProperty, null);
         var animation = new DoubleAnimation
         {
             To = target,
             Duration = duration ?? TimeSpan.FromMilliseconds(300),
             EasingFunction = new QuadraticEase { EasingMode = target > 0 ? EasingMode.EaseOut : EasingMode.EaseIn }
         };
-        IslandLayer.BeginAnimation(OpacityProperty, animation);
+        WallpaperLayer.BeginAnimation(OpacityProperty, animation);
     }
 
     private void AnimatePlaybackStateChange(bool isPaused)
@@ -2025,15 +1774,7 @@ public partial class IslandWindow : Window, ITrayIconHost
         }
 
         PauseIcon.BeginAnimation(OpacityProperty, iconAnimation);
-        if (string.IsNullOrWhiteSpace(_displayedLyricText))
-        {
-            IslandBackgroundScaleTransform.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-            IslandBackgroundScaleTransform.ScaleX = 1;
-        }
-        else
-        {
-            UpdateIslandWidth(_displayedLyricText, false);
-        }
+        UpdateWallpaperWidth(_displayedLyricText, false);
         _isPauseVisualActive = isPaused;
     }
 
@@ -2081,20 +1822,8 @@ public partial class IslandWindow : Window, ITrayIconHost
 
         _isNoLyricsAnimationActive = true;
 
-        // 1. Flash background red
-        IslandRedOverlay.BeginAnimation(OpacityProperty, null);
-        var redFlash = new DoubleAnimation
-        {
-            From = 0,
-            To = 1,
-            Duration = TimeSpan.FromMilliseconds(250),
-            AutoReverse = true,
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
-        };
-        IslandRedOverlay.BeginAnimation(OpacityProperty, redFlash);
-
-        // 2. Vibrate the pill
-        IslandLayerVibrateTransform.BeginAnimation(TranslateTransform.XProperty, null);
+        // 1. Vibrate the lyric text
+        WallpaperLayerVibrateTransform.BeginAnimation(TranslateTransform.XProperty, null);
         var vibrate = new DoubleAnimationUsingKeyFrames
         {
             Duration = TimeSpan.FromMilliseconds(500)
@@ -2107,11 +1836,11 @@ public partial class IslandWindow : Window, ITrayIconHost
         vibrate.KeyFrames.Add(new LinearDoubleKeyFrame(-2, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(300))));
         vibrate.KeyFrames.Add(new LinearDoubleKeyFrame(2, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(360))));
         vibrate.KeyFrames.Add(new LinearDoubleKeyFrame(0, KeyTime.FromTimeSpan(TimeSpan.FromMilliseconds(420))));
-        IslandLayerVibrateTransform.BeginAnimation(TranslateTransform.XProperty, vibrate);
+        WallpaperLayerVibrateTransform.BeginAnimation(TranslateTransform.XProperty, vibrate);
 
-        // 3. Fade out the entire pill after 2 seconds
-        IslandLayer.BeginAnimation(OpacityProperty, null);
-        IslandLayer.Opacity = 1;
+        // 2. Fade out the lyrics after 2 seconds
+        WallpaperLayer.BeginAnimation(OpacityProperty, null);
+        WallpaperLayer.Opacity = 1;
         var fadeOut = new DoubleAnimation
         {
             To = 0,
@@ -2119,7 +1848,7 @@ public partial class IslandWindow : Window, ITrayIconHost
             Duration = TimeSpan.FromMilliseconds(400),
             EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
         };
-        IslandLayer.BeginAnimation(OpacityProperty, fadeOut);
+        WallpaperLayer.BeginAnimation(OpacityProperty, fadeOut);
     }
 
     private void CancelNoLyricsAnimation()
@@ -2132,24 +1861,22 @@ public partial class IslandWindow : Window, ITrayIconHost
         _isNoLyricsAnimationActive = false;
 
         // Stop all animations
-        IslandRedOverlay.BeginAnimation(OpacityProperty, null);
-        IslandLayerVibrateTransform.BeginAnimation(TranslateTransform.XProperty, null);
-        IslandLayer.BeginAnimation(OpacityProperty, null);
+        WallpaperLayerVibrateTransform.BeginAnimation(TranslateTransform.XProperty, null);
+        WallpaperLayer.BeginAnimation(OpacityProperty, null);
 
         // Restore visual state
-        IslandRedOverlay.Opacity = 0;
-        IslandLayerVibrateTransform.X = 0;
-        var targetOpacity = GetTargetIslandOpacity();
-        IslandLayer.Opacity = targetOpacity;
+        WallpaperLayerVibrateTransform.X = 0;
+        var targetOpacity = GetTargetWallpaperOpacity();
+        WallpaperLayer.Opacity = targetOpacity;
 
-        // Fade the pill back in
+        // Fade the lyrics back in
         var fadeIn = new DoubleAnimation
         {
             To = targetOpacity,
             Duration = TimeSpan.FromMilliseconds(300),
             EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
         };
-        IslandLayer.BeginAnimation(OpacityProperty, fadeIn);
+        WallpaperLayer.BeginAnimation(OpacityProperty, fadeIn);
     }
 
     private void MonitorWarningTimer_OnTick(object? sender, EventArgs e)
@@ -2247,15 +1974,15 @@ public partial class IslandWindow : Window, ITrayIconHost
         _appSettingsService.Save(_settings);
         _viewModel.UpdateSettings(_settings);
 
-        if (_settings.DisplayMode != DisplayMode.Island)
+        if (_settings.DisplayMode != DisplayMode.Wallpaper)
         {
             ((App)WpfApplication.Current).RestartDisplayWindow();
             return;
         }
 
-        if (_appBarManager is not null && !string.IsNullOrWhiteSpace(_settings.IslandPreferredMonitorDeviceName))
+        if (_appBarManager is not null && !string.IsNullOrWhiteSpace(_settings.WallpaperPreferredMonitorDeviceName))
         {
-            if (_appBarManager.SetCurrentMonitor(_settings.IslandPreferredMonitorDeviceName))
+            if (_appBarManager.SetCurrentMonitor(_settings.WallpaperPreferredMonitorDeviceName))
             {
                 _lastMonitorWarningKey = null;
             }
@@ -2267,19 +1994,18 @@ public partial class IslandWindow : Window, ITrayIconHost
 
         PositionWindow();
         ApplyAppearance();
-        FullscreenTimer_OnTick(null, EventArgs.Empty);
 
-        if (_settings.IslandTimeout <= 0)
+        if (_settings.WallpaperTimeout <= 0)
         {
             _timeoutTimer.Stop();
             if (_isTimeoutHidden)
             {
                 _isTimeoutHidden = false;
-                ApplyTargetIslandOpacity();
+                ApplyTargetWallpaperOpacity();
             }
         }
 
-        ApplyTargetIslandOpacity();
+        ApplyTargetWallpaperOpacity();
     }
 
     private AppSettings MergeSettings(AppSettings incomingSettings)
@@ -2291,6 +2017,7 @@ public partial class IslandWindow : Window, ITrayIconHost
         persistedSettings.AppBarPreferredMonitorDeviceName = incomingSettings.AppBarPreferredMonitorDeviceName;
         persistedSettings.TaskbarPreferredMonitorDeviceName = incomingSettings.TaskbarPreferredMonitorDeviceName;
         persistedSettings.IslandPreferredMonitorDeviceName = incomingSettings.IslandPreferredMonitorDeviceName;
+        persistedSettings.WallpaperPreferredMonitorDeviceName = incomingSettings.WallpaperPreferredMonitorDeviceName;
         persistedSettings.CustomBarHeight = incomingSettings.CustomBarHeight;
         persistedSettings.WindowedWidth = incomingSettings.WindowedWidth;
         persistedSettings.WindowedHeight = incomingSettings.WindowedHeight;
@@ -2305,7 +2032,6 @@ public partial class IslandWindow : Window, ITrayIconHost
         persistedSettings.IslandHoverOpacity = incomingSettings.IslandHoverOpacity;
         persistedSettings.IslandAnimationMode = incomingSettings.IslandAnimationMode;
         persistedSettings.IslandAnimationManualSpeed = incomingSettings.IslandAnimationManualSpeed;
-        persistedSettings.WallpaperPreferredMonitorDeviceName = incomingSettings.WallpaperPreferredMonitorDeviceName;
         persistedSettings.WallpaperMaximumWidth = incomingSettings.WallpaperMaximumWidth;
         persistedSettings.WallpaperScale = incomingSettings.WallpaperScale;
         persistedSettings.WallpaperContainerHeight = incomingSettings.WallpaperContainerHeight;
@@ -2322,9 +2048,9 @@ public partial class IslandWindow : Window, ITrayIconHost
         persistedSettings.WindowedShowNextLine = incomingSettings.WindowedShowNextLine;
         persistedSettings.WindowedLyricAlignment = incomingSettings.WindowedLyricAlignment;
         persistedSettings.WindowedShowAlbumArt = incomingSettings.WindowedShowAlbumArt;
-            persistedSettings.WindowedWordByWordMode = incomingSettings.WindowedWordByWordMode;
-            persistedSettings.DebugForceLyricsSource = incomingSettings.DebugForceLyricsSource;
-            persistedSettings.PreferredMonitorDeviceName = null;
+        persistedSettings.WindowedWordByWordMode = incomingSettings.WindowedWordByWordMode;
+        persistedSettings.DebugForceLyricsSource = incomingSettings.DebugForceLyricsSource;
+        persistedSettings.PreferredMonitorDeviceName = null;
         persistedSettings.DetectedMediaApps = MergeDetectedApps(
             incomingSettings.DetectedMediaApps,
             persistedSettings.DetectedMediaApps);
@@ -2404,24 +2130,6 @@ public partial class IslandWindow : Window, ITrayIconHost
         return _settingsWindow is not null && _settingsWindow.IsLoaded && _settingsWindow.IsVisible;
     }
 
-    private void EnsureTopmostOrder()
-    {
-        var hwnd = _hwndSource?.Handle ?? new WindowInteropHelper(this).Handle;
-        if (hwnd == IntPtr.Zero)
-        {
-            return;
-        }
-
-        SetWindowPos(
-            hwnd,
-            HWND_TOPMOST,
-            0,
-            0,
-            0,
-            0,
-            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_SHOWWINDOW);
-    }
-
     private void ApplyClickThroughWindowStyle()
     {
         var hwnd = _hwndSource?.Handle ?? new WindowInteropHelper(this).Handle;
@@ -2437,50 +2145,10 @@ public partial class IslandWindow : Window, ITrayIconHost
             extendedStyle | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW);
     }
 
-    private void ScheduleTopmostRefreshBurst()
-    {
-        EnsureTopmostOrder();
-
-        var retryShort = new DispatcherTimer
-        {
-            Interval = TimeSpan.FromMilliseconds(90)
-        };
-        retryShort.Tick += (_, _) =>
-        {
-            retryShort.Stop();
-            EnsureTopmostOrder();
-        };
-        retryShort.Start();
-
-        var retryLong = new DispatcherTimer
-        {
-            Interval = TimeSpan.FromMilliseconds(240)
-        };
-        retryLong.Tick += (_, _) =>
-        {
-            retryLong.Stop();
-            EnsureTopmostOrder();
-        };
-        retryLong.Start();
-    }
-
-    private static readonly IntPtr HWND_TOPMOST = new(-1);
     private const int GWL_EXSTYLE = -20;
     private const int WS_EX_TRANSPARENT = 0x00000020;
     private const int WS_EX_TOOLWINDOW = 0x00000080;
     private const int WS_EX_NOACTIVATE = 0x08000000;
-    private const uint SWP_NOSIZE = 0x0001;
-    private const uint SWP_NOMOVE = 0x0002;
-    private const uint SWP_NOACTIVATE = 0x0010;
-    private const uint SWP_SHOWWINDOW = 0x0040;
-    private const uint SWP_NOOWNERZORDER = 0x0200;
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct CursorPoint
-    {
-        public int X;
-        public int Y;
-    }
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
@@ -2488,65 +2156,22 @@ public partial class IslandWindow : Window, ITrayIconHost
     [DllImport("user32.dll", SetLastError = true)]
     private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
 
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool GetCursorPos(out CursorPoint lpPoint);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr FindWindow(string lpClassName, string? lpWindowName);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr FindWindowEx(IntPtr hwndParent, IntPtr hwndChildAfter, string lpszClass, string? lpszWindow);
 
     [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool SetWindowPos(
-        IntPtr hWnd,
-        IntPtr hWndInsertAfter,
-        int X,
-        int Y,
-        int cx,
-        int cy,
-        uint uFlags);
+    private static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam, uint fuFlags, uint uTimeout, out IntPtr lpdwResult);
 
     [DllImport("user32.dll", SetLastError = true)]
-    private static extern IntPtr SetWinEventHook(
-        uint eventMin,
-        uint eventMax,
-        IntPtr hmodWinEventProc,
-        WinEventDelegate lpfnWinEventProc,
-        uint idProcess,
-        uint idThread,
-        uint dwFlags);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool UnhookWinEvent(IntPtr hWinEventHook);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern IntPtr GetForegroundWindow();
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool GetWindowRect(IntPtr hWnd, out RectNative lpRect);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern IntPtr GetShellWindow();
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct RectNative
-    {
-        public int left;
-        public int top;
-        public int right;
-        public int bottom;
-    }
-
-    private delegate void WinEventDelegate(
-        IntPtr hWinEventHook,
-        uint eventType,
-        IntPtr hwnd,
-        int idObject,
-        int idChild,
-        uint dwEventThread,
-        uint dwmsEventTime);
+    private static extern IntPtr SetParent(IntPtr hWndChild, IntPtr hWndNewParent);
 
     public void ShowFromTray()
     {
         Show();
         WorkspaceVisibilityManager.PinToAllWorkspaces(this);
-        Activate();
-        EnsureTopmostOrder();
     }
 
     public void OpenSettingsFromTray()
@@ -2560,7 +2185,7 @@ public partial class IslandWindow : Window, ITrayIconHost
         Close();
     }
 
-    public DisplayMode CurrentDisplayMode => DisplayMode.Island;
+    public DisplayMode CurrentDisplayMode => DisplayMode.Wallpaper;
 
     public void SwitchDisplayMode(DisplayMode mode)
     {

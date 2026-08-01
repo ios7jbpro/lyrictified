@@ -16,6 +16,8 @@ public sealed class AppSettings
 
     public string? IslandPreferredMonitorDeviceName { get; set; }
 
+    public string? WallpaperPreferredMonitorDeviceName { get; set; }
+
     public bool ShowNextLine { get; set; }
 
     public bool WindowedShowNextLine { get; set; }
@@ -47,6 +49,18 @@ public sealed class AppSettings
     public IslandAnimationMode IslandAnimationMode { get; set; } = IslandAnimationMode.Default;
 
     public double IslandAnimationManualSpeed { get; set; } = 1.0;
+
+    public int? WallpaperMaximumWidth { get; set; }
+
+    public double WallpaperScale { get; set; } = 1.0;
+
+    public int? WallpaperContainerHeight { get; set; }
+
+    public IslandAnimationMode WallpaperAnimationMode { get; set; } = IslandAnimationMode.Default;
+
+    public double WallpaperAnimationManualSpeed { get; set; } = 1.0;
+
+    public int WallpaperTimeout { get; set; } = 10;
 
     public IslandAnimationMode TaskbarAnimationMode { get; set; } = IslandAnimationMode.Default;
 

@@ -5,5 +5,6 @@ public enum DisplayMode
     AppBar,
     Windowed,
     Taskbar,
-    Island
+    Island,
+    Wallpaper
 }

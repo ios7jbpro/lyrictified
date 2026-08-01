@@ -882,6 +882,13 @@ public partial class TaskbarWindow : Window, ITrayIconHost
         persistedSettings.IslandHoverOpacity = incomingSettings.IslandHoverOpacity;
         persistedSettings.IslandAnimationMode = incomingSettings.IslandAnimationMode;
         persistedSettings.IslandAnimationManualSpeed = incomingSettings.IslandAnimationManualSpeed;
+        persistedSettings.WallpaperPreferredMonitorDeviceName = incomingSettings.WallpaperPreferredMonitorDeviceName;
+        persistedSettings.WallpaperMaximumWidth = incomingSettings.WallpaperMaximumWidth;
+        persistedSettings.WallpaperScale = incomingSettings.WallpaperScale;
+        persistedSettings.WallpaperContainerHeight = incomingSettings.WallpaperContainerHeight;
+        persistedSettings.WallpaperAnimationMode = incomingSettings.WallpaperAnimationMode;
+        persistedSettings.WallpaperAnimationManualSpeed = incomingSettings.WallpaperAnimationManualSpeed;
+        persistedSettings.WallpaperTimeout = incomingSettings.WallpaperTimeout;
         persistedSettings.TaskbarAnimationMode = incomingSettings.TaskbarAnimationMode;
         persistedSettings.TaskbarAnimationManualSpeed = incomingSettings.TaskbarAnimationManualSpeed;
         persistedSettings.LyricAlignment = incomingSettings.LyricAlignment;

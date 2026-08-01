@@ -52,6 +52,12 @@ public partial class SettingsWindow : Window
         IslandAnimationWordFadeTile.Tag = LoadAnimationModeImage("island-animation-fade-in.png");
         IslandAnimationFlashInTile.Tag = LoadAnimationModeImage("island-animation-flash-in.png");
         IslandAnimationFlashInRandomTile.Tag = LoadAnimationModeImage("island-animation-flash-in-random.png");
+        WallpaperAnimationDefaultTile.Tag = LoadAnimationModeImage("island-animation-default.png");
+        WallpaperAnimationSlideInTile.Tag = LoadAnimationModeImage("island-animation-slide-in.png");
+        WallpaperAnimationSlideInManualTile.Tag = LoadAnimationModeImage("island-animation-slide-in-manual.png");
+        WallpaperAnimationWordFadeTile.Tag = LoadAnimationModeImage("island-animation-fade-in.png");
+        WallpaperAnimationFlashInTile.Tag = LoadAnimationModeImage("island-animation-flash-in.png");
+        WallpaperAnimationFlashInRandomTile.Tag = LoadAnimationModeImage("island-animation-flash-in-random.png");
         _ = LoadContributorAvatarsAsync();
 #if DEBUG
         DebugTabItem.Visibility = Visibility.Visible;
@@ -157,12 +163,14 @@ public partial class SettingsWindow : Window
             var appBarMonitor = settings.AppBarPreferredMonitorDeviceName ?? settings.PreferredMonitorDeviceName;
             var taskbarMonitor = settings.TaskbarPreferredMonitorDeviceName ?? settings.PreferredMonitorDeviceName;
             var islandMonitor = settings.IslandPreferredMonitorDeviceName ?? settings.PreferredMonitorDeviceName;
+            var wallpaperMonitor = settings.WallpaperPreferredMonitorDeviceName ?? settings.PreferredMonitorDeviceName;
 
             DisplayModeComboBox.SelectedIndex = settings.DisplayMode switch
             {
                 DisplayMode.Windowed => 1,
                 DisplayMode.Taskbar => 2,
                 DisplayMode.Island => 3,
+                DisplayMode.Wallpaper => 4,
                 _ => 0
             };
             HideModeComboBox.SelectedIndex = settings.HideMode switch
@@ -231,6 +239,14 @@ public partial class SettingsWindow : Window
             IslandAnimationManualSpeedSlider.Value = Math.Clamp(settings.IslandAnimationManualSpeed, 0.5, 2.5);
             IslandAnimationManualSpeedValueTextBlock.Text = $"{IslandAnimationManualSpeedSlider.Value:F1}x";
             UpdateIslandAnimationManualSpeedVisibility();
+            WallpaperMaximumWidthTextBox.Text = settings.WallpaperMaximumWidth?.ToString() ?? string.Empty;
+            WallpaperScaleTextBox.Text = (GetEffectiveWallpaperScale(settings.WallpaperScale) * 100).ToString("F0");
+            WallpaperContainerHeightTextBox.Text = settings.WallpaperContainerHeight?.ToString() ?? string.Empty;
+            WallpaperTimeoutTextBox.Text = settings.WallpaperTimeout.ToString();
+            SetWallpaperAnimationModeSelection(settings.WallpaperAnimationMode);
+            WallpaperAnimationManualSpeedSlider.Value = Math.Clamp(settings.WallpaperAnimationManualSpeed, 0.5, 2.5);
+            WallpaperAnimationManualSpeedValueTextBlock.Text = $"{WallpaperAnimationManualSpeedSlider.Value:F1}x";
+            UpdateWallpaperAnimationManualSpeedVisibility();
             DebugForceLyricsSourceComboBox.SelectedIndex = settings.DebugForceLyricsSource switch
             {
                 "Local" => 1,
@@ -264,6 +280,14 @@ public partial class SettingsWindow : Window
                 IslandMonitorComboBox.SelectedIndex = 0;
             }
 
+            WallpaperMonitorComboBox.ItemsSource = monitors;
+            WallpaperMonitorComboBox.SelectedValue = wallpaperMonitor;
+
+            if (WallpaperMonitorComboBox.SelectedIndex < 0 && monitors.Count > 0)
+            {
+                WallpaperMonitorComboBox.SelectedIndex = 0;
+            }
+
             UpdateAppBarControls();
             UpdateBarHeightHint();
             UpdateTaskbarMaximumWidthHint();
@@ -272,6 +296,9 @@ public partial class SettingsWindow : Window
             UpdateIslandScaleHint();
             UpdateIslandContainerHeightHint();
             UpdateIslandCornerRadiusHint();
+            UpdateWallpaperMaximumWidthHint();
+            UpdateWallpaperScaleHint();
+            UpdateWallpaperContainerHeightHint();
             UpdateVmDetectionInfo();
         }
         finally
@@ -532,6 +559,101 @@ public partial class SettingsWindow : Window
         RaiseTextSettingsChanged();
     }
 
+    private void WallpaperMonitorComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        RaiseSettingsChanged();
+    }
+
+    private void WallpaperMaximumWidthTextBox_OnTextChanged(object sender, TextChangedEventArgs e)
+    {
+        UpdateWallpaperMaximumWidthHint();
+        RaiseTextSettingsChanged();
+    }
+
+    private void WallpaperScaleTextBox_OnTextChanged(object sender, TextChangedEventArgs e)
+    {
+        UpdateWallpaperScaleHint();
+        RaiseTextSettingsChanged();
+    }
+
+    private void WallpaperContainerHeightTextBox_OnTextChanged(object sender, TextChangedEventArgs e)
+    {
+        UpdateWallpaperContainerHeightHint();
+        RaiseTextSettingsChanged();
+    }
+
+    private void WallpaperTimeoutTextBox_OnTextChanged(object sender, TextChangedEventArgs e)
+    {
+        RaiseTextSettingsChanged();
+    }
+
+    private void WallpaperAnimationTile_OnChecked(object sender, RoutedEventArgs e)
+    {
+        UpdateWallpaperAnimationManualSpeedVisibility();
+        RaiseSettingsChanged();
+    }
+
+    private void SetWallpaperAnimationModeSelection(IslandAnimationMode mode)
+    {
+        WallpaperAnimationDefaultTile.IsChecked = mode == IslandAnimationMode.Default;
+        WallpaperAnimationSlideInTile.IsChecked = mode == IslandAnimationMode.SlideIn;
+        WallpaperAnimationSlideInManualTile.IsChecked = mode == IslandAnimationMode.SlideInManual;
+        WallpaperAnimationWordFadeTile.IsChecked = mode == IslandAnimationMode.WordFade;
+        WallpaperAnimationFlashInTile.IsChecked = mode == IslandAnimationMode.FlashIn;
+        WallpaperAnimationFlashInRandomTile.IsChecked = mode == IslandAnimationMode.FlashInRandom;
+    }
+
+    private IslandAnimationMode GetSelectedWallpaperAnimationMode()
+    {
+        if (WallpaperAnimationSlideInTile.IsChecked == true)
+        {
+            return IslandAnimationMode.SlideIn;
+        }
+
+        if (WallpaperAnimationSlideInManualTile.IsChecked == true)
+        {
+            return IslandAnimationMode.SlideInManual;
+        }
+
+        if (WallpaperAnimationWordFadeTile.IsChecked == true)
+        {
+            return IslandAnimationMode.WordFade;
+        }
+
+        if (WallpaperAnimationFlashInTile.IsChecked == true)
+        {
+            return IslandAnimationMode.FlashIn;
+        }
+
+        if (WallpaperAnimationFlashInRandomTile.IsChecked == true)
+        {
+            return IslandAnimationMode.FlashInRandom;
+        }
+
+        return IslandAnimationMode.Default;
+    }
+
+    private void UpdateWallpaperAnimationManualSpeedVisibility()
+    {
+        if (WallpaperAnimationManualSpeedPanel is not null)
+        {
+            WallpaperAnimationManualSpeedPanel.Visibility =
+                WallpaperAnimationSlideInManualTile.IsChecked == true
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+        }
+    }
+
+    private void WallpaperAnimationManualSpeedSlider_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (WallpaperAnimationManualSpeedValueTextBlock is not null)
+        {
+            WallpaperAnimationManualSpeedValueTextBlock.Text = $"{e.NewValue:F1}x";
+        }
+
+        RaiseTextSettingsChanged();
+    }
+
     private void TaskbarAnimationModeComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         UpdateTaskbarAnimationManualSpeedVisibility();
@@ -590,6 +712,7 @@ public partial class SettingsWindow : Window
             AppBarPreferredMonitorDeviceName = AppBarMonitorComboBox.SelectedValue as string,
             TaskbarPreferredMonitorDeviceName = TaskbarMonitorComboBox.SelectedValue as string,
             IslandPreferredMonitorDeviceName = IslandMonitorComboBox.SelectedValue as string,
+            WallpaperPreferredMonitorDeviceName = WallpaperMonitorComboBox.SelectedValue as string,
             CustomBarHeight = ParseCustomHeight(),
             TaskbarMaximumWidth = ParseTaskbarMaximumWidth(),
             TaskbarHeight = ParseTaskbarHeight(),
@@ -609,6 +732,12 @@ public partial class SettingsWindow : Window
             IslandHoverOpacity = GetEffectiveIslandHoverOpacity(IslandHoverOpacitySlider.Value / 100.0),
             IslandAnimationMode = GetSelectedIslandAnimationMode(),
             IslandAnimationManualSpeed = IslandAnimationManualSpeedSlider?.Value ?? 1.0,
+            WallpaperMaximumWidth = ParseWallpaperMaximumWidth(),
+            WallpaperScale = ParseWallpaperScale(),
+            WallpaperContainerHeight = ParseWallpaperContainerHeight(),
+            WallpaperAnimationMode = GetSelectedWallpaperAnimationMode(),
+            WallpaperAnimationManualSpeed = WallpaperAnimationManualSpeedSlider?.Value ?? 1.0,
+            WallpaperTimeout = ParseWallpaperTimeout(),
             LyricAlignment = (LyricAlignmentComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() switch
             {
                 "Left" => LyricAlignment.Left,
@@ -789,6 +918,58 @@ public partial class SettingsWindow : Window
         return 10;
     }
 
+    private int? ParseWallpaperMaximumWidth()
+    {
+        if (string.IsNullOrWhiteSpace(WallpaperMaximumWidthTextBox.Text))
+        {
+            return null;
+        }
+
+        return int.TryParse(WallpaperMaximumWidthTextBox.Text, out var parsedWidth) ? parsedWidth : null;
+    }
+
+    private double ParseWallpaperScale()
+    {
+        if (!double.TryParse(WallpaperScaleTextBox.Text, out var parsedPercent))
+        {
+            return 1.0;
+        }
+
+        return GetEffectiveWallpaperScale(parsedPercent / 100.0);
+    }
+
+    private int? ParseWallpaperContainerHeight()
+    {
+        if (string.IsNullOrWhiteSpace(WallpaperContainerHeightTextBox.Text))
+        {
+            return null;
+        }
+
+        return int.TryParse(WallpaperContainerHeightTextBox.Text, out var parsedHeight)
+            ? WallpaperDisplayMode.GetEffectiveContainerHeight(parsedHeight)
+            : null;
+    }
+
+    private int ParseWallpaperTimeout()
+    {
+        if (int.TryParse(WallpaperTimeoutTextBox.Text, out var parsed) && parsed >= 0)
+        {
+            return parsed;
+        }
+
+        return 10;
+    }
+
+    private static double GetEffectiveWallpaperScale(double scale)
+    {
+        if (double.IsNaN(scale) || double.IsInfinity(scale) || scale <= 0)
+        {
+            return 1.0;
+        }
+
+        return Math.Clamp(scale, 0.5, 2.0);
+    }
+
     private int ParseMaxCacheSize()
     {
         if (int.TryParse(MaxCacheSizeTextBox.Text, out var parsed) && parsed >= 0)
@@ -857,6 +1038,12 @@ public partial class SettingsWindow : Window
         if (GetSelectedDisplayMode() == DisplayMode.Island)
         {
             BarHeightHintTextBlock.Text = $"Island mode uses a fixed {IslandDisplayMode.WindowHeight}px height.";
+            return;
+        }
+
+        if (GetSelectedDisplayMode() == DisplayMode.Wallpaper)
+        {
+            BarHeightHintTextBlock.Text = $"Wallpaper mode uses a fixed {WallpaperDisplayMode.WindowHeight}px height.";
             return;
         }
 
@@ -942,6 +1129,42 @@ public partial class SettingsWindow : Window
         IslandCornerRadiusHintTextBlock.Text = "Allowed range: 0px to 40px.";
     }
 
+    private void UpdateWallpaperMaximumWidthHint()
+    {
+        if (int.TryParse(WallpaperMaximumWidthTextBox.Text, out var parsedWidth))
+        {
+            var effectiveWidth = WallpaperDisplayMode.GetEffectiveMaximumWidth(parsedWidth);
+            WallpaperMaximumWidthHintTextBlock.Text = $"Wallpaper transparent container width cap: {effectiveWidth}px.";
+            return;
+        }
+
+        WallpaperMaximumWidthHintTextBlock.Text = $"Leave empty to use the default {WallpaperDisplayMode.DefaultMaximumWidth}px wallpaper width cap.";
+    }
+
+    private void UpdateWallpaperScaleHint()
+    {
+        if (double.TryParse(WallpaperScaleTextBox.Text, out var parsedPercent))
+        {
+            var effectivePercent = GetEffectiveWallpaperScale(parsedPercent / 100.0) * 100;
+            WallpaperScaleHintTextBlock.Text = $"Effective Wallpaper scale: {effectivePercent:F0}%.";
+            return;
+        }
+
+        WallpaperScaleHintTextBlock.Text = "Allowed range: 50% to 200%.";
+    }
+
+    private void UpdateWallpaperContainerHeightHint()
+    {
+        if (int.TryParse(WallpaperContainerHeightTextBox.Text, out var parsedHeight))
+        {
+            var effectiveHeight = WallpaperDisplayMode.GetEffectiveContainerHeight(parsedHeight);
+            WallpaperContainerHeightHintTextBlock.Text = $"Transparent container height is clamped to {effectiveHeight}px.";
+            return;
+        }
+
+        WallpaperContainerHeightHintTextBlock.Text = "Leave empty to use automatic height.";
+    }
+
     private void UpdateAppBarControls()
     {
         var isAppBarMode = GetSelectedDisplayMode() == DisplayMode.AppBar;
@@ -971,6 +1194,7 @@ public partial class SettingsWindow : Window
             "Windowed" => DisplayMode.Windowed,
             "Taskbar" => DisplayMode.Taskbar,
             "Island" => DisplayMode.Island,
+            "Wallpaper" => DisplayMode.Wallpaper,
             _ => DisplayMode.AppBar
         };
     }

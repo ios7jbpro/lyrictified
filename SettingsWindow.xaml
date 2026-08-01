@@ -559,6 +559,7 @@
                                 <ComboBoxItem Tag="Windowed" Content="Windowed" />
                                 <ComboBoxItem Tag="Taskbar" Content="Taskbar" />
                                 <ComboBoxItem Tag="Island" Content="Island" />
+                                <ComboBoxItem Tag="Wallpaper" Content="Wallpaper" />
                             </ComboBox>
                         </StackPanel>
                     </Border>
@@ -1244,6 +1245,160 @@
                                                Margin="8,0,0,0"
                                                VerticalAlignment="Center" />
                                 </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                </StackPanel>
+            </ScrollViewer>
+        </TabItem>
+
+        <TabItem Header="Wallpaper">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Margin="4,8,4,4">
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="Display Monitor" Style="{StaticResource SectionTitleStyle}" />
+                            <TextBlock Text="Choose which monitor to display lyrics on." Style="{StaticResource LabelStyle}" />
+                            <ComboBox x:Name="WallpaperMonitorComboBox"
+                                      MinWidth="260"
+                                      DisplayMemberPath="DisplayName"
+                                      SelectedValuePath="DeviceName"
+                                      SelectionChanged="WallpaperMonitorComboBox_OnSelectionChanged" />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="Container Size" Style="{StaticResource SectionTitleStyle}" />
+                            <TextBlock Text="Custom maximum width in pixels. Leave empty for default." Style="{StaticResource LabelStyle}" />
+                            <TextBox x:Name="WallpaperMaximumWidthTextBox"
+                                     MinWidth="260"
+                                     MaxWidth="260"
+                                     TextChanged="WallpaperMaximumWidthTextBox_OnTextChanged" />
+                            <TextBlock x:Name="WallpaperMaximumWidthHintTextBlock"
+                                       Style="{StaticResource HintTextStyle}"
+                                       Text="Leave empty to use the default 880px wallpaper width cap." />
+                            <TextBlock Text="Custom height in pixels for the invisible wallpaper host area. Leave empty for automatic."
+                                       Style="{StaticResource LabelStyle}"
+                                       Margin="0,16,0,6" />
+                            <TextBox x:Name="WallpaperContainerHeightTextBox"
+                                     MinWidth="260"
+                                     MaxWidth="260"
+                                     TextChanged="WallpaperContainerHeightTextBox_OnTextChanged" />
+                            <TextBlock x:Name="WallpaperContainerHeightHintTextBlock"
+                                       Style="{StaticResource HintTextStyle}"
+                                       Text="Leave empty to use automatic height." />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="Scale" Style="{StaticResource SectionTitleStyle}" />
+                            <TextBlock Text="Scale the Wallpaper lyrics. Use 100 for default size." Style="{StaticResource LabelStyle}" />
+                            <TextBox x:Name="WallpaperScaleTextBox"
+                                     MinWidth="260"
+                                     MaxWidth="260"
+                                     TextChanged="WallpaperScaleTextBox_OnTextChanged" />
+                            <TextBlock x:Name="WallpaperScaleHintTextBlock"
+                                       Style="{StaticResource HintTextStyle}"
+                                       Text="Allowed range: 50% to 200%." />
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="Animation" Style="{StaticResource SectionTitleStyle}" />
+                            <TextBlock Text="How lyrics transition when the line changes." Style="{StaticResource LabelStyle}" />
+                            <UniformGrid x:Name="WallpaperAnimationModeGrid"
+                                         Columns="2"
+                                         Margin="0,6,0,0">
+                                <RadioButton x:Name="WallpaperAnimationDefaultTile"
+                                             GroupName="WallpaperAnimationModeGroup"
+                                             Content="Default"
+                                             Style="{StaticResource AnimationModeTileStyle}"
+                                             Checked="WallpaperAnimationTile_OnChecked" />
+                                <RadioButton x:Name="WallpaperAnimationSlideInTile"
+                                             GroupName="WallpaperAnimationModeGroup"
+                                             Content="Slide-in"
+                                             Style="{StaticResource AnimationModeTileStyle}"
+                                             Checked="WallpaperAnimationTile_OnChecked" />
+                                <RadioButton x:Name="WallpaperAnimationSlideInManualTile"
+                                             GroupName="WallpaperAnimationModeGroup"
+                                             Content="Slide-in (manual)"
+                                             Style="{StaticResource AnimationModeTileStyle}"
+                                             Checked="WallpaperAnimationTile_OnChecked" />
+                                <RadioButton x:Name="WallpaperAnimationWordFadeTile"
+                                             GroupName="WallpaperAnimationModeGroup"
+                                             Content="Word-fade"
+                                             Style="{StaticResource AnimationModeTileStyle}"
+                                             Checked="WallpaperAnimationTile_OnChecked" />
+                                <RadioButton x:Name="WallpaperAnimationFlashInTile"
+                                             GroupName="WallpaperAnimationModeGroup"
+                                             Content="Flash-in"
+                                             Style="{StaticResource AnimationModeTileStyle}"
+                                             Checked="WallpaperAnimationTile_OnChecked" />
+                                <RadioButton x:Name="WallpaperAnimationFlashInRandomTile"
+                                             GroupName="WallpaperAnimationModeGroup"
+                                             Content="Flash-in (random)"
+                                             Style="{StaticResource AnimationModeTileStyle}"
+                                             Checked="WallpaperAnimationTile_OnChecked" />
+                            </UniformGrid>
+                            <Grid x:Name="WallpaperAnimationManualSpeedPanel"
+                                  Margin="0,12,0,0"
+                                  Visibility="Collapsed">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="Animation speed" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" FontWeight="Medium" />
+                                    <TextBlock Text="Control how fast the slide animations play." Style="{StaticResource HintTextStyle}" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" MinWidth="160">
+                                    <Slider x:Name="WallpaperAnimationManualSpeedSlider"
+                                            Minimum="0.5"
+                                            Maximum="2.5"
+                                            Value="1.0"
+                                            Width="120"
+                                            VerticalAlignment="Center"
+                                            TickFrequency="0.1"
+                                            IsSnapToTickEnabled="True"
+                                            ValueChanged="WallpaperAnimationManualSpeedSlider_OnValueChanged" />
+                                    <TextBlock x:Name="WallpaperAnimationManualSpeedValueTextBlock"
+                                               Text="1.0x"
+                                               Foreground="{StaticResource TextPrimaryBrush}"
+                                               FontSize="13"
+                                               Width="40"
+                                               TextAlignment="Center"
+                                               Margin="8,0,0,0"
+                                               VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="Behavior" Style="{StaticResource SectionTitleStyle}" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="Timeout" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" FontWeight="Medium" />
+                                    <TextBlock Text="Seconds to wait before fading out when paused. Set to 0 to disable." Style="{StaticResource HintTextStyle}" />
+                                </StackPanel>
+                                <TextBox x:Name="WallpaperTimeoutTextBox"
+                                         Grid.Column="1"
+                                         Width="80"
+                                         VerticalAlignment="Center"
+                                         TextAlignment="Center"
+                                         MaxLength="3"
+                                         PreviewTextInput="MaxCacheSizeTextBox_PreviewTextInput"
+                                         DataObject.Pasting="MaxCacheSizeTextBox_Pasting"
+                                         TextChanged="WallpaperTimeoutTextBox_OnTextChanged" />
                             </Grid>
                         </StackPanel>
                     </Border>
