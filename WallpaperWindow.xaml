@@ -37,9 +37,8 @@
         </Border>
 
         <Grid x:Name="WallpaperLayer"
-              Height="40"
               HorizontalAlignment="Stretch"
-              VerticalAlignment="Center"
+              VerticalAlignment="Stretch"
               ClipToBounds="False"
               RenderTransformOrigin="0.5,0.5">
             <Grid.RenderTransform>
