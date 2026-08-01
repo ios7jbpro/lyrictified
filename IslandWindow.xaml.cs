@@ -1071,6 +1071,7 @@ public partial class IslandWindow : Window, ITrayIconHost
         PopulateFlashWordPanel(IncomingWordsPanel, newCurrentLine);
         OutgoingWordsPanel.Visibility = Visibility.Collapsed;
         IncomingWordsPanel.Visibility = Visibility.Visible;
+        _displayedLyricText = newCurrentLine;
 
         await AnimateFlashWordsInAsync(IncomingWordsPanel, transitionVersion, stagger);
 
@@ -1093,6 +1094,8 @@ public partial class IslandWindow : Window, ITrayIconHost
         IslandTextClip.BeginAnimation(WidthProperty, null);
         IslandBackgroundScaleTransform.BeginAnimation(ScaleTransform.ScaleXProperty, null);
         IslandBackgroundTranslateTransform.BeginAnimation(TranslateTransform.XProperty, null);
+        IslandBackgroundScaleTransform.ScaleX = 1;
+        IslandBackgroundTranslateTransform.X = 0;
         CancelSlideWordAnimations(OutgoingWordsPanel);
         CancelSlideWordAnimations(IncomingWordsPanel);
     }
@@ -1547,17 +1550,13 @@ public partial class IslandWindow : Window, ITrayIconHost
 
         IslandBackground.BeginAnimation(WidthProperty, null);
         IslandTextClip.BeginAnimation(WidthProperty, null);
+        IslandBackgroundScaleTransform.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        IslandBackgroundTranslateTransform.BeginAnimation(TranslateTransform.XProperty, null);
         IslandBackground.Width = width;
         IslandTextClip.Width = width;
         ApplyLyricTextWidth(width);
-
-        if (immediate)
-        {
-            IslandBackgroundTranslateTransform.BeginAnimation(TranslateTransform.XProperty, null);
-            IslandBackgroundScaleTransform.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-            IslandBackgroundScaleTransform.ScaleX = 1;
-            IslandBackgroundTranslateTransform.X = 0;
-        }
+        IslandBackgroundScaleTransform.ScaleX = 1;
+        IslandBackgroundTranslateTransform.X = 0;
     }
 
     private async Task AnimateIslandWidthAsync(string text, int durationMs = 190)
@@ -1852,7 +1851,15 @@ public partial class IslandWindow : Window, ITrayIconHost
 
         PauseSpacer.BeginAnimation(WidthProperty, spacerAnimation);
         PauseIcon.BeginAnimation(OpacityProperty, iconAnimation);
-        UpdateIslandWidth(_displayedLyricText, false);
+        if (!string.IsNullOrWhiteSpace(_displayedLyricText))
+        {
+            UpdateIslandWidth(_displayedLyricText, false);
+        }
+        else
+        {
+            IslandBackgroundScaleTransform.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+            IslandBackgroundScaleTransform.ScaleX = 1;
+        }
         _isPauseVisualActive = isPaused;
     }
 
