@@ -64,6 +64,7 @@ public partial class IslandWindow : Window, ITrayIconHost
     private readonly DispatcherTimer _fullscreenTimer;
     private readonly DispatcherTimer _timeoutTimer;
     private bool _isTimeoutHidden;
+    private static BitmapImage? _flashImage;
     private const double PauseSpacerTargetWidth = 24;
     private const double LoadingSpacerTargetWidth = 24;
     private const double SlideWordOffset = 48;
@@ -71,6 +72,10 @@ public partial class IslandWindow : Window, ITrayIconHost
     private const int SlideWordInDurationMs = 100;
     private const int SlideWordStaggerMs = 75;
     private const int FadeLineOutDurationMs = 160;
+    private const int FlashIconSize = 12;
+    private const int FlashInMs = 90;
+    private const int FlashOutMs = 150;
+    private const int FlashStaggerMs = 90;
     private static readonly MediaColor RedFlashColor = MediaColor.FromArgb(230, 200, 40, 40);
 
     public IslandWindow()
@@ -84,6 +89,7 @@ public partial class IslandWindow : Window, ITrayIconHost
         DataContext = _viewModel;
 
         LoadingSpinnerImage.Source = new BitmapImage(new Uri(Path.Combine(AppContext.BaseDirectory, "Assets", "loading.png"), UriKind.Absolute));
+        _flashImage = LoadFlashImage();
 
         _monitorWarningTimer = new DispatcherTimer { Interval = MonitorWarningDuration };
         _monitorWarningTimer.Tick += MonitorWarningTimer_OnTick;
@@ -578,6 +584,12 @@ public partial class IslandWindow : Window, ITrayIconHost
             return;
         }
 
+        if (_settings.IslandAnimationMode == IslandAnimationMode.FlashIn)
+        {
+            await HandleCurrentLineChangedFlashIn(newCurrentLine, transitionVersion);
+            return;
+        }
+
         OutgoingLyricTextBlock.Text = _displayedLyricText;
         OutgoingLyricTextBlock.Opacity = string.IsNullOrWhiteSpace(_displayedLyricText) ? 0 : 1;
         OutgoingLyricTranslateTransform.Y = 0;
@@ -973,6 +985,104 @@ public partial class IslandWindow : Window, ITrayIconHost
         _displayedLyricText = newCurrentLine;
     }
 
+    private async Task HandleCurrentLineChangedFlashIn(string newCurrentLine, int transitionVersion)
+    {
+        var outgoingText = _displayedLyricText;
+        var hasOutgoing = !string.IsNullOrWhiteSpace(outgoingText);
+        var hasIncoming = !string.IsNullOrWhiteSpace(newCurrentLine);
+        var tempo = CalculateLocalLyricTempoMultiplier(newCurrentLine, outgoingText);
+        var outDuration = (int)(FadeLineOutDurationMs / tempo);
+        var stagger = (int)(FlashStaggerMs / tempo);
+        var widthDuration = (int)(190 / tempo);
+
+        // The outgoing line always fades out as a whole using the plain text block.
+        SetLyricWordPanelsActive(false);
+        OutgoingLyricTextBlock.Text = outgoingText;
+        OutgoingLyricTextBlock.Opacity = hasOutgoing ? 1 : 0;
+        OutgoingLyricTranslateTransform.Y = 0;
+        IncomingLyricTextBlock.Text = string.Empty;
+        IncomingLyricTextBlock.Opacity = 0;
+
+        // 1. Fade out the whole outgoing line
+        if (hasOutgoing)
+        {
+            await AnimateDoubleAsync(
+                OutgoingLyricTextBlock,
+                OpacityProperty,
+                new DoubleAnimation
+                {
+                    To = 0,
+                    Duration = TimeSpan.FromMilliseconds(outDuration),
+                    EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
+                });
+
+            if (transitionVersion != _lyricTransitionVersion)
+            {
+                return;
+            }
+
+            OutgoingLyricTextBlock.BeginAnimation(OpacityProperty, null);
+            OutgoingLyricTextBlock.Opacity = 0;
+            OutgoingLyricTextBlock.Text = string.Empty;
+        }
+
+        if (!hasIncoming)
+        {
+            _displayedLyricText = string.Empty;
+
+            if (!ShouldHideForEmptyLine())
+            {
+                RestoreLyricTextBlocks(string.Empty);
+                return;
+            }
+
+            await Task.Delay(EmptyLineHideDelay);
+
+            if (transitionVersion != _lyricTransitionVersion)
+            {
+                return;
+            }
+
+            RestoreLyricTextBlocks(string.Empty);
+            await SetIslandContentVisibleAsync(false);
+            return;
+        }
+
+        if (!_isIslandContentVisible)
+        {
+            await SetIslandContentVisibleAsync(true);
+
+            if (transitionVersion != _lyricTransitionVersion)
+            {
+                return;
+            }
+        }
+
+        // 2. Resize island
+        await AnimateIslandWidthAsync(newCurrentLine, widthDuration);
+
+        if (transitionVersion != _lyricTransitionVersion)
+        {
+            return;
+        }
+
+        // 3. Pop in new words one by one, flashing the corners as each appears.
+        SetLyricWordPanelsActive(true);
+        PopulateFlashWordPanel(IncomingWordsPanel, newCurrentLine);
+        OutgoingWordsPanel.Visibility = Visibility.Collapsed;
+        IncomingWordsPanel.Visibility = Visibility.Visible;
+
+        await AnimateFlashWordsInAsync(IncomingWordsPanel, transitionVersion, stagger);
+
+        if (transitionVersion != _lyricTransitionVersion)
+        {
+            return;
+        }
+
+        RestoreLyricTextBlocks(newCurrentLine);
+        _displayedLyricText = newCurrentLine;
+    }
+
     private void CancelLyricTransitionAnimations()
     {
         OutgoingLyricTextBlock.BeginAnimation(OpacityProperty, null);
@@ -1221,6 +1331,131 @@ public partial class IslandWindow : Window, ITrayIconHost
         {
             return;
         }
+    }
+
+    private static BitmapImage LoadFlashImage()
+    {
+        var bitmap = new BitmapImage();
+        bitmap.BeginInit();
+        bitmap.CacheOption = BitmapCacheOption.OnLoad;
+        bitmap.UriSource = new Uri(Path.Combine(AppContext.BaseDirectory, "Assets", "island-flash.png"), UriKind.Absolute);
+        bitmap.EndInit();
+        bitmap.Freeze();
+        return bitmap;
+    }
+
+    private void PopulateFlashWordPanel(StackPanel panel, string text)
+    {
+        ClearWordPanel(panel);
+        var words = SplitLyricWords(text);
+        var characterBased = ContainsCharacterBasedScript(text);
+        for (var i = 0; i < words.Count; i++)
+        {
+            var wordText = characterBased || i == words.Count - 1 ? words[i] : words[i] + " ";
+            var textBlock = new TextBlock
+            {
+                Text = wordText,
+                Foreground = IncomingLyricTextBlock.Foreground,
+                FontFamily = IncomingLyricTextBlock.FontFamily,
+                FontSize = IncomingLyricTextBlock.FontSize,
+                FontWeight = IncomingLyricTextBlock.FontWeight,
+                FontStyle = IncomingLyricTextBlock.FontStyle,
+                VerticalAlignment = VerticalAlignment.Center,
+                Opacity = 0,
+                Padding = new Thickness(0, 2, 0, 2)
+            };
+
+            var wordGrid = new Grid();
+            wordGrid.Children.Add(textBlock);
+            wordGrid.Children.Add(CreateFlashImage(System.Windows.HorizontalAlignment.Right, System.Windows.VerticalAlignment.Top));
+            wordGrid.Children.Add(CreateFlashImage(System.Windows.HorizontalAlignment.Left, System.Windows.VerticalAlignment.Bottom));
+            panel.Children.Add(wordGrid);
+        }
+    }
+
+    private System.Windows.Controls.Image CreateFlashImage(System.Windows.HorizontalAlignment horizontalAlignment, System.Windows.VerticalAlignment verticalAlignment)
+    {
+        var image = new System.Windows.Controls.Image
+        {
+            Source = _flashImage,
+            Width = FlashIconSize,
+            Height = FlashIconSize,
+            Opacity = 0,
+            Stretch = Stretch.Uniform,
+            HorizontalAlignment = horizontalAlignment,
+            VerticalAlignment = verticalAlignment,
+            IsHitTestVisible = false
+        };
+        RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.HighQuality);
+        return image;
+    }
+
+    private async Task AnimateFlashWordsInAsync(StackPanel panel, int transitionVersion, int staggerMs = FlashStaggerMs)
+    {
+        var children = panel.Children.OfType<Grid>().ToList();
+        if (children.Count == 0)
+        {
+            return;
+        }
+
+        var animations = new List<Task>();
+        for (var i = 0; i < children.Count; i++)
+        {
+            var grid = children[i];
+            var textBlock = grid.Children.OfType<TextBlock>().FirstOrDefault();
+            var flashImages = grid.Children.OfType<System.Windows.Controls.Image>().ToList();
+
+            textBlock?.BeginAnimation(OpacityProperty, null);
+            foreach (var flashImage in flashImages)
+            {
+                flashImage.BeginAnimation(OpacityProperty, null);
+            }
+
+            var beginTime = TimeSpan.FromMilliseconds(i * staggerMs);
+
+            if (textBlock is not null)
+            {
+                animations.Add(AnimateDoubleAsync(textBlock, OpacityProperty, new DoubleAnimation
+                {
+                    From = 0,
+                    To = 1,
+                    BeginTime = beginTime,
+                    Duration = TimeSpan.Zero
+                }));
+            }
+
+            foreach (var flashImage in flashImages)
+            {
+                animations.Add(AnimateFlashEffectAsync(flashImage, beginTime));
+            }
+        }
+
+        await Task.WhenAll(animations);
+
+        if (transitionVersion != _lyricTransitionVersion)
+        {
+            return;
+        }
+    }
+
+    private static async Task AnimateFlashEffectAsync(System.Windows.Controls.Image image, TimeSpan beginTime)
+    {
+        await AnimateDoubleAsync(image, OpacityProperty, new DoubleAnimation
+        {
+            From = 0,
+            To = 1,
+            BeginTime = beginTime,
+            Duration = TimeSpan.FromMilliseconds(FlashInMs),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
+        });
+
+        await AnimateDoubleAsync(image, OpacityProperty, new DoubleAnimation
+        {
+            From = 1,
+            To = 0,
+            Duration = TimeSpan.FromMilliseconds(FlashOutMs),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
+        });
     }
 
     private bool ShouldHideForEmptyLine()

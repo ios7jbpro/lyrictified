@@ -5,5 +5,6 @@ public enum IslandAnimationMode
     Default,
     SlideIn,
     SlideInManual,
-    WordFade
+    WordFade,
+    FlashIn
 }
