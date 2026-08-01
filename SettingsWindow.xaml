@@ -1270,6 +1270,51 @@
 
                     <Border Style="{StaticResource CardStyle}">
                         <StackPanel>
+                            <TextBlock Text="Position" Style="{StaticResource SectionTitleStyle}" />
+                            <TextBlock Text="Choose where the lyrics appear on the wallpaper." Style="{StaticResource LabelStyle}" />
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="Horizontal" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" FontWeight="Medium" />
+                                    <TextBlock Text="Position lyrics horizontally across the wallpaper." Style="{StaticResource HintTextStyle}" />
+                                </StackPanel>
+                                <ComboBox x:Name="WallpaperHorizontalPositionComboBox"
+                                          Grid.Column="1"
+                                          MinWidth="120"
+                                          VerticalAlignment="Center"
+                                          SelectionChanged="WallpaperHorizontalPositionComboBox_OnSelectionChanged">
+                                    <ComboBoxItem Tag="Left" Content="Left" />
+                                    <ComboBoxItem Tag="Center" Content="Center" />
+                                    <ComboBoxItem Tag="Right" Content="Right" />
+                                </ComboBox>
+                            </Grid>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="Vertical" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" FontWeight="Medium" />
+                                    <TextBlock Text="Position lyrics vertically across the wallpaper." Style="{StaticResource HintTextStyle}" />
+                                </StackPanel>
+                                <ComboBox x:Name="WallpaperVerticalPositionComboBox"
+                                          Grid.Column="1"
+                                          MinWidth="120"
+                                          VerticalAlignment="Center"
+                                          SelectionChanged="WallpaperVerticalPositionComboBox_OnSelectionChanged">
+                                    <ComboBoxItem Tag="Top" Content="Top" />
+                                    <ComboBoxItem Tag="Center" Content="Center" />
+                                    <ComboBoxItem Tag="Bottom" Content="Bottom" />
+                                </ComboBox>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
                             <TextBlock Text="Container Size" Style="{StaticResource SectionTitleStyle}" />
                             <TextBlock Text="Custom maximum width in pixels. Leave empty for default." Style="{StaticResource LabelStyle}" />
                             <TextBox x:Name="WallpaperMaximumWidthTextBox"

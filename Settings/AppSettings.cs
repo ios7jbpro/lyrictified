@@ -62,6 +62,10 @@ public sealed class AppSettings
 
     public int WallpaperTimeout { get; set; } = 10;
 
+    public WallpaperHorizontalAlignment WallpaperHorizontalAlignment { get; set; } = WallpaperHorizontalAlignment.Center;
+
+    public WallpaperVerticalAlignment WallpaperVerticalAlignment { get; set; } = WallpaperVerticalAlignment.Top;
+
     public IslandAnimationMode TaskbarAnimationMode { get; set; } = IslandAnimationMode.Default;
 
     public double TaskbarAnimationManualSpeed { get; set; } = 1.0;

@@ -302,7 +302,9 @@ public partial class WallpaperWindow : Window, ITrayIconHost
             monitor,
             _settings.WallpaperMaximumWidth,
             GetEffectiveWallpaperScale(),
-            _settings.WallpaperContainerHeight);
+            _settings.WallpaperContainerHeight,
+            _settings.WallpaperHorizontalAlignment,
+            _settings.WallpaperVerticalAlignment);
         Left = bounds.Left;
         Top = bounds.Top;
         Width = bounds.Width;
@@ -2038,6 +2040,8 @@ public partial class WallpaperWindow : Window, ITrayIconHost
         persistedSettings.WallpaperAnimationMode = incomingSettings.WallpaperAnimationMode;
         persistedSettings.WallpaperAnimationManualSpeed = incomingSettings.WallpaperAnimationManualSpeed;
         persistedSettings.WallpaperTimeout = incomingSettings.WallpaperTimeout;
+        persistedSettings.WallpaperHorizontalAlignment = incomingSettings.WallpaperHorizontalAlignment;
+        persistedSettings.WallpaperVerticalAlignment = incomingSettings.WallpaperVerticalAlignment;
         persistedSettings.TaskbarAnimationMode = incomingSettings.TaskbarAnimationMode;
         persistedSettings.TaskbarAnimationManualSpeed = incomingSettings.TaskbarAnimationManualSpeed;
         persistedSettings.LyricAlignment = incomingSettings.LyricAlignment;

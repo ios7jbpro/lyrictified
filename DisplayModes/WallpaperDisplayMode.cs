@@ -1,4 +1,5 @@
 using Lyrictified.Interop;
+using Lyrictified.Settings;
 
 namespace Lyrictified.DisplayModes;
 
@@ -15,6 +16,7 @@ public static class WallpaperDisplayMode
     public const double WidthAnimationSlideOffset = 8;
     public const double VerticalScalePadding = 8;
     public const int MinimumContainerHeight = 20;
+    public const int EdgeMargin = 12;
 
     public static double GetSingleLineStartY()
     {
@@ -53,16 +55,33 @@ public static class WallpaperDisplayMode
             : GetAutomaticContainerHeight(scale);
     }
 
-    public static (double Left, double Top, double Width, double Height) GetWindowBounds(DisplayMonitor monitor, int? configuredMaximumWidth, double scale, int? configuredContainerHeight)
+    public static (double Left, double Top, double Width, double Height) GetWindowBounds(
+        DisplayMonitor monitor,
+        int? configuredMaximumWidth,
+        double scale,
+        int? configuredContainerHeight,
+        WallpaperHorizontalAlignment horizontalAlignment,
+        WallpaperVerticalAlignment verticalAlignment)
     {
         var monitorWidth = monitor.Bounds.right - monitor.Bounds.left;
+        var monitorHeight = monitor.Bounds.bottom - monitor.Bounds.top;
         var effectiveScale = GetEffectiveScale(scale);
         var maximumWidth = GetEffectiveMaximumWidth(configuredMaximumWidth);
         var logicalWidth = Math.Min(maximumWidth, Math.Max(MinimumMaximumWidth, monitorWidth / effectiveScale));
         var width = Math.Min(monitorWidth, logicalWidth * effectiveScale);
-        var left = monitor.Bounds.left + ((monitorWidth - width) / 2);
-        var top = monitor.Bounds.top;
+        var left = horizontalAlignment switch
+        {
+            WallpaperHorizontalAlignment.Left => monitor.Bounds.left + EdgeMargin,
+            WallpaperHorizontalAlignment.Right => monitor.Bounds.right - width - EdgeMargin,
+            _ => monitor.Bounds.left + ((monitorWidth - width) / 2)
+        };
         var height = GetEffectiveContainerHeight(configuredContainerHeight, effectiveScale);
+        var top = verticalAlignment switch
+        {
+            WallpaperVerticalAlignment.Bottom => monitor.Bounds.bottom - height - EdgeMargin,
+            WallpaperVerticalAlignment.Center => monitor.Bounds.top + ((monitorHeight - height) / 2),
+            _ => monitor.Bounds.top + EdgeMargin
+        };
         return (left, top, width, height);
     }
 }

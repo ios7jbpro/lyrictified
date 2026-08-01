@@ -243,6 +243,18 @@ public partial class SettingsWindow : Window
             WallpaperScaleTextBox.Text = (GetEffectiveWallpaperScale(settings.WallpaperScale) * 100).ToString("F0");
             WallpaperContainerHeightTextBox.Text = settings.WallpaperContainerHeight?.ToString() ?? string.Empty;
             WallpaperTimeoutTextBox.Text = settings.WallpaperTimeout.ToString();
+            WallpaperHorizontalPositionComboBox.SelectedIndex = settings.WallpaperHorizontalAlignment switch
+            {
+                WallpaperHorizontalAlignment.Left => 0,
+                WallpaperHorizontalAlignment.Right => 2,
+                _ => 1
+            };
+            WallpaperVerticalPositionComboBox.SelectedIndex = settings.WallpaperVerticalAlignment switch
+            {
+                WallpaperVerticalAlignment.Bottom => 2,
+                WallpaperVerticalAlignment.Center => 1,
+                _ => 0
+            };
             SetWallpaperAnimationModeSelection(settings.WallpaperAnimationMode);
             WallpaperAnimationManualSpeedSlider.Value = Math.Clamp(settings.WallpaperAnimationManualSpeed, 0.5, 2.5);
             WallpaperAnimationManualSpeedValueTextBlock.Text = $"{WallpaperAnimationManualSpeedSlider.Value:F1}x";
@@ -564,6 +576,16 @@ public partial class SettingsWindow : Window
         RaiseSettingsChanged();
     }
 
+    private void WallpaperHorizontalPositionComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        RaiseSettingsChanged();
+    }
+
+    private void WallpaperVerticalPositionComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        RaiseSettingsChanged();
+    }
+
     private void WallpaperMaximumWidthTextBox_OnTextChanged(object sender, TextChangedEventArgs e)
     {
         UpdateWallpaperMaximumWidthHint();
@@ -738,6 +760,18 @@ public partial class SettingsWindow : Window
             WallpaperAnimationMode = GetSelectedWallpaperAnimationMode(),
             WallpaperAnimationManualSpeed = WallpaperAnimationManualSpeedSlider?.Value ?? 1.0,
             WallpaperTimeout = ParseWallpaperTimeout(),
+            WallpaperHorizontalAlignment = (WallpaperHorizontalPositionComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() switch
+            {
+                "Left" => WallpaperHorizontalAlignment.Left,
+                "Right" => WallpaperHorizontalAlignment.Right,
+                _ => WallpaperHorizontalAlignment.Center
+            },
+            WallpaperVerticalAlignment = (WallpaperVerticalPositionComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() switch
+            {
+                "Bottom" => WallpaperVerticalAlignment.Bottom,
+                "Center" => WallpaperVerticalAlignment.Center,
+                _ => WallpaperVerticalAlignment.Top
+            },
             LyricAlignment = (LyricAlignmentComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() switch
             {
                 "Left" => LyricAlignment.Left,
