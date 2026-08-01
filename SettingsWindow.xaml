@@ -1138,6 +1138,11 @@
                                              Content="Flash-in"
                                              Style="{StaticResource AnimationModeTileStyle}"
                                              Checked="IslandAnimationTile_OnChecked" />
+                                <RadioButton x:Name="IslandAnimationFlashInRandomTile"
+                                             GroupName="IslandAnimationModeGroup"
+                                             Content="Flash-in (random)"
+                                             Style="{StaticResource AnimationModeTileStyle}"
+                                             Checked="IslandAnimationTile_OnChecked" />
                             </UniformGrid>
                             <Grid x:Name="IslandAnimationManualSpeedPanel"
                                   Margin="0,12,0,0"

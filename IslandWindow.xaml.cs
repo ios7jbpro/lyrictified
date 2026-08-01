@@ -74,6 +74,8 @@ public partial class IslandWindow : Window, ITrayIconHost
     private const int SlideWordStaggerMs = 75;
     private const int FadeLineOutDurationMs = 160;
     private const int FlashIconSize = 12;
+    private const int FlashIconSizeSingle = 18;
+    private const int FlashIconSizeTriple = 9;
     private const int FlashInMs = 90;
     private const int FlashOutMs = 150;
     private const int FlashStaggerMs = 90;
@@ -585,7 +587,8 @@ public partial class IslandWindow : Window, ITrayIconHost
             return;
         }
 
-        if (_settings.IslandAnimationMode == IslandAnimationMode.FlashIn)
+        if (_settings.IslandAnimationMode == IslandAnimationMode.FlashIn
+            || _settings.IslandAnimationMode == IslandAnimationMode.FlashInRandom)
         {
             await HandleCurrentLineChangedFlashIn(newCurrentLine, transitionVersion);
             return;
@@ -1069,7 +1072,14 @@ public partial class IslandWindow : Window, ITrayIconHost
 
         // 3. Pop in new words one by one, flashing the corners as each appears.
         SetLyricWordPanelsActive(true);
-        PopulateFlashWordPanel(IncomingWordsPanel, newCurrentLine);
+        if (_settings.IslandAnimationMode == IslandAnimationMode.FlashInRandom)
+        {
+            PopulateRandomFlashWordPanel(IncomingWordsPanel, newCurrentLine);
+        }
+        else
+        {
+            PopulateFlashWordPanel(IncomingWordsPanel, newCurrentLine);
+        }
         OutgoingWordsPanel.Visibility = Visibility.Collapsed;
         IncomingWordsPanel.Visibility = Visibility.Visible;
         _displayedLyricText = newCurrentLine;
@@ -1376,6 +1386,71 @@ public partial class IslandWindow : Window, ITrayIconHost
             wordGrid.Children.Add(CreateFlashImage(System.Windows.HorizontalAlignment.Left, System.Windows.VerticalAlignment.Bottom));
             panel.Children.Add(wordGrid);
         }
+    }
+
+    private void PopulateRandomFlashWordPanel(StackPanel panel, string text)
+    {
+        ClearWordPanel(panel);
+        var words = SplitLyricWords(text);
+        var characterBased = ContainsCharacterBasedScript(text);
+        for (var i = 0; i < words.Count; i++)
+        {
+            var wordText = characterBased || i == words.Count - 1 ? words[i] : words[i] + " ";
+            var textBlock = new TextBlock
+            {
+                Text = wordText,
+                Foreground = IncomingLyricTextBlock.Foreground,
+                FontFamily = IncomingLyricTextBlock.FontFamily,
+                FontSize = IncomingLyricTextBlock.FontSize,
+                FontWeight = IncomingLyricTextBlock.FontWeight,
+                FontStyle = IncomingLyricTextBlock.FontStyle,
+                VerticalAlignment = VerticalAlignment.Center,
+                Opacity = 0,
+                Padding = new Thickness(0, 2, 0, 2)
+            };
+
+            var wordGrid = new Grid();
+            wordGrid.Children.Add(textBlock);
+
+            var starCount = FlashRandom.Next(1, 4);
+            for (var s = 0; s < starCount; s++)
+            {
+                wordGrid.Children.Add(CreateRandomFlashImage(starCount));
+            }
+
+            panel.Children.Add(wordGrid);
+        }
+    }
+
+    private System.Windows.Controls.Image CreateRandomFlashImage(int starCount)
+    {
+        var size = starCount switch
+        {
+            1 => FlashIconSizeSingle,
+            3 => FlashIconSizeTriple,
+            _ => FlashIconSize
+        };
+        var image = new System.Windows.Controls.Image
+        {
+            Source = _flashImage,
+            Width = size,
+            Height = size,
+            Opacity = 0,
+            Stretch = Stretch.Uniform,
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+            VerticalAlignment = System.Windows.VerticalAlignment.Center,
+            IsHitTestVisible = false,
+            RenderTransformOrigin = new System.Windows.Point(0.5, 0.5)
+        };
+        var offsetX = FlashRandom.NextDouble() * 28 - 14;
+        var offsetY = FlashRandom.NextDouble() * 18 - 9;
+        var angle = FlashRandom.NextDouble() * 120 - 60;
+        var transformGroup = new TransformGroup();
+        transformGroup.Children.Add(new TranslateTransform(offsetX, offsetY));
+        transformGroup.Children.Add(new RotateTransform(angle));
+        image.RenderTransform = transformGroup;
+        RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.HighQuality);
+        return image;
     }
 
     private System.Windows.Controls.Image CreateFlashImage(System.Windows.HorizontalAlignment horizontalAlignment, System.Windows.VerticalAlignment verticalAlignment)

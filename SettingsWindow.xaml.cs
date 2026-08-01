@@ -467,6 +467,7 @@ public partial class SettingsWindow : Window
         IslandAnimationSlideInManualTile.IsChecked = mode == IslandAnimationMode.SlideInManual;
         IslandAnimationWordFadeTile.IsChecked = mode == IslandAnimationMode.WordFade;
         IslandAnimationFlashInTile.IsChecked = mode == IslandAnimationMode.FlashIn;
+        IslandAnimationFlashInRandomTile.IsChecked = mode == IslandAnimationMode.FlashInRandom;
     }
 
     private IslandAnimationMode GetSelectedIslandAnimationMode()
@@ -489,6 +490,11 @@ public partial class SettingsWindow : Window
         if (IslandAnimationFlashInTile.IsChecked == true)
         {
             return IslandAnimationMode.FlashIn;
+        }
+
+        if (IslandAnimationFlashInRandomTile.IsChecked == true)
+        {
+            return IslandAnimationMode.FlashInRandom;
         }
 
         return IslandAnimationMode.Default;
