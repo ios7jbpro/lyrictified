@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.ComponentModel;
 using System.IO;
 using System.Windows;
+using System.Text;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -1083,7 +1084,24 @@ public partial class IslandWindow : Window, ITrayIconHost
             return new List<string>();
         }
 
+        if (ContainsCharacterBasedScript(text))
+        {
+            return text.EnumerateRunes()
+                .Where(rune => !Rune.IsWhiteSpace(rune))
+                .Select(rune => rune.ToString())
+                .ToList();
+        }
+
         return text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).ToList();
+    }
+
+    private static bool ContainsCharacterBasedScript(string text)
+    {
+        return text.EnumerateRunes().Any(rune =>
+            (rune.Value >= 0x3040 && rune.Value <= 0x30FF) || // Hiragana and Katakana
+            (rune.Value >= 0x3400 && rune.Value <= 0x9FFF) || // CJK ideographs
+            (rune.Value >= 0xAC00 && rune.Value <= 0xD7AF) || // Hangul syllables
+            (rune.Value >= 0x1100 && rune.Value <= 0x11FF)); // Hangul jamo
     }
 
     private async Task AnimateSlideWordsAsync(StackPanel panel, bool slideOut, int transitionVersion, int durationMs = SlideWordDurationMs, int staggerMs = SlideWordStaggerMs)
