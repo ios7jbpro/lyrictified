@@ -1046,7 +1046,8 @@ public partial class IslandWindow : Window, ITrayIconHost
                 FontStyle = IncomingLyricTextBlock.FontStyle,
                 VerticalAlignment = VerticalAlignment.Center,
                 Opacity = initialYOffset == 0 ? 1 : 0,
-                RenderTransform = transform
+                RenderTransform = transform,
+                Padding = new Thickness(0, 2, 0, 2)
             };
             panel.Children.Add(textBlock);
         }
