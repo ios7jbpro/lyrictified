@@ -1,4 +1,7 @@
 using System.IO;
+using System.Net;
+using System.Net.Sockets;
+using System.Text.Json;
 using Windows.Media.Control;
 using Lyrictified.Models;
 
@@ -10,12 +13,22 @@ public sealed class MediaSessionWatcher : IDisposable
     private readonly HashSet<string> _reportedAppIds = new(StringComparer.OrdinalIgnoreCase);
     private GlobalSystemMediaTransportControlsSessionManager? _manager;
     private GlobalSystemMediaTransportControlsSession? _currentSession;
+    private TcpListener? _bridgeListener;
+    private CancellationTokenSource? _bridgeCts;
+    private SongInfo? _bridgeSong;
+    private TimeSpan _bridgePosition;
 
     public event EventHandler<SongInfo?>? SongChanged;
     public event EventHandler<DetectedMediaAppInfo>? DetectedApp;
 
     public async Task InitializeAsync()
     {
+        if (App.IsWineBridge)
+        {
+            InitializeWineBridge();
+            return;
+        }
+
         try
         {
             _manager = await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
@@ -28,6 +41,47 @@ public sealed class MediaSessionWatcher : IDisposable
             Dispose();
             throw;
         }
+    }
+
+    private void InitializeWineBridge()
+    {
+        if (App.WineBridgePort == 0)
+            return;
+
+        _bridgeListener = new TcpListener(IPAddress.Loopback, App.WineBridgePort);
+        _bridgeListener.Start();
+        _bridgeCts = new CancellationTokenSource();
+        _ = ListenToWineBridgeAsync(_bridgeCts.Token);
+        Logger.Log($"Wine media bridge listening on 127.0.0.1:{App.WineBridgePort}.");
+    }
+
+    private async Task ListenToWineBridgeAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested && _bridgeListener is not null)
+            {
+                using var client = await _bridgeListener.AcceptTcpClientAsync(cancellationToken);
+                using var reader = new StreamReader(client.GetStream());
+                while (!cancellationToken.IsCancellationRequested && await reader.ReadLineAsync(cancellationToken) is { } line)
+                {
+                    try
+                    {
+                        var update = JsonSerializer.Deserialize<WineMediaUpdate>(line);
+                        if (update is null || string.IsNullOrWhiteSpace(update.Title))
+                            continue;
+
+                        _bridgePosition = TimeSpan.FromSeconds(Math.Max(0, update.Position));
+                        _bridgeSong = new SongInfo(update.Title, update.Artist ?? "Unknown artist", update.Album,
+                            TimeSpan.FromSeconds(Math.Max(0, update.Duration)), update.Status.Equals("Playing", StringComparison.OrdinalIgnoreCase));
+                        RaiseSongChanged(_bridgeSong);
+                    }
+                    catch (JsonException) { }
+                }
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { Logger.Log($"Wine media bridge stopped: {ex.Message}"); }
     }
 
     public void UpdateIgnoredAppIds(IEnumerable<string>? ignoredAppIds)
@@ -49,6 +103,8 @@ public sealed class MediaSessionWatcher : IDisposable
 
     public Task<TimeSpan?> GetPlaybackPositionAsync()
     {
+        if (App.IsWineBridge)
+            return Task.FromResult<TimeSpan?>(_bridgeSong is null ? null : _bridgePosition);
         try
         {
             if (_currentSession is null)
@@ -67,6 +123,8 @@ public sealed class MediaSessionWatcher : IDisposable
 
     public async Task<SongInfo?> GetCurrentSongAsync()
     {
+        if (App.IsWineBridge)
+            return _bridgeSong;
         if (_currentSession is null)
         {
             return null;
@@ -77,6 +135,8 @@ public sealed class MediaSessionWatcher : IDisposable
 
     public async Task TogglePlayPauseAsync()
     {
+        if (App.IsWineBridge)
+            return;
         if (_currentSession is null)
         {
             return;
@@ -334,6 +394,16 @@ public sealed class MediaSessionWatcher : IDisposable
 
     public void Dispose()
     {
+        if (_bridgeCts is not null)
+        {
+            _bridgeCts.Cancel();
+            _bridgeListener?.Stop();
+            _bridgeCts.Dispose();
+        }
+
+        if (App.IsWineBridge)
+            return;
+
         if (_manager is not null)
         {
             _manager.CurrentSessionChanged -= OnCurrentSessionChanged;
@@ -347,4 +417,6 @@ public sealed class MediaSessionWatcher : IDisposable
             _currentSession.TimelinePropertiesChanged -= OnSessionTimelinePropertiesChanged;
         }
     }
+
+    private sealed record WineMediaUpdate(string Title, string? Artist, string? Album, double Duration, double Position, string Status);
 }

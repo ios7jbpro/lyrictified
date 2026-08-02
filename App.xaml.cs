@@ -14,6 +14,8 @@ public partial class App : Application
     public const string AppUserModelId = "Lyrictified.App";
     public static string LocalLyricsBaseAddress { get; set; } = "https://api.lyrictified.xyz/";
     public static bool IgnoreLocalCache { get; set; }
+    public static bool IsWineBridge { get; private set; }
+    public static int WineBridgePort { get; private set; }
 
     private static readonly int WM_SHOW_SETTINGS = (int)RegisterWindowMessage("Lyrictified_ShowSettings");
     private static Mutex? _instanceMutex;
@@ -22,6 +24,7 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        ParseLaunchArguments(e.Args);
         if (!TryAcquireMutex())
         {
             SignalExistingInstance();
@@ -52,6 +55,32 @@ public partial class App : Application
 
         WindowsAutostartService.Apply(settings.AutostartWithWindows);
         RestartDisplayWindow();
+    }
+
+    private static void ParseLaunchArguments(IEnumerable<string> arguments)
+    {
+        foreach (var argument in arguments)
+        {
+            var parts = argument.TrimStart('-', '/').Split('=', 2);
+            if (parts.Length != 2)
+                continue;
+
+            if (parts[0].Equals("wine", StringComparison.OrdinalIgnoreCase)
+                && parts[1].Equals("1", StringComparison.OrdinalIgnoreCase))
+            {
+                IsWineBridge = true;
+            }
+            else if (parts[0].Equals("port", StringComparison.OrdinalIgnoreCase)
+                && int.TryParse(parts[1], out var port) && port is >= 1 and <= 65535)
+            {
+                WineBridgePort = port;
+            }
+        }
+
+        if (IsWineBridge && WineBridgePort == 0)
+        {
+            Logger.Log("Wine bridge requested without a valid port; using no media source.");
+        }
     }
 
     private static bool TryAcquireMutex()
