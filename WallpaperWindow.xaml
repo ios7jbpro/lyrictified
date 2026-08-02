@@ -71,6 +71,7 @@
                                TextAlignment="Center"
                                TextWrapping="NoWrap"
                                TextTrimming="CharacterEllipsis"
+                               ClipToBounds="True"
                                MaxWidth="2000"
                                Padding="0,2"
                                Opacity="0">
@@ -87,6 +88,7 @@
                                TextAlignment="Center"
                                TextWrapping="NoWrap"
                                TextTrimming="CharacterEllipsis"
+                               ClipToBounds="True"
                                MaxWidth="2000"
                                Padding="0,2"
                                Opacity="1">

@@ -369,8 +369,13 @@ public partial class WallpaperWindow : Window, ITrayIconHost
     {
         if (!double.IsNaN(LyricStage.ActualWidth) && LyricStage.ActualWidth > 0)
         {
-            IncomingLyricTextBlock.Width = LyricStage.ActualWidth;
-            OutgoingLyricTextBlock.Width = LyricStage.ActualWidth;
+            var width = Math.Max(0, LyricStage.ActualWidth);
+            IncomingLyricTextBlock.MinWidth = 0;
+            OutgoingLyricTextBlock.MinWidth = 0;
+            IncomingLyricTextBlock.MaxWidth = width;
+            OutgoingLyricTextBlock.MaxWidth = width;
+            IncomingLyricTextBlock.Width = width;
+            OutgoingLyricTextBlock.Width = width;
         }
     }
 
