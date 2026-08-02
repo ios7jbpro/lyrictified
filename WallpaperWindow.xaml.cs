@@ -384,8 +384,7 @@ public partial class WallpaperWindow : Window, ITrayIconHost
         }
 
         panel.Width = double.NaN;
-        panel.Padding = new Thickness(0);
-        panel.Measure(new Size(double.PositiveInfinity, LyricStage.ActualHeight));
+        panel.Measure(new System.Windows.Size(double.PositiveInfinity, LyricStage.ActualHeight));
         var contentWidth = panel.DesiredSize.Width;
         var horizontal = _settings.WallpaperTextHorizontalAlignment;
         var leftPadding = horizontal switch
@@ -398,7 +397,10 @@ public partial class WallpaperWindow : Window, ITrayIconHost
         panel.Width = width;
         panel.MaxWidth = width;
         panel.ClipToBounds = true;
-        panel.Padding = new Thickness(leftPadding, 0, 0, 0);
+        if (panel.Children.Count > 0 && panel.Children[0] is FrameworkElement firstChild)
+        {
+            firstChild.Margin = new Thickness(leftPadding, 0, 0, 0);
+        }
     }
 
     private double GetEffectiveWallpaperScale()
