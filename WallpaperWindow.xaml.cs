@@ -339,6 +339,14 @@ public partial class WallpaperWindow : Window, ITrayIconHost
         OutgoingWordsPanel.HorizontalAlignment = horizontal;
         IncomingWordsPanel.VerticalAlignment = vertical;
         OutgoingWordsPanel.VerticalAlignment = vertical;
+
+        // Keep the lyric elements sized to the stage.  Applying Left/Right to
+        // the element itself makes WPF measure it at its content width, so a
+        // long line is positioned by its centre/edge and then clipped instead
+        // of being aligned inside the configured container.
+        IncomingLyricTextBlock.HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch;
+        OutgoingLyricTextBlock.HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch;
+        LyricStage.ClipToBounds = true;
         IncomingLyricTextBlock.TextAlignment = textAlignment;
         OutgoingLyricTextBlock.TextAlignment = textAlignment;
         IncomingLyricTextBlock.VerticalAlignment = vertical;
