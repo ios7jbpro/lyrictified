@@ -63,7 +63,7 @@ public partial class WallpaperWindow : Window, ITrayIconHost
     private const double FlashLayoutBox = 2;
     private const double FlashGlowScale = 24;
     private const double FlashGlowMaxOpacity = 0.45;
-    private const double EffectOverflow = 32;
+    private const double EffectOverflow = 96;
     private double _contentRootWidth;
     private double _contentHeight;
 
@@ -213,6 +213,9 @@ public partial class WallpaperWindow : Window, ITrayIconHost
         RootGrid.Background = IsSettingsWindowVisible()
             ? new SolidColorBrush(MediaColor.FromArgb(180, 10, 14, 20))
             : new SolidColorBrush(MediaColor.FromArgb(0, 0, 0, 0));
+        OverflowAreaOverlay.Visibility = IsSettingsWindowVisible()
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         var lyricColor = GetCustomLyricColor();
         ApplyFlashColor(lyricColor);
         var lyricBrush = new SolidColorBrush(lyricColor);
@@ -1305,8 +1308,6 @@ public partial class WallpaperWindow : Window, ITrayIconHost
             };
 
             var wordGrid = new Grid();
-            wordGrid.ClipToBounds = false;
-            wordGrid.Margin = new Thickness(18);
             wordGrid.Children.Add(CreateFlashGlow());
             wordGrid.Children.Add(textBlock);
             wordGrid.Children.Add(CreateFlashImage(System.Windows.HorizontalAlignment.Right, System.Windows.VerticalAlignment.Top));
@@ -1337,8 +1338,6 @@ public partial class WallpaperWindow : Window, ITrayIconHost
             };
 
             var wordGrid = new Grid();
-            wordGrid.ClipToBounds = false;
-            wordGrid.Margin = new Thickness(18);
             wordGrid.Children.Add(CreateFlashGlow());
             wordGrid.Children.Add(textBlock);
 

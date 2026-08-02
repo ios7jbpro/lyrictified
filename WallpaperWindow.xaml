@@ -19,19 +19,12 @@
           Background="#00000000">
         <Grid x:Name="OverflowAreaOverlay"
               IsHitTestVisible="False"
+              Visibility="Collapsed"
               Panel.ZIndex="-1">
-            <Border Height="32"
-                    VerticalAlignment="Top"
-                    Background="#261E90FF" />
-            <Border Height="32"
-                    VerticalAlignment="Bottom"
-                    Background="#261E90FF" />
-            <Border Width="32"
-                    HorizontalAlignment="Left"
-                    Background="#261E90FF" />
-            <Border Width="32"
-                    HorizontalAlignment="Right"
-                    Background="#261E90FF" />
+            <Border Height="96" VerticalAlignment="Top" Background="#262A9FFF" />
+            <Border Height="96" VerticalAlignment="Bottom" Background="#262A9FFF" />
+            <Border Width="96" HorizontalAlignment="Left" Background="#262A9FFF" />
+            <Border Width="96" HorizontalAlignment="Right" Background="#262A9FFF" />
         </Grid>
         <Border x:Name="MonitorWarningBanner"
                 HorizontalAlignment="Center"
