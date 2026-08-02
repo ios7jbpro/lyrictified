@@ -375,7 +375,7 @@ public partial class WallpaperWindow : Window, ITrayIconHost
         // of being aligned inside the configured container.
         IncomingLyricTextBlock.HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch;
         OutgoingLyricTextBlock.HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch;
-        LyricStage.ClipToBounds = true;
+        LyricStage.ClipToBounds = false;
         UpdateWallpaperTextBlockWidth();
         IncomingLyricTextBlock.TextAlignment = textAlignment;
         OutgoingLyricTextBlock.TextAlignment = textAlignment;
