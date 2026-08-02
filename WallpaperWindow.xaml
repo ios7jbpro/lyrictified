@@ -73,7 +73,9 @@
                                VerticalAlignment="Center"
                                HorizontalAlignment="Stretch"
                                TextAlignment="Center"
+                               TextWrapping="NoWrap"
                                TextTrimming="CharacterEllipsis"
+                               MaxWidth="2000"
                                Padding="0,2"
                                Opacity="0">
                         <TextBlock.RenderTransform>
@@ -87,7 +89,9 @@
                                VerticalAlignment="Center"
                                HorizontalAlignment="Stretch"
                                TextAlignment="Center"
+                               TextWrapping="NoWrap"
                                TextTrimming="CharacterEllipsis"
+                               MaxWidth="2000"
                                Padding="0,2"
                                Opacity="1">
                         <TextBlock.RenderTransform>
