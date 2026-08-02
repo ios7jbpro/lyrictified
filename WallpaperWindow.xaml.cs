@@ -86,6 +86,7 @@ public partial class WallpaperWindow : Window, ITrayIconHost
         Loaded += OnLoaded;
         Closing += OnClosing;
         LyricStage.SizeChanged += LyricStage_OnSizeChanged;
+        RootGrid.SizeChanged += RootGrid_OnSizeChanged;
     }
 
     private void OnSourceInitialized(object? sender, EventArgs e)
@@ -122,6 +123,7 @@ public partial class WallpaperWindow : Window, ITrayIconHost
         _timeoutTimer.Tick -= TimeoutTimer_OnTick;
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
         LyricStage.SizeChanged -= LyricStage_OnSizeChanged;
+        RootGrid.SizeChanged -= RootGrid_OnSizeChanged;
         SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
         SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
         _settingsWindow?.Close();
@@ -312,6 +314,19 @@ public partial class WallpaperWindow : Window, ITrayIconHost
         var scale = GetEffectiveWallpaperScale();
         WallpaperLayerScaleTransform.ScaleX = scale;
         WallpaperLayerScaleTransform.ScaleY = scale;
+
+        if (RootGrid.ActualWidth > 0 && RootGrid.ActualHeight > 0)
+        {
+            WallpaperLayer.Width = RootGrid.ActualWidth / scale;
+            WallpaperLayer.Height = RootGrid.ActualHeight / scale;
+            WallpaperLayer.HorizontalAlignment = System.Windows.HorizontalAlignment.Center;
+            WallpaperLayer.VerticalAlignment = System.Windows.VerticalAlignment.Center;
+        }
+    }
+
+    private void RootGrid_OnSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        ApplyWallpaperScale();
     }
 
     private void ApplyWallpaperTextAlignment()
