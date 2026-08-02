@@ -17,6 +17,22 @@
           Margin="12,0,12,0"
           ClipToBounds="False"
           Background="#00000000">
+        <Grid x:Name="OverflowAreaOverlay"
+              IsHitTestVisible="False"
+              Panel.ZIndex="-1">
+            <Border Height="32"
+                    VerticalAlignment="Top"
+                    Background="#261E90FF" />
+            <Border Height="32"
+                    VerticalAlignment="Bottom"
+                    Background="#261E90FF" />
+            <Border Width="32"
+                    HorizontalAlignment="Left"
+                    Background="#261E90FF" />
+            <Border Width="32"
+                    HorizontalAlignment="Right"
+                    Background="#261E90FF" />
+        </Grid>
         <Border x:Name="MonitorWarningBanner"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Top"

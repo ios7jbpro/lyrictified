@@ -1305,6 +1305,8 @@ public partial class WallpaperWindow : Window, ITrayIconHost
             };
 
             var wordGrid = new Grid();
+            wordGrid.ClipToBounds = false;
+            wordGrid.Margin = new Thickness(18);
             wordGrid.Children.Add(CreateFlashGlow());
             wordGrid.Children.Add(textBlock);
             wordGrid.Children.Add(CreateFlashImage(System.Windows.HorizontalAlignment.Right, System.Windows.VerticalAlignment.Top));
@@ -1335,6 +1337,8 @@ public partial class WallpaperWindow : Window, ITrayIconHost
             };
 
             var wordGrid = new Grid();
+            wordGrid.ClipToBounds = false;
+            wordGrid.Margin = new Thickness(18);
             wordGrid.Children.Add(CreateFlashGlow());
             wordGrid.Children.Add(textBlock);
 
