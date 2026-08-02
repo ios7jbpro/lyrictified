@@ -1894,6 +1894,19 @@ public partial class IslandWindow : Window, ITrayIconHost
 
     private void HandlePlaybackPausedChanged(bool isPaused)
     {
+        if (App.IsWineBridge)
+        {
+            if (isPaused)
+            {
+                Hide();
+            }
+            else
+            {
+                Show();
+                Activate();
+            }
+        }
+
         AnimatePlaybackStateChange(isPaused);
 
         if (isPaused && _settings.IslandTimeout > 0)

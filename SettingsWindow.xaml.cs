@@ -44,6 +44,13 @@ public partial class SettingsWindow : Window
         };
         _textSettingsChangedTimer.Tick += TextSettingsChangedTimer_OnTick;
         InitializeComponent();
+        if (App.IsWineBridge)
+        {
+            AppBarDisplayModeItem.Visibility = Visibility.Collapsed;
+            WallpaperDisplayModeItem.Visibility = Visibility.Collapsed;
+            AppBarTabItem.Visibility = Visibility.Collapsed;
+            WallpaperTabItem.Visibility = Visibility.Collapsed;
+        }
         DetectedAppsListBox.ItemsSource = _detectedApps;
         ContributorsItemsControl.ItemsSource = Contributors;
         IslandAnimationDefaultTile.Tag = LoadAnimationModeImage("island-animation-default.png");
@@ -165,7 +172,10 @@ public partial class SettingsWindow : Window
             var islandMonitor = settings.IslandPreferredMonitorDeviceName ?? settings.PreferredMonitorDeviceName;
             var wallpaperMonitor = settings.WallpaperPreferredMonitorDeviceName ?? settings.PreferredMonitorDeviceName;
 
-            DisplayModeComboBox.SelectedIndex = settings.DisplayMode switch
+            var displayMode = App.IsWineBridge && settings.DisplayMode is DisplayMode.AppBar or DisplayMode.Wallpaper
+                ? DisplayMode.Windowed
+                : settings.DisplayMode;
+            DisplayModeComboBox.SelectedIndex = displayMode switch
             {
                 DisplayMode.Windowed => 1,
                 DisplayMode.Taskbar => 2,
@@ -1361,7 +1371,7 @@ public partial class SettingsWindow : Window
 
     private DisplayMode GetSelectedDisplayMode()
     {
-        return (DisplayModeComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() switch
+        var mode = (DisplayModeComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() switch
         {
             "Windowed" => DisplayMode.Windowed,
             "Taskbar" => DisplayMode.Taskbar,
@@ -1369,6 +1379,9 @@ public partial class SettingsWindow : Window
             "Wallpaper" => DisplayMode.Wallpaper,
             _ => DisplayMode.AppBar
         };
+        return App.IsWineBridge && mode is DisplayMode.AppBar or DisplayMode.Wallpaper
+            ? DisplayMode.Windowed
+            : mode;
     }
 
     private void LoadDetectedApps(AppSettings settings)

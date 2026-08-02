@@ -555,11 +555,11 @@
                             <ComboBox x:Name="DisplayModeComboBox"
                                       MinWidth="260"
                                       SelectionChanged="DisplayModeComboBox_OnSelectionChanged">
-                                <ComboBoxItem Tag="AppBar" Content="App bar (top of screen)" />
+                                <ComboBoxItem x:Name="AppBarDisplayModeItem" Tag="AppBar" Content="App bar (top of screen)" />
                                 <ComboBoxItem Tag="Windowed" Content="Windowed" />
                                 <ComboBoxItem Tag="Taskbar" Content="Taskbar" />
                                 <ComboBoxItem Tag="Island" Content="Island" />
-                                <ComboBoxItem Tag="Wallpaper" Content="Wallpaper" />
+                                <ComboBoxItem x:Name="WallpaperDisplayModeItem" Tag="Wallpaper" Content="Wallpaper" />
                             </ComboBox>
                         </StackPanel>
                     </Border>
@@ -636,7 +636,7 @@
             </ScrollViewer>
         </TabItem>
 
-        <TabItem Header="App Bar">
+        <TabItem x:Name="AppBarTabItem" Header="App Bar">
             <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel Margin="4,8,4,4">
                     <Border Style="{StaticResource CardStyle}">
@@ -1253,7 +1253,7 @@
             </ScrollViewer>
         </TabItem>
 
-        <TabItem Header="Wallpaper">
+        <TabItem x:Name="WallpaperTabItem" Header="Wallpaper">
             <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel Margin="4,8,4,4">
                     <Border Style="{StaticResource CardStyle}">

@@ -212,6 +212,11 @@ public partial class App : Application
     public void RestartDisplayWindow()
     {
         var settings = _appSettingsService.Load();
+        if (IsWineBridge && settings.DisplayMode is DisplayMode.AppBar or DisplayMode.Wallpaper)
+        {
+            settings.DisplayMode = DisplayMode.Windowed;
+            _appSettingsService.Save(settings);
+        }
         var previousWindow = MainWindow;
         Window nextWindow = settings.DisplayMode switch
         {
