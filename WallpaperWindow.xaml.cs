@@ -96,6 +96,7 @@ public partial class WallpaperWindow : Window, ITrayIconHost
         ApplyMonitorSetting();
         PositionWindow();
         ApplyAppearance();
+        ApplyWallpaperTextAlignment();
         WorkspaceVisibilityManager.PinToAllWorkspaces(this);
         _trayIcon = new TrayIcon(this);
 
@@ -107,6 +108,7 @@ public partial class WallpaperWindow : Window, ITrayIconHost
     {
         IncomingLyricTextBlock.Text = _viewModel.TaskbarCurrentLine;
         _displayedLyricText = _viewModel.TaskbarCurrentLine;
+        ApplyWallpaperTextAlignment();
         UpdateWallpaperContentVisibility(_displayedLyricText);
         await _viewModel.InitializeAsync();
     }
@@ -308,6 +310,39 @@ public partial class WallpaperWindow : Window, ITrayIconHost
         var scale = GetEffectiveWallpaperScale();
         WallpaperLayerScaleTransform.ScaleX = scale;
         WallpaperLayerScaleTransform.ScaleY = scale;
+    }
+
+    private void ApplyWallpaperTextAlignment()
+    {
+        var horizontal = _settings.WallpaperTextHorizontalAlignment switch
+        {
+            WallpaperTextHorizontalAlignment.Left => System.Windows.HorizontalAlignment.Left,
+            WallpaperTextHorizontalAlignment.Right => System.Windows.HorizontalAlignment.Right,
+            _ => System.Windows.HorizontalAlignment.Center
+        };
+        var vertical = _settings.WallpaperTextVerticalAlignment switch
+        {
+            WallpaperTextVerticalAlignment.Top => System.Windows.VerticalAlignment.Top,
+            WallpaperTextVerticalAlignment.Bottom => System.Windows.VerticalAlignment.Bottom,
+            _ => System.Windows.VerticalAlignment.Center
+        };
+        var textAlignment = horizontal switch
+        {
+            System.Windows.HorizontalAlignment.Left => TextAlignment.Left,
+            System.Windows.HorizontalAlignment.Right => TextAlignment.Right,
+            _ => TextAlignment.Center
+        };
+        var verticalMargin = vertical == System.Windows.VerticalAlignment.Center ? 0.0 : 8.0;
+        LyricStage.Margin = new Thickness(18, verticalMargin, 18, verticalMargin);
+
+        IncomingWordsPanel.HorizontalAlignment = horizontal;
+        OutgoingWordsPanel.HorizontalAlignment = horizontal;
+        IncomingWordsPanel.VerticalAlignment = vertical;
+        OutgoingWordsPanel.VerticalAlignment = vertical;
+        IncomingLyricTextBlock.TextAlignment = textAlignment;
+        OutgoingLyricTextBlock.TextAlignment = textAlignment;
+        IncomingLyricTextBlock.VerticalAlignment = vertical;
+        OutgoingLyricTextBlock.VerticalAlignment = vertical;
     }
 
     private double GetEffectiveWallpaperScale()
@@ -1677,6 +1712,7 @@ public partial class WallpaperWindow : Window, ITrayIconHost
 
         PositionWindow();
         ApplyAppearance();
+        ApplyWallpaperTextAlignment();
 
         if (_settings.WallpaperTimeout <= 0)
         {
@@ -1725,6 +1761,8 @@ public partial class WallpaperWindow : Window, ITrayIconHost
         persistedSettings.WallpaperVerticalAlignment = incomingSettings.WallpaperVerticalAlignment;
         persistedSettings.WallpaperCustomX = incomingSettings.WallpaperCustomX;
         persistedSettings.WallpaperCustomY = incomingSettings.WallpaperCustomY;
+        persistedSettings.WallpaperTextHorizontalAlignment = incomingSettings.WallpaperTextHorizontalAlignment;
+        persistedSettings.WallpaperTextVerticalAlignment = incomingSettings.WallpaperTextVerticalAlignment;
         persistedSettings.WallpaperTextColor = incomingSettings.WallpaperTextColor;
         persistedSettings.TaskbarAnimationMode = incomingSettings.TaskbarAnimationMode;
         persistedSettings.TaskbarAnimationManualSpeed = incomingSettings.TaskbarAnimationManualSpeed;

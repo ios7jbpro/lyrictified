@@ -259,6 +259,18 @@ public partial class SettingsWindow : Window
             };
             WallpaperCustomXTextBox.Text = settings.WallpaperCustomX?.ToString() ?? string.Empty;
             WallpaperCustomYTextBox.Text = settings.WallpaperCustomY?.ToString() ?? string.Empty;
+            WallpaperTextHorizontalPositionComboBox.SelectedIndex = settings.WallpaperTextHorizontalAlignment switch
+            {
+                WallpaperTextHorizontalAlignment.Left => 0,
+                WallpaperTextHorizontalAlignment.Right => 2,
+                _ => 1
+            };
+            WallpaperTextVerticalPositionComboBox.SelectedIndex = settings.WallpaperTextVerticalAlignment switch
+            {
+                WallpaperTextVerticalAlignment.Top => 0,
+                WallpaperTextVerticalAlignment.Bottom => 2,
+                _ => 1
+            };
             WallpaperTextColorTextBox.Text = settings.WallpaperTextColor ?? "#F5F7FA";
             UpdateWallpaperColorPreview();
             UpdateWallpaperCustomPositionVisibility();
@@ -595,6 +607,16 @@ public partial class SettingsWindow : Window
         RaiseSettingsChanged();
     }
 
+    private void WallpaperTextHorizontalPositionComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        RaiseSettingsChanged();
+    }
+
+    private void WallpaperTextVerticalPositionComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        RaiseSettingsChanged();
+    }
+
     private void WallpaperCustomXTextBox_OnTextChanged(object sender, TextChangedEventArgs e)
     {
         RaiseTextSettingsChanged();
@@ -802,6 +824,18 @@ public partial class SettingsWindow : Window
             WallpaperCustomX = ParseWallpaperCustomX(),
             WallpaperCustomY = ParseWallpaperCustomY(),
             WallpaperTextColor = ParseWallpaperTextColor(),
+            WallpaperTextHorizontalAlignment = (WallpaperTextHorizontalPositionComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() switch
+            {
+                "Left" => WallpaperTextHorizontalAlignment.Left,
+                "Right" => WallpaperTextHorizontalAlignment.Right,
+                _ => WallpaperTextHorizontalAlignment.Center
+            },
+            WallpaperTextVerticalAlignment = (WallpaperTextVerticalPositionComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() switch
+            {
+                "Top" => WallpaperTextVerticalAlignment.Top,
+                "Bottom" => WallpaperTextVerticalAlignment.Bottom,
+                _ => WallpaperTextVerticalAlignment.Center
+            },
             LyricAlignment = (LyricAlignmentComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() switch
             {
                 "Left" => LyricAlignment.Left,

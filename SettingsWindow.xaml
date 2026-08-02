@@ -1353,6 +1353,51 @@
 
                     <Border Style="{StaticResource CardStyle}">
                         <StackPanel>
+                            <TextBlock Text="Text Alignment" Style="{StaticResource SectionTitleStyle}" />
+                            <TextBlock Text="Choose how the lyrics are aligned inside the wallpaper area." Style="{StaticResource LabelStyle}" />
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="Horizontal" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" FontWeight="Medium" />
+                                    <TextBlock Text="Align lyrics horizontally within the container." Style="{StaticResource HintTextStyle}" />
+                                </StackPanel>
+                                <ComboBox x:Name="WallpaperTextHorizontalPositionComboBox"
+                                          Grid.Column="1"
+                                          MinWidth="120"
+                                          VerticalAlignment="Center"
+                                          SelectionChanged="WallpaperTextHorizontalPositionComboBox_OnSelectionChanged">
+                                    <ComboBoxItem Tag="Left" Content="Left" />
+                                    <ComboBoxItem Tag="Center" Content="Center" />
+                                    <ComboBoxItem Tag="Right" Content="Right" />
+                                </ComboBox>
+                            </Grid>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="Vertical" Foreground="{StaticResource TextPrimaryBrush}" FontSize="13" FontWeight="Medium" />
+                                    <TextBlock Text="Align lyrics vertically within the container." Style="{StaticResource HintTextStyle}" />
+                                </StackPanel>
+                                <ComboBox x:Name="WallpaperTextVerticalPositionComboBox"
+                                          Grid.Column="1"
+                                          MinWidth="120"
+                                          VerticalAlignment="Center"
+                                          SelectionChanged="WallpaperTextVerticalPositionComboBox_OnSelectionChanged">
+                                    <ComboBoxItem Tag="Top" Content="Top" />
+                                    <ComboBoxItem Tag="Center" Content="Center" />
+                                    <ComboBoxItem Tag="Bottom" Content="Bottom" />
+                                </ComboBox>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Style="{StaticResource CardStyle}">
+                        <StackPanel>
                             <TextBlock Text="Color" Style="{StaticResource SectionTitleStyle}" />
                             <TextBlock Text="Choose the color of the lyrics. Applied to the text, glow, and flash effects." Style="{StaticResource LabelStyle}" />
                             <Grid>

@@ -70,6 +70,10 @@ public sealed class AppSettings
 
     public int? WallpaperCustomY { get; set; }
 
+    public WallpaperTextHorizontalAlignment WallpaperTextHorizontalAlignment { get; set; } = WallpaperTextHorizontalAlignment.Center;
+
+    public WallpaperTextVerticalAlignment WallpaperTextVerticalAlignment { get; set; } = WallpaperTextVerticalAlignment.Center;
+
     public string? WallpaperTextColor { get; set; }
 
     public IslandAnimationMode TaskbarAnimationMode { get; set; } = IslandAnimationMode.Default;

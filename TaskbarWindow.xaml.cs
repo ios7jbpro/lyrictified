@@ -893,6 +893,8 @@ public partial class TaskbarWindow : Window, ITrayIconHost
         persistedSettings.WallpaperVerticalAlignment = incomingSettings.WallpaperVerticalAlignment;
         persistedSettings.WallpaperCustomX = incomingSettings.WallpaperCustomX;
         persistedSettings.WallpaperCustomY = incomingSettings.WallpaperCustomY;
+        persistedSettings.WallpaperTextHorizontalAlignment = incomingSettings.WallpaperTextHorizontalAlignment;
+        persistedSettings.WallpaperTextVerticalAlignment = incomingSettings.WallpaperTextVerticalAlignment;
         persistedSettings.WallpaperTextColor = incomingSettings.WallpaperTextColor;
         persistedSettings.TaskbarAnimationMode = incomingSettings.TaskbarAnimationMode;
         persistedSettings.TaskbarAnimationManualSpeed = incomingSettings.TaskbarAnimationManualSpeed;
