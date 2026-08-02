@@ -67,7 +67,10 @@ public sealed class MediaSessionWatcher : IDisposable
                 {
                     try
                     {
-                        var update = JsonSerializer.Deserialize<WineMediaUpdate>(line);
+                        var update = JsonSerializer.Deserialize<WineMediaUpdate>(line, new JsonSerializerOptions
+                        {
+                            PropertyNameCaseInsensitive = true
+                        });
                         if (update is null || string.IsNullOrWhiteSpace(update.Title))
                             continue;
 
