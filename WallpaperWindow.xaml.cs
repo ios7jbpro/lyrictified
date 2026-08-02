@@ -85,6 +85,7 @@ public partial class WallpaperWindow : Window, ITrayIconHost
         SourceInitialized += OnSourceInitialized;
         Loaded += OnLoaded;
         Closing += OnClosing;
+        LyricStage.SizeChanged += LyricStage_OnSizeChanged;
     }
 
     private void OnSourceInitialized(object? sender, EventArgs e)
@@ -120,6 +121,7 @@ public partial class WallpaperWindow : Window, ITrayIconHost
         _timeoutTimer.Stop();
         _timeoutTimer.Tick -= TimeoutTimer_OnTick;
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        LyricStage.SizeChanged -= LyricStage_OnSizeChanged;
         SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
         SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
         _settingsWindow?.Close();
@@ -347,10 +349,25 @@ public partial class WallpaperWindow : Window, ITrayIconHost
         IncomingLyricTextBlock.HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch;
         OutgoingLyricTextBlock.HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch;
         LyricStage.ClipToBounds = true;
+        UpdateWallpaperTextBlockWidth();
         IncomingLyricTextBlock.TextAlignment = textAlignment;
         OutgoingLyricTextBlock.TextAlignment = textAlignment;
         IncomingLyricTextBlock.VerticalAlignment = vertical;
         OutgoingLyricTextBlock.VerticalAlignment = vertical;
+    }
+
+    private void LyricStage_OnSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        UpdateWallpaperTextBlockWidth();
+    }
+
+    private void UpdateWallpaperTextBlockWidth()
+    {
+        if (!double.IsNaN(LyricStage.ActualWidth) && LyricStage.ActualWidth > 0)
+        {
+            IncomingLyricTextBlock.Width = LyricStage.ActualWidth;
+            OutgoingLyricTextBlock.Width = LyricStage.ActualWidth;
+        }
     }
 
     private double GetEffectiveWallpaperScale()
