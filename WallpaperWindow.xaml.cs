@@ -976,6 +976,14 @@ public partial class WallpaperWindow : Window, ITrayIconHost
 
     private void RestoreLyricTextBlocks(string displayedText)
     {
+        if (!string.IsNullOrWhiteSpace(displayedText)
+            && ContainsCharacterBasedScript(displayedText)
+            && IncomingWordsPanel.Children.Count > 0)
+        {
+            PreserveCharacterWordPanel();
+            return;
+        }
+
         ClearWordPanel(OutgoingWordsPanel);
         ClearWordPanel(IncomingWordsPanel);
         OutgoingWordsPanel.Visibility = Visibility.Collapsed;
@@ -995,6 +1003,54 @@ public partial class WallpaperWindow : Window, ITrayIconHost
         IncomingLyricTextBlock.Text = displayedText;
         IncomingLyricTextBlock.Opacity = string.IsNullOrWhiteSpace(displayedText) ? 0 : 1;
         IncomingLyricTranslateTransform.Y = 0;
+    }
+
+    private void PreserveCharacterWordPanel()
+    {
+        ClearWordPanel(OutgoingWordsPanel);
+        OutgoingWordsPanel.Visibility = Visibility.Collapsed;
+        OutgoingLyricTextBlock.Visibility = Visibility.Collapsed;
+        IncomingLyricTextBlock.Visibility = Visibility.Collapsed;
+
+        foreach (var child in IncomingWordsPanel.Children)
+        {
+            if (child is TextBlock textBlock)
+            {
+                textBlock.BeginAnimation(OpacityProperty, null);
+                textBlock.Opacity = 1;
+                if (textBlock.RenderTransform is TranslateTransform translate)
+                {
+                    translate.BeginAnimation(TranslateTransform.YProperty, null);
+                    translate.Y = 0;
+                }
+            }
+            else if (child is Grid wordGrid)
+            {
+                foreach (var element in wordGrid.Children)
+                {
+                    if (element is TextBlock wordText)
+                    {
+                        wordText.BeginAnimation(OpacityProperty, null);
+                        wordText.Opacity = 1;
+                    }
+                    else if (element is Border border)
+                    {
+                        border.BeginAnimation(OpacityProperty, null);
+                        border.Opacity = 0;
+                    }
+                    else if (element is System.Windows.Controls.Image image)
+                    {
+                        image.BeginAnimation(OpacityProperty, null);
+                        image.Opacity = 0;
+                    }
+                }
+            }
+        }
+
+        IncomingWordsPanel.Visibility = Visibility.Visible;
+        _displayedLyricText = IncomingWordsPanel.Children.OfType<TextBlock>().Any()
+            ? string.Join(string.Empty, IncomingWordsPanel.Children.OfType<TextBlock>().Select(text => text.Text))
+            : _displayedLyricText;
     }
 
     private void PopulateWordPanel(StackPanel panel, string text, double initialYOffset = 0)
