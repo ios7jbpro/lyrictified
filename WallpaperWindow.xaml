@@ -50,16 +50,16 @@
             <Grid x:Name="WallpaperTextClip"
                   HorizontalAlignment="Stretch"
                   VerticalAlignment="Stretch"
-                  ClipToBounds="True">
+                  ClipToBounds="False">
                 <Grid x:Name="LyricStage"
                       Margin="18,0"
                       HorizontalAlignment="Stretch"
                       VerticalAlignment="Stretch"
                       ClipToBounds="False">
-                    <Grid x:Name="OutgoingWordsHost" ClipToBounds="True">
+                    <Grid x:Name="OutgoingWordsHost" ClipToBounds="False">
                         <StackPanel x:Name="OutgoingWordsPanel" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" />
                     </Grid>
-                    <Grid x:Name="IncomingWordsHost" ClipToBounds="True">
+                    <Grid x:Name="IncomingWordsHost" ClipToBounds="False">
                         <StackPanel x:Name="IncomingWordsPanel" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" />
                     </Grid>
                     <TextBlock x:Name="OutgoingLyricTextBlock"
