@@ -337,6 +337,10 @@ public partial class WallpaperWindow : Window, ITrayIconHost
         var verticalMargin = vertical == System.Windows.VerticalAlignment.Center ? 0.0 : 8.0;
         LyricStage.Margin = new Thickness(18, verticalMargin, 18, verticalMargin);
 
+        IncomingWordsHost.HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch;
+        OutgoingWordsHost.HorizontalAlignment = System.Windows.HorizontalAlignment.Stretch;
+        IncomingWordsHost.VerticalAlignment = System.Windows.VerticalAlignment.Stretch;
+        OutgoingWordsHost.VerticalAlignment = System.Windows.VerticalAlignment.Stretch;
         IncomingWordsPanel.HorizontalAlignment = horizontal;
         OutgoingWordsPanel.HorizontalAlignment = horizontal;
         IncomingWordsPanel.VerticalAlignment = vertical;
@@ -359,8 +363,6 @@ public partial class WallpaperWindow : Window, ITrayIconHost
     private void LyricStage_OnSizeChanged(object sender, SizeChangedEventArgs e)
     {
         UpdateWallpaperTextBlockWidth();
-        UpdateWordPanelLayout(IncomingWordsPanel);
-        UpdateWordPanelLayout(OutgoingWordsPanel);
     }
 
     private void UpdateWallpaperTextBlockWidth()
@@ -369,37 +371,6 @@ public partial class WallpaperWindow : Window, ITrayIconHost
         {
             IncomingLyricTextBlock.Width = LyricStage.ActualWidth;
             OutgoingLyricTextBlock.Width = LyricStage.ActualWidth;
-        }
-
-        UpdateWordPanelLayout(IncomingWordsPanel);
-        UpdateWordPanelLayout(OutgoingWordsPanel);
-    }
-
-    private void UpdateWordPanelLayout(StackPanel panel)
-    {
-        var width = LyricStage.ActualWidth;
-        if (width <= 0 || double.IsNaN(width))
-        {
-            return;
-        }
-
-        panel.Width = double.NaN;
-        panel.Measure(new System.Windows.Size(double.PositiveInfinity, LyricStage.ActualHeight));
-        var contentWidth = panel.DesiredSize.Width;
-        var horizontal = _settings.WallpaperTextHorizontalAlignment;
-        var leftPadding = horizontal switch
-        {
-            WallpaperTextHorizontalAlignment.Right => Math.Max(0, width - contentWidth),
-            WallpaperTextHorizontalAlignment.Center => Math.Max(0, (width - contentWidth) / 2),
-            _ => 0
-        };
-
-        panel.Width = width;
-        panel.MaxWidth = width;
-        panel.ClipToBounds = true;
-        if (panel.Children.Count > 0 && panel.Children[0] is FrameworkElement firstChild)
-        {
-            firstChild.Margin = new Thickness(leftPadding, 0, 0, 0);
         }
     }
 

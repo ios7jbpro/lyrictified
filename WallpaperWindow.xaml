@@ -56,16 +56,12 @@
                       HorizontalAlignment="Stretch"
                       VerticalAlignment="Stretch"
                       ClipToBounds="False">
-                    <StackPanel x:Name="OutgoingWordsPanel"
-                                Orientation="Horizontal"
-                                HorizontalAlignment="Center"
-                                VerticalAlignment="Center"
-                                Visibility="Collapsed" />
-                    <StackPanel x:Name="IncomingWordsPanel"
-                                Orientation="Horizontal"
-                                HorizontalAlignment="Center"
-                                VerticalAlignment="Center"
-                                Visibility="Collapsed" />
+                    <Grid x:Name="OutgoingWordsHost" ClipToBounds="True">
+                        <StackPanel x:Name="OutgoingWordsPanel" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" />
+                    </Grid>
+                    <Grid x:Name="IncomingWordsHost" ClipToBounds="True">
+                        <StackPanel x:Name="IncomingWordsPanel" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" />
+                    </Grid>
                     <TextBlock x:Name="OutgoingLyricTextBlock"
                                Foreground="#F5F7FA"
                                FontSize="20"
