@@ -63,6 +63,9 @@ public partial class WallpaperWindow : Window, ITrayIconHost
     private const double FlashLayoutBox = 2;
     private const double FlashGlowScale = 24;
     private const double FlashGlowMaxOpacity = 0.45;
+    private const double EffectOverflow = 32;
+    private double _contentRootWidth;
+    private double _contentHeight;
 
     public WallpaperWindow()
     {
@@ -302,10 +305,12 @@ public partial class WallpaperWindow : Window, ITrayIconHost
             _settings.WallpaperVerticalAlignment,
             _settings.WallpaperCustomX,
             _settings.WallpaperCustomY);
-        Left = bounds.Left;
-        Top = bounds.Top;
-        Width = bounds.Width;
-        Height = bounds.Height;
+        _contentRootWidth = Math.Max(1, bounds.Width - 24);
+        _contentHeight = Math.Max(1, bounds.Height);
+        Left = bounds.Left - EffectOverflow;
+        Top = bounds.Top - EffectOverflow;
+        Width = bounds.Width + (EffectOverflow * 2);
+        Height = bounds.Height + (EffectOverflow * 2);
         ApplyWallpaperScale();
     }
 
@@ -315,10 +320,10 @@ public partial class WallpaperWindow : Window, ITrayIconHost
         WallpaperLayerScaleTransform.ScaleX = scale;
         WallpaperLayerScaleTransform.ScaleY = scale;
 
-        if (RootGrid.ActualWidth > 0 && RootGrid.ActualHeight > 0)
+        if (_contentRootWidth > 0 && _contentHeight > 0)
         {
-            WallpaperLayer.Width = RootGrid.ActualWidth / scale;
-            WallpaperLayer.Height = RootGrid.ActualHeight / scale;
+            WallpaperLayer.Width = _contentRootWidth / scale;
+            WallpaperLayer.Height = _contentHeight / scale;
             WallpaperLayer.HorizontalAlignment = System.Windows.HorizontalAlignment.Center;
             WallpaperLayer.VerticalAlignment = System.Windows.VerticalAlignment.Center;
         }
