@@ -73,7 +73,7 @@
                   Width="160"
                   HorizontalAlignment="Center"
                   VerticalAlignment="Stretch"
-                  ClipToBounds="True">
+                  ClipToBounds="False">
                 <Grid x:Name="LyricStage"
                       Height="30"
                       Margin="18,0"
