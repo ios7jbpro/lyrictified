@@ -14,6 +14,7 @@ public static class IslandDisplayMode
     public const double MinimumBackgroundWidth = 96;
     public const double WidthAnimationSlideOffset = 8;
     public const double VerticalScalePadding = 8;
+    public const double AnimationOverflowPadding = 48;
     public const int MinimumContainerHeight = 20;
 
     public static double GetSingleLineStartY()

@@ -535,9 +535,9 @@ public partial class IslandWindow : Window, ITrayIconHost
             GetEffectiveIslandScale(),
             _settings.IslandContainerHeight);
         Left = bounds.Left;
-        Top = bounds.Top;
+        Top = bounds.Top - IslandDisplayMode.AnimationOverflowPadding;
         Width = bounds.Width;
-        Height = bounds.Height;
+        Height = bounds.Height + (IslandDisplayMode.AnimationOverflowPadding * 2);
         ApplyIslandScale();
         UpdateIslandWidth(_displayedLyricText, immediate: true);
         _ = Dispatcher.InvokeAsync(
