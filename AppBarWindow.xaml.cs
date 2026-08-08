@@ -2519,7 +2519,7 @@ public partial class AppBarWindow : Window, ITrayIconHost
 
     private void OpenAdditionalWindowedWindow()
     {
-        var window = new WindowedWindow();
+        var window = new WindowedWindow(isAdditionalWindow: true);
         window.Show();
     }
 

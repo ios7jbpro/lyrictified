@@ -63,6 +63,7 @@ public partial class WindowedWindow : Window, ITrayIconHost
     private int _lastTtmlCurrentRowIndex = -1;
     private SettingsWindow? _settingsWindow;
     private TrayIcon? _trayIcon;
+    private readonly bool _isAdditionalWindow;
     private WindowAppearanceManager? _appearanceManager;
     private bool IsTtmlLayoutActive => _settings.WindowedDisplayTtmlLyrics
         && _viewModel.HasTtmlLyrics
@@ -77,8 +78,13 @@ public partial class WindowedWindow : Window, ITrayIconHost
     private int GetEffectiveCurrentIndex() =>
         IsCleanedLrcActive ? _viewModel.CleanedLrcCurrentLineIndex : _viewModel.CurrentLineIndex;
 
-    public WindowedWindow()
+    public WindowedWindow() : this(false)
     {
+    }
+
+    internal WindowedWindow(bool isAdditionalWindow)
+    {
+        _isAdditionalWindow = isAdditionalWindow;
         InitializeComponent();
 
         _settings = _appSettingsService.Load();
@@ -102,7 +108,10 @@ public partial class WindowedWindow : Window, ITrayIconHost
     {
         _appearanceManager = new WindowAppearanceManager(this);
         _monitorHelper = new AppBarManager(this, AppBarDisplayMode.DefaultHeight);
-        _trayIcon = new TrayIcon(this);
+        if (!_isAdditionalWindow)
+        {
+            _trayIcon = new TrayIcon(this);
+        }
         WindowMaximizeBounds.Attach(this);
 
         ApplyInitialSize();
@@ -2067,7 +2076,10 @@ public partial class WindowedWindow : Window, ITrayIconHost
     private void HideToTray()
     {
         Hide();
-        _trayIcon ??= new TrayIcon(this);
+        if (!_isAdditionalWindow)
+        {
+            _trayIcon ??= new TrayIcon(this);
+        }
     }
 
     public void ShowFromTray()
@@ -2111,7 +2123,7 @@ public partial class WindowedWindow : Window, ITrayIconHost
 
     private void OpenAdditionalWindowedWindow()
     {
-        var window = new WindowedWindow();
+        var window = new WindowedWindow(isAdditionalWindow: true);
         window.Show();
     }
 
