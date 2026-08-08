@@ -2208,6 +2208,7 @@ public partial class IslandWindow : Window, ITrayIconHost
             _settingsWindow.DebugForceSimulateLyricsRequested += (_, _) => _viewModel.ForceSimulateLyrics();
             _settingsWindow.LrcFileLoadRequested += (_, content) => _viewModel.LoadOverrideLyrics(content);
             _settingsWindow.ShowInWindowedRequested += (_, _) => OpenAdditionalWindowedWindow();
+            _settingsWindow.EditFromScratchRequested += (_, _) => OpenLrcEditor();
             _settingsWindow.Closed += (_, _) =>
             {
                 _settingsWindow = null;
@@ -2581,6 +2582,13 @@ public partial class IslandWindow : Window, ITrayIconHost
     {
         var window = new WindowedWindow(isAdditionalWindow: true);
         window.Show();
+    }
+
+    private void OpenLrcEditor()
+    {
+        var editor = new LrcEditorWindow(_viewModel, content => _viewModel.LoadOverrideLyrics(content));
+        editor.Owner = this;
+        editor.Show();
     }
 
     public void SwitchDisplayMode(DisplayMode mode)

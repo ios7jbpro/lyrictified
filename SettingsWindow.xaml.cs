@@ -88,6 +88,7 @@ public partial class SettingsWindow : Window
     public event EventHandler? DebugForceSimulateLyricsRequested;
     public event EventHandler<string>? LrcFileLoadRequested;
     public event EventHandler? ShowInWindowedRequested;
+    public event EventHandler? EditFromScratchRequested;
 
     private static HttpClient CreateGitHubClient()
     {
@@ -1446,6 +1447,11 @@ public partial class SettingsWindow : Window
     private void ShowInWindowedButton_OnClick(object sender, RoutedEventArgs e)
     {
         ShowInWindowedRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void EditFromScratchButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        EditFromScratchRequested?.Invoke(this, EventArgs.Empty);
     }
 
     private void RefreshVmDetectionButton_OnClick(object sender, RoutedEventArgs e)
