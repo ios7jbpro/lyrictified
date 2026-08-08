@@ -2037,7 +2037,10 @@ public partial class WallpaperWindow : Window, ITrayIconHost
 
     private void OpenLrcEditor()
     {
-        var editor = new LrcEditorWindow(_viewModel, content => _viewModel.LoadOverrideLyrics(content));
+        var editor = new LrcEditorWindow(
+            _viewModel,
+            content => _viewModel.LoadOverrideLyrics(content),
+            () => OpenAdditionalWindowedWindow());
         editor.Owner = this;
         editor.Show();
     }

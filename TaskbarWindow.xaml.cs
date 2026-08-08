@@ -48,6 +48,7 @@ public partial class TaskbarWindow : Window, ITrayIconHost
     private string? _lastMonitorWarningKey;
     private SettingsWindow? _settingsWindow;
     private TrayIcon? _trayIcon;
+    private bool _isEditorOpen;
 
     private const double SlideWordOffset = 48;
     private const int SlideWordDurationMs = 130;
@@ -993,6 +994,11 @@ public partial class TaskbarWindow : Window, ITrayIconHost
 
     private void EnsureTopmostOrder()
     {
+        if (_isEditorOpen)
+        {
+            return;
+        }
+
         var hwnd = _hwndSource?.Handle ?? new WindowInteropHelper(this).Handle;
         if (hwnd == IntPtr.Zero)
         {
@@ -1104,8 +1110,17 @@ public partial class TaskbarWindow : Window, ITrayIconHost
 
     private void OpenLrcEditor()
     {
-        var editor = new LrcEditorWindow(_viewModel, content => _viewModel.LoadOverrideLyrics(content));
+        _isEditorOpen = true;
+        var editor = new LrcEditorWindow(
+            _viewModel,
+            content => _viewModel.LoadOverrideLyrics(content),
+            () => OpenAdditionalWindowedWindow());
         editor.Owner = this;
+        editor.Closed += (_, _) =>
+        {
+            _isEditorOpen = false;
+            EnsureTopmostOrder();
+        };
         editor.Show();
     }
 

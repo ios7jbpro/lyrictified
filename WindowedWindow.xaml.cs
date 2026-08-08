@@ -2130,8 +2130,12 @@ public partial class WindowedWindow : Window, ITrayIconHost
 
     private void OpenLrcEditor()
     {
-        var editor = new LrcEditorWindow(_viewModel, content => _viewModel.LoadOverrideLyrics(content));
+        var editor = new LrcEditorWindow(
+            _viewModel,
+            content => _viewModel.LoadOverrideLyrics(content),
+            () => OpenAdditionalWindowedWindow());
         editor.Owner = this;
+        editor.Closed += (_, _) => { };
         editor.Show();
     }
 

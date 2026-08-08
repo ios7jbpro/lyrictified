@@ -16,12 +16,14 @@ public partial class LrcEditorWindow : Window
 {
     private readonly MainViewModel? _viewModel;
     private readonly Action<string>? _onSave;
+    private readonly Action? _onOpenWindowed;
     private WindowAppearanceManager? _appearanceManager;
 
-    public LrcEditorWindow(MainViewModel? viewModel, Action<string> onSave, string? initialContent = null)
+    public LrcEditorWindow(MainViewModel? viewModel, Action<string> onSave, Action? onOpenWindowed = null, string? initialContent = null)
     {
         _viewModel = viewModel;
         _onSave = onSave;
+        _onOpenWindowed = onOpenWindowed;
 
         InitializeComponent();
 
@@ -133,7 +135,7 @@ public partial class LrcEditorWindow : Window
     private void SaveButton_OnClick(object sender, RoutedEventArgs e)
     {
         _onSave?.Invoke(EditorTextBox.Text);
-        Close();
+        _onOpenWindowed?.Invoke();
     }
 
     private void SaveToDiskButton_OnClick(object sender, RoutedEventArgs e)

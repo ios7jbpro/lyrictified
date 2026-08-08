@@ -49,6 +49,7 @@ public partial class IslandWindow : Window, ITrayIconHost
     private HwndSource? _hwndSource;
     private IntPtr _foregroundHook;
     private WinEventDelegate? _foregroundHookDelegate;
+    private bool _isEditorOpen;
     private AppSettings _settings;
     private string _displayedLyricText = string.Empty;
     private string? _lastMonitorWarningKey;
@@ -2422,6 +2423,11 @@ public partial class IslandWindow : Window, ITrayIconHost
 
     private void EnsureTopmostOrder()
     {
+        if (_isEditorOpen)
+        {
+            return;
+        }
+
         var hwnd = _hwndSource?.Handle ?? new WindowInteropHelper(this).Handle;
         if (hwnd == IntPtr.Zero)
         {
@@ -2586,8 +2592,17 @@ public partial class IslandWindow : Window, ITrayIconHost
 
     private void OpenLrcEditor()
     {
-        var editor = new LrcEditorWindow(_viewModel, content => _viewModel.LoadOverrideLyrics(content));
+        _isEditorOpen = true;
+        var editor = new LrcEditorWindow(
+            _viewModel,
+            content => _viewModel.LoadOverrideLyrics(content),
+            () => OpenAdditionalWindowedWindow());
         editor.Owner = this;
+        editor.Closed += (_, _) =>
+        {
+            _isEditorOpen = false;
+            EnsureTopmostOrder();
+        };
         editor.Show();
     }
 
