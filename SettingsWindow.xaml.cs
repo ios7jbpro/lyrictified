@@ -86,6 +86,8 @@ public partial class SettingsWindow : Window
     public event EventHandler? ForceLyricsRefreshRequested;
     public event EventHandler? DebugForceNoLyricsRequested;
     public event EventHandler? DebugForceSimulateLyricsRequested;
+    public event EventHandler<string>? LrcFileLoadRequested;
+    public event EventHandler? ShowInWindowedRequested;
 
     private static HttpClient CreateGitHubClient()
     {
@@ -1416,6 +1418,34 @@ public partial class SettingsWindow : Window
     private void ForceResearchButton_OnClick(object sender, RoutedEventArgs e)
     {
         ForceLyricsRefreshRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void LoadLrcFileButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Filter = "LRC files (*.lrc)|*.lrc|All files (*.*)|*.*",
+            Title = "Select an LRC file"
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            try
+            {
+                var content = File.ReadAllText(dialog.FileName);
+                LrcFileLoadRequested?.Invoke(this, content);
+                LrcFileStatusTextBlock.Text = $"Loaded: {Path.GetFileName(dialog.FileName)}";
+            }
+            catch (Exception ex)
+            {
+                LrcFileStatusTextBlock.Text = $"Error: {ex.Message}";
+            }
+        }
+    }
+
+    private void ShowInWindowedButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        ShowInWindowedRequested?.Invoke(this, EventArgs.Empty);
     }
 
     private void RefreshVmDetectionButton_OnClick(object sender, RoutedEventArgs e)

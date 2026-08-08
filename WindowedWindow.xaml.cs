@@ -2090,6 +2090,8 @@ public partial class WindowedWindow : Window, ITrayIconHost
             _settingsWindow.ForceLyricsRefreshRequested += (_, _) => _ = _viewModel.ForceLyricsRefreshAsync();
             _settingsWindow.DebugForceNoLyricsRequested += (_, _) => _viewModel.ForceNoLyrics();
             _settingsWindow.DebugForceSimulateLyricsRequested += (_, _) => _viewModel.ForceSimulateLyrics();
+            _settingsWindow.LrcFileLoadRequested += (_, content) => _viewModel.LoadOverrideLyrics(content);
+            _settingsWindow.ShowInWindowedRequested += (_, _) => OpenAdditionalWindowedWindow();
             _settingsWindow.Closed += (_, _) => _settingsWindow = null;
             RefreshSettingsWindowOptions();
             _settingsWindow.Show();
@@ -2106,6 +2108,12 @@ public partial class WindowedWindow : Window, ITrayIconHost
     }
 
     public DisplayMode CurrentDisplayMode => DisplayMode.Windowed;
+
+    private void OpenAdditionalWindowedWindow()
+    {
+        var window = new WindowedWindow();
+        window.Show();
+    }
 
     public void SwitchDisplayMode(DisplayMode mode)
     {

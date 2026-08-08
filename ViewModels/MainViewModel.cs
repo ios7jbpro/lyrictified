@@ -297,6 +297,56 @@ public sealed class MainViewModel : INotifyPropertyChanged, IDisposable
         _ = UpdateCurrentLineAsync();
     }
 
+    public void LoadOverrideLyrics(string lrcContent)
+    {
+        if (_currentSong is null)
+            return;
+
+        CancelLyricsLoad();
+        ResetPlaybackClock();
+
+        var lines = LrcLibLyricsService.ParseSyncedLyrics(lrcContent);
+        _lyrics = lines;
+        HasTtmlLyrics = false;
+        CleanedLrcLyrics = Array.Empty<LyricLine>();
+        ActiveLyricLines = Array.Empty<LyricLine>();
+        CurrentLineIndex = -1;
+        CleanedLrcCurrentLineIndex = -1;
+        OnPropertyChanged(nameof(Lyrics));
+        IsLoadingLyrics = false;
+        NoTimedLyricsFound = lines.Count == 0;
+        _noLyricsShownAt = lines.Count == 0 ? DateTime.UtcNow : null;
+
+        if (lines.Count > 0)
+        {
+            CurrentLine = "Override lyrics loaded";
+            TaskbarCurrentLine = "Override lyrics loaded";
+            NextLine = string.Empty;
+            NonTtmlNextLine = string.Empty;
+            StatusText = $"Override: {lines.Count} lines loaded for {_currentSong.Artist}";
+            _ = ReanchorPlaybackAsync(_currentSong.IsPlaying);
+            _ = UpdateCurrentLineAsync();
+        }
+        else
+        {
+            CurrentLine = "No valid lyrics in file";
+            TaskbarCurrentLine = "No valid lyrics in file";
+            NextLine = string.Empty;
+            NonTtmlNextLine = string.Empty;
+            StatusText = "Override: no timed lyrics found in file";
+            SetNextRefreshInterval(IdleRefreshInterval);
+        }
+    }
+
+    public void ClearOverrideLyrics()
+    {
+        if (_currentSong is null)
+            return;
+
+        _forceLyricsRefresh = true;
+        _ = HandleSongAsync(_currentSong);
+    }
+
     private async void OnSongChanged(object? sender, SongInfo? song)
     {
         try
