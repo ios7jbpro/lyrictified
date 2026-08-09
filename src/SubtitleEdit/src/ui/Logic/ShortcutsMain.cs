@@ -1,0 +1,1030 @@
+using CommunityToolkit.Mvvm.Input;
+using Nikse.SubtitleEdit.Features.Main;
+using Nikse.SubtitleEdit.Features.Options.Shortcuts;
+using Nikse.SubtitleEdit.Logic.Config;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Nikse.SubtitleEdit.Logic;
+
+public static class ShortcutsMain
+{
+    public static List<ShortCut> GetUsedShortcuts(MainViewModel vm)
+    {
+        var shortcuts = new List<ShortCut>();
+
+        var keys = Se.Settings.Shortcuts
+            .Where(p => !p.ActionName.Contains(' '))
+            .GroupBy(p => p.ActionName)
+            .Select(g => g.First())
+            .ToDictionary(p => p.ActionName, p => p);
+
+        foreach (var shortcut in GetAllAvailableShortcuts(vm))
+        {
+            if (keys.TryGetValue(shortcut.Name, out var match))
+            {
+                shortcuts.Add(new ShortCut(shortcut, match));
+            }
+        }
+
+        return shortcuts;
+    }
+
+    public static List<ShortCut> GetAllShortcuts(MainViewModel vm)
+    {
+        var shortcuts = new List<ShortCut>();
+        var keys = Se.Settings.Shortcuts
+            .GroupBy(p => p.ActionName)
+            .Select(g => g.First())
+            .ToDictionary(p => p.ActionName, p => p);
+        foreach (var shortcut in GetAllAvailableShortcuts(vm))
+        {
+            shortcuts.Add(keys.TryGetValue(shortcut.Name, out var match)
+                ? new ShortCut(shortcut, match)
+                : new ShortCut(shortcut));
+        }
+
+        return shortcuts;
+    }
+
+    private static void AddShortcut<T>(IList<AvailableShortcut> list, T command, string name, ShortcutCategory category)
+    where T : IRelayCommand
+    {
+        list.Add(new AvailableShortcut(command, name, category));
+    }
+
+    private static void AddShortcut<T>(IList<AvailableShortcut> list, T command, string name, ShortcutCategory category, ShortcutGroup group)
+    where T : IRelayCommand
+    {
+        list.Add(new AvailableShortcut(command, name, category) { Group = group });
+    }
+
+    // Built on first read rather than in the static initializer: LoadShortcuts() touches this
+    // type during the MainViewModel ctor, which used to build all 362 entries (~5-10 ms) on the
+    // start-up path, while the only reader is the Options > Shortcuts dialog. Lazy hands out the
+    // same Dictionary instance every time, so callers that mutate it in place still work.
+    private static readonly Lazy<Dictionary<string, string>> LazyCommandTranslationLookup =
+        new Lazy<Dictionary<string, string>>(BuildCommandTranslations);
+
+    public static Dictionary<string, string> CommandTranslationLookup => LazyCommandTranslationLookup.Value;
+
+    // Rebuilds CommandTranslationLookup in place so callers keep their reference to
+    // the same dictionary instance. Call after Se.Language has been swapped (e.g.,
+    // user changed UI language) so cached display names pick up the new strings.
+    public static void ReloadCommandTranslations()
+    {
+        var fresh = BuildCommandTranslations();
+        CommandTranslationLookup.Clear();
+        foreach (var kv in fresh)
+        {
+            CommandTranslationLookup[kv.Key] = kv.Value;
+        }
+    }
+
+    private static Dictionary<string, string> BuildCommandTranslations()
+    {
+        return new Dictionary<string, string>
+    {
+        { nameof(MainViewModel.DeleteSelectedLinesCommand), Se.Language.Options.Shortcuts.ListDeleteSelection },
+        { nameof(MainViewModel.FillSelectedLinesWithClipboardCommand), Se.Language.Options.Shortcuts.FillSelectedLinesWithClipboard },
+        { nameof(MainViewModel.RippleDeleteSelectedLinesCommand), Se.Language.Options.Shortcuts.RippleDeleteSelection },
+        { nameof(MainViewModel.DuplicateSelectedLinesCommand), Se.Language.Options.Shortcuts.DuplicateSelectedLines},
+        { nameof(MainViewModel.ShowAlignmentPickerCommand), Se.Language.General.Alignment},
+        { nameof(MainViewModel.DoAlignmentAn1Command), string.Format(Se.Language.General.AlignmentX, "an1")},
+        { nameof(MainViewModel.DoAlignmentAn2Command), string.Format(Se.Language.General.AlignmentX, "an2")},
+        { nameof(MainViewModel.DoAlignmentAn3Command), string.Format(Se.Language.General.AlignmentX, "an3")},
+        { nameof(MainViewModel.DoAlignmentAn4Command), string.Format(Se.Language.General.AlignmentX, "an4")},
+        { nameof(MainViewModel.DoAlignmentAn5Command), string.Format(Se.Language.General.AlignmentX, "an5")},
+        { nameof(MainViewModel.DoAlignmentAn6Command), string.Format(Se.Language.General.AlignmentX, "an6")},
+        { nameof(MainViewModel.DoAlignmentAn7Command), string.Format(Se.Language.General.AlignmentX, "an7")},
+        { nameof(MainViewModel.DoAlignmentAn8Command), string.Format(Se.Language.General.AlignmentX, "an8")},
+        { nameof(MainViewModel.DoAlignmentAn9Command), string.Format(Se.Language.General.AlignmentX, "an9")},
+        { nameof(MainViewModel.AddOrEditBookmarkCommand), Se.Language.Options.Shortcuts.AddOrEditBookmark},
+        { nameof(MainViewModel.ToggleBookmarkSelectedLinesNoTextCommand), Se.Language.Options.Shortcuts.ToggleBookmark},
+        { nameof(MainViewModel.CopyTextFromOriginalToTranslationCommand), Se.Language.Options.Shortcuts.CopyTextFromOriginalSelectedLines},
+        { nameof(MainViewModel.SwitchOriginalAndTranslationTextSelectedLinesCommand), Se.Language.Options.Shortcuts.SwitchOriginalAndTranslationSelectedLines},
+        { nameof(MainViewModel.MergeOriginalIntoTranslationSelectedLinesCommand), Se.Language.Options.Shortcuts.MergeOriginalIntoTranslationSelectedLines},
+        { nameof(MainViewModel.ListBookmarksCommand), Se.Language.General.BookmarksList},
+        { nameof(MainViewModel.GoToNextBookmarkCommand), Se.Language.Options.Shortcuts.GoToNextBookmark},
+        { nameof(MainViewModel.GoToPreviousBookmarkCommand), Se.Language.Options.Shortcuts.GoToPreviousBookmark},
+        { nameof(MainViewModel.GoToNextEmptyLineCommand), Se.Language.Options.Shortcuts.GoToNextEmptyLine},
+        { nameof(MainViewModel.OpenDataFolderCommand), Se.Language.Options.Shortcuts.OpenSeDataFolder },
+        { nameof(MainViewModel.SetupLikeSe4Command), Se.Language.General.SetUpLikeSubtitleEdit4 },
+        { nameof(MainViewModel.ToggleIsWaveformToolbarVisibleCommand), Se.Language.Options.Shortcuts.ToggleWaveformToolbar },
+        { nameof(MainViewModel.ToggleSubtitleGridFormattingCommand), Se.Language.Options.Shortcuts.ToggleSubtitleGridFormatting },
+
+        // File
+        { nameof(MainViewModel.CommandFileOpenCommand), Se.Language.Options.Shortcuts.FileOpen },
+        { nameof(MainViewModel.CommandFileOpenKeepVideoCommand), Se.Language.Options.Shortcuts.FileOpenKeepVideo },
+        { nameof(MainViewModel.FileOpenOriginalCommand), Se.Language.Options.Shortcuts.FileOpenOriginal },
+        { nameof(MainViewModel.FileCloseOriginalCommand), Se.Language.Options.Shortcuts.FileCloseOriginal },
+        { nameof(MainViewModel.ToggleTranslationModeCommand), Se.Language.Options.Shortcuts.GeneralToggleTranslationMode },
+        { nameof(MainViewModel.FileCloseTranslationCommand), Se.Language.Options.Shortcuts.FileCloseTranslation },
+        { nameof(MainViewModel.CommandExitCommand), Se.Language.Options.Shortcuts.FileExit },
+        { nameof(MainViewModel.CommandFileNewCommand), Se.Language.General.New },
+        { nameof(MainViewModel.CommandFileNewKeepVideoCommand), Se.Language.Options.Shortcuts.CommandFileNewKeepVideo },
+        { nameof(MainViewModel.CommandFileSaveCommand), Se.Language.Options.Shortcuts.FileSave },
+        { nameof(MainViewModel.CommandFileSaveAsCommand), Se.Language.Options.Shortcuts.FileSaveAs },
+        { nameof(MainViewModel.ShowStatisticsCommand), Se.Language.Options.Shortcuts.FileStatistics },
+        { nameof(MainViewModel.ShowCompareCommand), Se.Language.Options.Shortcuts.FileCompare },
+        { nameof(MainViewModel.ShowRestoreAutoBackupCommand), Se.Language.Options.Shortcuts.RestoreAutoBackup },
+        { nameof(MainViewModel.OpenContainingFolderCommand), Se.Language.General.OpenContainingFolder },
+        { nameof(MainViewModel.CopySubtitlePathToClipboardCommand), Se.Language.Options.Shortcuts.CopySubtitlePathToClipboard },
+        { nameof(MainViewModel.CopySubtitleOriginalPathToClipboardCommand), Se.Language.Options.Shortcuts.CopySubtitleOriginalPathToClipboard },
+        { nameof(MainViewModel.ImportTimeCodesCommand), Se.Language.Options.Shortcuts.ImportTimeCodes },
+        { nameof(MainViewModel.ShowImportSubtitleWithManuallyChosenEncodingCommand), Se.Language.Options.Shortcuts.ImportSubtitleWithManuallyChosenEncoding },
+        { nameof(MainViewModel.ExportBluRaySupCommand), Se.Language.Options.Shortcuts.ExportBluRaySup },
+        { nameof(MainViewModel.ShowExportCustomTextFormatCommand), Se.Language.Options.Shortcuts.ExportCustomTextFormat },
+        { nameof(MainViewModel.ShowExportPlainTextCommand), Se.Language.Options.Shortcuts.ExportPlainText },
+        { nameof(MainViewModel.CopyMsRelativeToCurrentSubtitleLineToClipboardCommand), Se.Language.Options.Shortcuts.CopyMsRelativeToCurrentSubtitleLineToClipboard },
+
+        // Edit
+        { nameof(MainViewModel.UndoCommand), Se.Language.General.Undo },
+        { nameof(MainViewModel.RedoCommand), Se.Language.General.Redo },
+        { nameof(MainViewModel.ShowHistoryCommand), Se.Language.General.ShowHistory },
+        { nameof(MainViewModel.ShowFindCommand), Se.Language.General.Find },
+        { nameof(MainViewModel.FindNextCommand), Se.Language.General.FindNext },
+        { nameof(MainViewModel.FindPreviousCommand), Se.Language.Options.Shortcuts.EditFindPrevious },
+        { nameof(MainViewModel.ShowReplaceCommand), Se.Language.General.Replace },
+        { nameof(MainViewModel.ShowMultipleReplaceCommand), Se.Language.General.MultipleReplace },
+        { nameof(MainViewModel.ShowGoToLineCommand), Se.Language.General.GoToLineNumber },
+        { nameof(MainViewModel.RightToLeftToggleCommand), Se.Language.Options.Shortcuts.ToggleRightToLeft },
+        { nameof(MainViewModel.ReverseRightToLeftStartEndCommand), Se.Language.General.ReverseRightToLeftStartEnd },
+        { nameof(MainViewModel.ShowModifySelectionCommand), Se.Language.Options.Shortcuts.ModifySelection },
+        { nameof(MainViewModel.SelectAllLinesCommand), Se.Language.General.SelectAll },
+        { nameof(MainViewModel.InverseSelectionCommand), Se.Language.Options.Shortcuts.ListInverseSelection },
+
+        // Tools
+        { nameof(MainViewModel.ShowToolsAdjustDurationsCommand), Se.Language.Options.Shortcuts.AdjustDurations },
+        { nameof(MainViewModel.ShowApplyDurationLimitsCommand), Se.Language.Options.Shortcuts.ApplyDurationLimits },
+        { nameof(MainViewModel.ShowToolsBatchConvertCommand), Se.Language.Options.Shortcuts.BatchConvert },
+        { nameof(MainViewModel.ShowBridgeGapsCommand), Se.Language.General.BridgeGaps },
+        { nameof(MainViewModel.ShowApplyMinGapCommand), Se.Language.Options.Shortcuts.ApplyMinGap },
+        { nameof(MainViewModel.ShowToolsChangeCasingCommand), Se.Language.General.ChangeCasing },
+        { nameof(MainViewModel.ShowToolsChangeFormattingCommand), Se.Language.General.ChangeFormatting },
+        { nameof(MainViewModel.ShowToolsFixCommonErrorsCommand), Se.Language.General.FixCommonErrors },
+        { nameof(MainViewModel.ShowToolsAiReviewCommand), Se.Language.Tools.AiReview.Title },
+        { nameof(MainViewModel.ToolsMakeEmptyTranslationFromCurrentSubtitleCommand), Se.Language.Options.Shortcuts.MakeEmptyTranslationFromCurrentSubtitle },
+        { nameof(MainViewModel.ShowToolsMergeLinesWithSameTextCommand), Se.Language.General.MergeLinesWithSameText },
+        { nameof(MainViewModel.ShowToolsMergeLinesWithSameTimeCodesCommand), Se.Language.General.MergeLinesWithSameTimeCodes },
+        { nameof(MainViewModel.ShowToolsSplitBreakLongLinesCommand), Se.Language.Options.Shortcuts.SplitBreakLongLines },
+        { nameof(MainViewModel.ShowToolsMergeShortLinesCommand), Se.Language.Options.Shortcuts.MergeShortLines },
+        { nameof(MainViewModel.ShowToolsMergeContinuationLinesCommand), Se.Language.Options.Shortcuts.MergeContinuationLines },
+        { nameof(MainViewModel.SnapAllTimesToFramesCommand), Se.Language.Options.Shortcuts.SnapAllTimesToFrames },
+        { nameof(MainViewModel.ShowToolsRemoveTextForHearingImpairedCommand), Se.Language.General.RemoveTextForHearingImpaired },
+        { nameof(MainViewModel.ShowToolsJoinCommand), Se.Language.Options.Shortcuts.JoinSubtitles },
+        { nameof(MainViewModel.ShowToolsSplitCommand), Se.Language.Options.Shortcuts.SplitSubtitle },
+
+        // Spell check
+        { nameof(MainViewModel.ShowSpellCheckCommand), Se.Language.Options.Shortcuts.SpellCheck },
+        { nameof(MainViewModel.ShowSpellCheckDictionariesCommand), Se.Language.Options.Shortcuts.SpellCheckGetDictionary },
+        { nameof(MainViewModel.CommandPickLiveSpellCheckDictionaryCommand), Se.Language.SpellCheck.PickLiveSpellCheckDictionary },
+
+        // Video
+        { nameof(MainViewModel.CommandVideoOpenCommand), Se.Language.Options.Shortcuts.OpenVideo },
+        { nameof(MainViewModel.ShowVideoOpenFromUrlCommand), Se.Language.Options.Shortcuts.OpenVideoFromUrl },
+        { nameof(MainViewModel.CommandVideoCloseCommand), Se.Language.Options.Shortcuts.CloseVideo },
+        { nameof(MainViewModel.ShowSpeechToTextWhisperCommand), Se.Language.Options.Shortcuts.SpeechToText },
+        { nameof(MainViewModel.ShowVideoTextToSpeechCommand), Se.Language.Options.Shortcuts.TextToSpeech },
+        { nameof(MainViewModel.ShowVideoOcrCommand), Se.Language.Options.Shortcuts.VideoOcr },
+        { nameof(MainViewModel.ShowVideoBurnInCommand), Se.Language.Options.Shortcuts.BurnIn },
+        { nameof(MainViewModel.ShowVideoTransparentSubtitlesCommand), Se.Language.Options.Shortcuts.GenerateTransparent },
+        { nameof(MainViewModel.ShowShotChangesSubtitlesCommand),  Se.Language.General.GenerateImportShotChanges },
+        { nameof(MainViewModel.VideoFullScreenCommand),  Se.Language.Options.Shortcuts.VideoFullScreen },
+
+        // Sync
+        { nameof(MainViewModel.ShowSyncAdjustAllTimesCommand),  Se.Language.Options.Shortcuts.AdjustAllTimes },
+        { nameof(MainViewModel.ShowVisualSyncCommand),  Se.Language.Options.Shortcuts.VisualSync },
+        { nameof(MainViewModel.ShowSyncChangeFrameRateCommand),  Se.Language.General.ChangeFrameRate },
+        { nameof(MainViewModel.ShowSyncChangeSpeedCommand),  Se.Language.General.ChangeSpeed },
+        { nameof(MainViewModel.ShowPointSyncCommand),  Se.Language.Options.Shortcuts.ShowPointSync },
+        { nameof(MainViewModel.ShowPointSyncViaOtherCommand),  Se.Language.Options.Shortcuts.ShowPointSyncViaOther },
+
+        // Translate
+        { nameof(MainViewModel.ShowAutoTranslateCommand), Se.Language.General.AutoTranslate },
+        { nameof(MainViewModel.ShowTranslateViaCopyPasteCommand), Se.Language.Options.Shortcuts.TranslateViaCopyPaste },
+
+        // Options
+        { nameof(MainViewModel.CommandShowSettingsCommand), Se.Language.General.Settings },
+        { nameof(MainViewModel.CommandShowSettingsShortcutsCommand), Se.Language.General.Shortcuts },
+        { nameof(MainViewModel.ShowWordListsCommand), Se.Language.Options.Shortcuts.WordLists },
+        { nameof(MainViewModel.CommandShowSettingsLanguageCommand), Se.Language.Options.Shortcuts.ChooseUiLanguage },
+
+
+        { nameof(MainViewModel.ShowGoToVideoPositionCommand), Se.Language.Options.Shortcuts.GeneralGoToVideoPosition },
+        { nameof(MainViewModel.ToggleLinesItalicOrSelectedTextCommand), Se.Language.Options.Shortcuts.GeneralToggleItalic },
+        { nameof(MainViewModel.ToggleLinesBoldOrSelectedTextCommand), Se.Language.Options.Shortcuts.GeneralToggleBold },
+
+        { nameof(MainViewModel.PlayCommand), Se.Language.General.Play },
+        { nameof(MainViewModel.PlayNextCommand), Se.Language.General.PlayNext },
+        { nameof(MainViewModel.PlayNextAndStopCommand), Se.Language.General.PlayNextAndStop },
+        { nameof(MainViewModel.PlayNextAndLoopCommand), Se.Language.General.PlayNextAndLoop },
+        { nameof(MainViewModel.PlayPreviousCommand), Se.Language.General.PlayPrevious },
+        { nameof(MainViewModel.PlayPreviousAndStopCommand), Se.Language.General.PlayPreviousAndStop },
+        { nameof(MainViewModel.PlayPreviousAndLoopCommand), Se.Language.General.PlayPreviousAndLoop },
+        { nameof(MainViewModel.PauseCommand), Se.Language.General.Pause },
+        { nameof(MainViewModel.TogglePlayPauseCommand), Se.Language.Options.Shortcuts.TogglePlayPause },
+        { nameof(MainViewModel.TogglePlayPause2Command), Se.Language.Options.Shortcuts.TogglePlayPause },
+
+        { nameof(MainViewModel.CommandShowLayoutCommand), Se.Language.Options.Shortcuts.GeneralChooseLayout },
+
+        { nameof(MainViewModel.GoToNextLineCommand), Se.Language.Options.Shortcuts.GeneralGoToNextSubtitle },
+        { nameof(MainViewModel.GoToNextLineCursorAtEndCommand), Se.Language.Options.Shortcuts.GeneralGoToNextSubtitleCursorAtEnd },
+        { nameof(MainViewModel.GoToPreviousLineCommand), Se.Language.Options.Shortcuts.GeneralGoToPrevSubtitle },
+        { nameof(MainViewModel.GoToFirstLineCommand), Se.Language.Options.Shortcuts.GeneralGoToFirstLine },
+        { nameof(MainViewModel.GoToLastLineCommand), Se.Language.Options.Shortcuts.GeneralGoToLastLine },
+        { nameof(MainViewModel.GoToNextLineAndSetVideoPositionCommand), Se.Language.Options.Shortcuts.GoToNextLineAndSetVideoPosition },
+        { nameof(MainViewModel.GoToPreviousLineAndSetVideoPositionCommand), Se.Language.Options.Shortcuts.GoToPreviousLineAndSetVideoPosition },
+        { nameof(MainViewModel.GoToPreviousLineFromVideoPositionCommand), Se.Language.Options.Shortcuts.GoToPreviousLineFromVideoPosition },
+        { nameof(MainViewModel.GoToNextLineFromVideoPositionCommand), Se.Language.Options.Shortcuts.GoToNextLineFromVideoPosition },
+        { nameof(MainViewModel.VideoGoToPreviousTimeCodeCommand), Se.Language.Options.Shortcuts.VideoGoToPreviousTimeCode },
+        { nameof(MainViewModel.VideoGoToNextTimeCodeCommand), Se.Language.Options.Shortcuts.VideoGoToNextTimeCode },
+
+        { nameof(MainViewModel.SaveLanguageFileCommand), Se.Language.Main.SaveLanguageFile },
+
+        { nameof(MainViewModel.UnbreakCommand), Se.Language.General.Unbreak },
+        { nameof(MainViewModel.AutoBreakCommand), Se.Language.General.AutoBreak },
+        { nameof(MainViewModel.SplitCommand), Se.Language.General.SplitLine },
+        { nameof(MainViewModel.SplitAtVideoPositionCommand), Se.Language.General.SplitLineAtVideoPosition },
+        { nameof(MainViewModel.SplitAtTextBoxCursorPositionCommand), Se.Language.General.SplitAtTextBoxCursorPosition },
+        { nameof(MainViewModel.SplitAtVideoPositionAndTextBoxCursorPositionCommand), Se.Language.General.SplitLineAtVideoAndTextBoxPosition },
+        { nameof(MainViewModel.TextBoxDeleteForwardCommand), Se.Language.Options.Shortcuts.TextBoxDeleteForward },
+        { nameof(MainViewModel.TextBoxCutCommand), Se.Language.Options.Shortcuts.TextBoxCut },
+        { nameof(MainViewModel.TextBoxCut2Command), Se.Language.Options.Shortcuts.TextBoxCut2 },
+        { nameof(MainViewModel.TextBoxPasteCommand), Se.Language.Options.Shortcuts.TextBoxPaste },
+        { nameof(MainViewModel.TextBoxCopyCommand), Se.Language.Options.Shortcuts.TextBoxCopy },
+        { nameof(MainViewModel.TextBoxSelectAllCommand), Se.Language.Options.Shortcuts.TextBoxSelectAll },
+        { nameof(MainViewModel.TextBoxRemoveAllFormattingCommand), Se.Language.Options.Shortcuts.TextBoxRemoveAllFormatting },
+        { nameof(MainViewModel.TextBoxItalicCommand), Se.Language.Options.Shortcuts.TextBoxItalic },
+
+        { nameof(MainViewModel.VideoOneFrameBackCommand), Se.Language.General.VideoOneFrameBack },
+        { nameof(MainViewModel.VideoOneFrameForwardCommand),  Se.Language.General.VideoOneFrameForward },
+        // Waveform toolbar seek buttons - reuse the button hint strings ("Seek video backward {0}")
+        // with the shortcut placeholder blanked out, same as their automation names in InitWaveform.
+        { nameof(MainViewModel.WaveformVideoSeekBackCommand), string.Format(Se.Language.Main.Waveform.SeekBackHint, string.Empty).TrimEnd() },
+        { nameof(MainViewModel.WaveformVideoSeekForwardCommand), string.Format(Se.Language.Main.Waveform.SeekForwardHint, string.Empty).TrimEnd() },
+        { nameof(MainViewModel.Video100MsBackCommand), Se.Language.General.Video100MsBack },
+        { nameof(MainViewModel.Video100MsForwardCommand),  Se.Language.General.Video100MsForward },
+        { nameof(MainViewModel.Video500MsBackCommand), Se.Language.General.Video500MsBack },
+        { nameof(MainViewModel.Video500MsForwardCommand),  Se.Language.General.Video500MsForward },
+        { nameof(MainViewModel.VideoOneSecondBackCommand), Se.Language.General.VideoOneSecondBack },
+        { nameof(MainViewModel.VideoOneSecondForwardCommand),  Se.Language.General.VideoOneSecondForward },
+        { nameof(MainViewModel.VideoMoveCustom1BackCommand),  string.Format(Se.Language.General.VideoCustom1BackX, Se.Settings.Video.MoveVideoPositionCustom1Back) },
+        { nameof(MainViewModel.VideoMoveCustom1ForwardCommand),  string.Format(Se.Language.General.VideoCustom1ForwardX, Se.Settings.Video.MoveVideoPositionCustom1Forward) },
+        { nameof(MainViewModel.VideoMoveCustom2BackCommand),  string.Format(Se.Language.General.VideoCustom2BackX, Se.Settings.Video.MoveVideoPositionCustom2Back) },
+        { nameof(MainViewModel.VideoMoveCustom2ForwardCommand),  string.Format(Se.Language.General.VideoCustom2ForwardX, Se.Settings.Video.MoveVideoPositionCustom2Forward) },
+        { nameof(MainViewModel.VideoMoveCustom3BackCommand),  string.Format(Se.Language.General.VideoCustom3BackX, Se.Settings.Video.MoveVideoPositionCustom3Back) },
+        { nameof(MainViewModel.VideoMoveCustom3ForwardCommand),  string.Format(Se.Language.General.VideoCustom3ForwardX, Se.Settings.Video.MoveVideoPositionCustom3Forward) },
+        { nameof(MainViewModel.VideoMoveCustom4BackCommand),  string.Format(Se.Language.General.VideoCustom4BackX, Se.Settings.Video.MoveVideoPositionCustom4Back) },
+        { nameof(MainViewModel.VideoMoveCustom4ForwardCommand),  string.Format(Se.Language.General.VideoCustom4ForwardX, Se.Settings.Video.MoveVideoPositionCustom4Forward) },
+
+        { nameof(MainViewModel.WaveformSetStartAndOffsetTheRestCommand),  Se.Language.General.SetStartAndOffsetTheRest },
+        { nameof(MainViewModel.WaveformSetEndAndOffsetTheRestCommand),  Se.Language.General.SetEndAndOffsetTheRest },
+        { nameof(MainViewModel.WaveformSetStartCommand),  Se.Language.General.SetStart },
+        { nameof(MainViewModel.WaveformSetStartAndGoToNextCommand),  Se.Language.General.SetStartAndGoToNext },
+        { nameof(MainViewModel.WaveformSetStartAndKeepDurationCommand),  Se.Language.General.SetStartAndKeepDuration },
+        { nameof(MainViewModel.WaveformSetEndCommand),  Se.Language.General.SetEnd },
+        { nameof(MainViewModel.WaveformSetEndAndGoToNextCommand),  Se.Language.General.SetEndAndGoToNext },
+        { nameof(MainViewModel.WaveformSetEndAddNewAndGoToNewCommand),  Se.Language.General.SetEndAddNewAndGoToNew },
+        { nameof(MainViewModel.WaveformSetEndAddNewAndGoToNewNoFocusTextBoxCommand),  Se.Language.General.SetEndAddNewAndGoToNewNoFocusTextBox },
+        { nameof(MainViewModel.DoWaveformCenterCommand),  Se.Language.General.WaveformCenterOnVideoPosition },
+        { nameof(MainViewModel.ToggleShotChangesAtVideoPositionCommand),  Se.Language.General.ToggleShotChangesAtVideoPosition },
+        { nameof(MainViewModel.GoToPreviousShotChangeCommand),  Se.Language.General.GoToPreviousShotChange },
+        { nameof(MainViewModel.GoToNextShotChangeCommand),  Se.Language.General.GoToNextShotChange },
+        { nameof(MainViewModel.ExtendSelectedLinesToNextShotChangeOrNextSubtitleCommand),  Se.Language.General.ExtendSelectedLinesToNextShotChangeOrNextSubtitle },
+        { nameof(MainViewModel.ExtendSelectedLinesToPreviousShotChangeCommand),  Se.Language.General.ExtendSelectedLinesToPreviousShotChange },
+        { nameof(MainViewModel.SnapSelectedLinesToNearestShotChangeCommand),  Se.Language.General.SnapSelectedLinesToNearestShotChange },
+        { nameof(MainViewModel.SnapSelectedLinesStartToNextShotChangeCommand),  Se.Language.General.SnapSelectedLinesStartToNextShotChange },
+        { nameof(MainViewModel.SnapSelectedLinesEndToPreviousShotChangeCommand),  Se.Language.General.SnapSelectedLinesEndToPreviousShotChange },
+        { nameof(MainViewModel.SetInCueToClosestShotChangeLeftGreenZoneCommand),  Se.Language.General.SetInCueToClosestShotChangeLeftGreenZone },
+        { nameof(MainViewModel.SetInCueToClosestShotChangeRightGreenZoneCommand),  Se.Language.General.SetInCueToClosestShotChangeRightGreenZone },
+        { nameof(MainViewModel.SetOutCueToClosestShotChangeLeftGreenZoneCommand),  Se.Language.General.SetOutCueToClosestShotChangeLeftGreenZone },
+        { nameof(MainViewModel.SetOutCueToClosestShotChangeRightGreenZoneCommand),  Se.Language.General.SetOutCueToClosestShotChangeRightGreenZone },
+        { nameof(MainViewModel.MoveAllShotChangeOneFrameBackCommand),  Se.Language.General.MoveAllShotChangeOneFrameBack },
+        { nameof(MainViewModel.MoveAllShotChangeOneFrameForwardCommand),  Se.Language.General.MoveAllShotChangeOneFrameForward },
+        { nameof(MainViewModel.ShowWaveformSeekSilenceCommand),  Se.Language.Options.Shortcuts.SeekSilence },
+        { nameof(MainViewModel.SeekSilenceBackCommand),  Se.Language.Options.Shortcuts.SeekSilenceBack },
+        { nameof(MainViewModel.SeekSilenceForwardCommand),  Se.Language.Options.Shortcuts.SeekSilenceForward },
+        { nameof(MainViewModel.ShowShotChangesListCommand),  Se.Language.General.ShowShotChangesList },
+        { nameof(MainViewModel.VideoUndockControlsCommand),  Se.Language.Options.Shortcuts.UndockVideoControls },
+        { nameof(MainViewModel.VideoRedockControlsCommand),  Se.Language.Options.Shortcuts.RedockVideoControls },
+        { nameof(MainViewModel.VideoGenerateBlankCommand),  Se.Language.Options.Shortcuts.GenerateBlankVideo },
+        { nameof(MainViewModel.VideoReEncodeCommand),  Se.Language.Options.Shortcuts.ReencodeVideo},
+        { nameof(MainViewModel.VideoCutCommand),  Se.Language.Options.Shortcuts.CutVideo},
+        { nameof(MainViewModel.CutVideoSelectedLinesCommand),  Se.Language.Options.Shortcuts.CutVideoSelectedLines},
+        { nameof(MainViewModel.ResetWaveformZoomAndSpeedCommand),  Se.Language.Waveform.ResetWaveformZoomAndSpeed },
+        { nameof(MainViewModel.ExtendSelectedToPreviousCommand),  Se.Language.General.ExtendSelectedToPrevious },
+        { nameof(MainViewModel.ExtendSelectedToNextCommand),  Se.Language.General.ExtendSelectedToNext },
+        { nameof(MainViewModel.ExtendPreviousEndToSelectedStartCommand),  Se.Language.General.ExtendPreviousEndToSelectedStart },
+        { nameof(MainViewModel.ExtendNextStartToSelectedEndCommand),  Se.Language.General.ExtendNextStartToSelectedEnd },
+        { nameof(MainViewModel.ToggleLockTimeCodesCommand), Se.Language.Options.Shortcuts.ToggleLockTimeCodes },
+        { nameof(MainViewModel.ShowHelpCommand), Se.Language.General.Help },
+        { nameof(MainViewModel.ShowSourceViewCommand), Se.Language.Options.Shortcuts.SourceView },
+        { nameof(MainViewModel.MergeWithLineBeforeCommand), Se.Language.General.MergeWithLineBeforeAndAutoBreak },
+        { nameof(MainViewModel.MergeWithLineAfterCommand), Se.Language.General.MergeWithLineAfterAndAutoBreak },
+        { nameof(MainViewModel.MergeWithLineBeforeKeepBreaksCommand), Se.Language.General.MergeWithLineBeforeKeepBreaks },
+        { nameof(MainViewModel.MergeWithLineAfterKeepBreaksCommand), Se.Language.General.MergeWithLineAfterKeepBreaks },
+        { nameof(MainViewModel.MergeWithLineBeforeAsDialogCommand), Se.Language.Options.Shortcuts.MergeWithLineBeforeAsDialog },
+        { nameof(MainViewModel.MergeWithLineAfterAsDialogCommand), Se.Language.Options.Shortcuts.MergeWithLineAfterAsDialog },
+        { nameof(MainViewModel.ToggleDialogDashesCommand), Se.Language.Options.Shortcuts.ToggleDialogDashes },
+        { nameof(MainViewModel.MoveStartOneFrameBackCommand), Se.Language.Options.Shortcuts.MoveStartOneFrameBack },
+        { nameof(MainViewModel.MoveStartOneFrameForwardCommand), Se.Language.Options.Shortcuts.MoveStartOneFrameForward },
+        { nameof(MainViewModel.MoveEndOneFrameBackCommand), Se.Language.Options.Shortcuts.MoveEndOneFrameBack },
+        { nameof(MainViewModel.MoveEndOneFrameForwardCommand), Se.Language.Options.Shortcuts.MoveEndOneFrameForward },
+        { nameof(MainViewModel.MoveStartOneFrameBackKeepGapPrevCommand), Se.Language.Options.Shortcuts.MoveStartOneFrameBackKeepGapPrev },
+        { nameof(MainViewModel.MoveStartOneFrameForwardKeepGapPrevCommand), Se.Language.Options.Shortcuts.MoveStartOneFrameForwardKeepGapPrev },
+        { nameof(MainViewModel.MoveEndOneFrameBackKeepGapNextCommand), Se.Language.Options.Shortcuts.MoveEndOneFrameBackKeepGapNext },
+        { nameof(MainViewModel.MoveEndOneFrameForwardKeepGapNextCommand), Se.Language.Options.Shortcuts.MoveEndOneFrameForwardKeepGapNext },
+        { nameof(MainViewModel.MergeSelectedLinesCommand), Se.Language.General.MergeSelectedLines },
+        { nameof(MainViewModel.MergeSelectedLinesDialogCommand), Se.Language.General.MergeSelectedLinesDialog },
+        { nameof(MainViewModel.MergeSelectedLinesBilingualCommand), Se.Language.Options.Shortcuts.GeneralMergeSelectedLinesBilingual },
+        { nameof(MainViewModel.MergeSelectedLinesAndUnbreakCommand), Se.Language.Options.Shortcuts.GeneralMergeSelectedLinesAndUnbreak },
+        { nameof(MainViewModel.MergeSelectedLinesAndUnbreakCjkCommand), Se.Language.Options.Shortcuts.GeneralMergeSelectedLinesAndUnbreakCjk },
+        { nameof(MainViewModel.UnbreakNoSpaceCommand), Se.Language.Options.Shortcuts.GeneralUnbreakNoSpaceCjk },
+        { nameof(MainViewModel.ShowColorPickerCommand), Se.Language.General.ChooseColorDotDotDot },
+        { nameof(MainViewModel.FetchFirstWordFromNextSubtitleCommand), Se.Language.General.FetchFirstWordFromNextSubtitle },
+        { nameof(MainViewModel.WaveformSetEndAndStartOfNextAfterGapCommand), Se.Language.Options.Shortcuts.WaveformSetEndAndStartOfNextAfterGap },
+        { nameof(MainViewModel.WaveformSetEndAndStartOfNextAfterGapAndGoToNextCommand), Se.Language.Options.Shortcuts.WaveformSetEndAndStartOfNextAfterGapAndGoToNext },
+        { nameof(MainViewModel.WaveformSetStartAndSetEndOfPreviousMinusGapCommand), Se.Language.Options.Shortcuts.WaveformSetStartAndSetEndOfPreviousMinusGap },
+        { nameof(MainViewModel.WaveformHorizontalZoomInCommand), Se.Language.Options.Shortcuts.WaveformHorizontalZoomInCommand },
+        { nameof(MainViewModel.WaveformHorizontalZoomOutCommand), Se.Language.Options.Shortcuts.WaveformHorizontalZoomOutCommand },
+        { nameof(MainViewModel.WaveformVerticalZoomInCommand), Se.Language.Options.Shortcuts.WaveformVerticalZoomInCommand },
+        { nameof(MainViewModel.WaveformVerticalZoomOutCommand), Se.Language.Options.Shortcuts.WaveformVerticalZoomOutCommand },
+        { nameof(MainViewModel.MoveLastWordToNextSubtitleCommand), Se.Language.Options.Shortcuts.MoveLastWordToNextSubtitle },
+        { nameof(MainViewModel.MoveLastWordFromFirstLineDownCurrentSubtitleCommand), Se.Language.Options.Shortcuts.MoveLastWordFromFirstLineDownCurrentSubtitle },
+        { nameof(MainViewModel.MoveFirstWordFromNextLineUpCurrentSubtitleCommand), Se.Language.Options.Shortcuts.MoveFirstWordFromNextLineUpCurrentSubtitle },
+        { nameof(MainViewModel.MoveTextFromCursorToNextAndGoToNextCommand), Se.Language.Options.Shortcuts.MoveTextFromCursorToNextAndGoToNext },
+        { nameof(MainViewModel.MoveTextFromCursorToNextAndGoToNextAndPlayCommand), Se.Language.Options.Shortcuts.MoveTextFromCursorToNextAndGoToNextAndPlay },
+        { nameof(MainViewModel.ToggleFocusGridAndWaveformCommand), Se.Language.Options.Shortcuts.ToggleFocusGridAndWaveform },
+        { nameof(MainViewModel.ToggleFocusTextBoxAndWaveformCommand), Se.Language.Options.Shortcuts.ToggleFocusTextBoxAndWaveform },
+        { nameof(MainViewModel.ToggleFocusTextBoxAndSubtitleGridCommand), Se.Language.Options.Shortcuts.ToggleFocusTextBoxAndGrid },
+        { nameof(MainViewModel.SubtitleGridCutCommand), Se.Language.Options.Shortcuts.SubtitleGridCut },
+        { nameof(MainViewModel.SubtitleGridCopyCommand), Se.Language.Options.Shortcuts.SubtitleGridCopy },
+        { nameof(MainViewModel.SubtitleGridPasteCommand), Se.Language.Options.Shortcuts.SubtitleGridPaste },
+        { nameof(MainViewModel.ColumnDeleteTextCommand), Se.Language.Options.Shortcuts.ListViewColumnDeleteText },
+        { nameof(MainViewModel.ColumnDeleteTextAndShiftCellsUpCommand), Se.Language.Options.Shortcuts.ListViewColumnDeleteTextAndShiftUp },
+        { nameof(MainViewModel.ColumnInsertEmptyTextAndShiftCellsDownCommand), Se.Language.Options.Shortcuts.ListViewColumnInsertText },
+        { nameof(MainViewModel.ColumnPasteFromClipboardCommand), Se.Language.Options.Shortcuts.ListViewColumnPaste },
+        { nameof(MainViewModel.ColumnTextUpCommand), Se.Language.Options.Shortcuts.ListViewColumnTextUp },
+        { nameof(MainViewModel.ColumnTextDownCommand), Se.Language.Options.Shortcuts.ListViewColumnTextDown },
+        { nameof(MainViewModel.ImportPlainTextCommand), Se.Language.Options.Shortcuts.FileImportPlainText },
+        { nameof(MainViewModel.ExportEbuStlCommand), Se.Language.Options.Shortcuts.FileExportEbuStl },
+        { nameof(MainViewModel.ExportPacCommand), Se.Language.Options.Shortcuts.FileExportPac },
+        { nameof(MainViewModel.FixRightToLeftViaUnicodeControlCharactersCommand), Se.Language.Main.Menu.FixRightToLeftViaUnicodeControlCharacters },
+        { nameof(MainViewModel.RemoveUnicodeControlCharactersCommand), Se.Language.Main.Menu.RemoveUnicodeControlCharacters },
+        { nameof(MainViewModel.ShowToolsRenumberCommand), Se.Language.Main.Menu.Renumber },
+        { nameof(MainViewModel.EvenlyDistributeSelectedLinesCommand), Se.Language.Main.Menu.EvenlyDistributeLines },
+        { nameof(MainViewModel.AutoTranslateSelectedLinesCommand), Se.Language.Options.Shortcuts.AutoTranslateSelectedLines },
+        { nameof(MainViewModel.ShowAssaChangeResolutionCommand), Se.Language.Options.Shortcuts.SetAssaResolution },
+        { nameof(MainViewModel.ShowChooseProfileCommand), Se.Language.Options.Shortcuts.ChooseRuleProfile },
+        { nameof(MainViewModel.TogglePlaybackSpeedCommand), Se.Language.Options.Shortcuts.TogglePlaybackSpeed },
+        { nameof(MainViewModel.PlaybackSlowerCommand), Se.Language.Options.Shortcuts.PlaybackSpeedSlower },
+        { nameof(MainViewModel.PlaybackFasterCommand), Se.Language.Options.Shortcuts.PlaybackSpeedFaster },
+        { nameof(MainViewModel.VideoSetPositionCurrentSubtitleStartCommand), Se.Language.Options.Shortcuts.SetVideoPositionCurrentSubtitleStart },
+        { nameof(MainViewModel.VideoSetPositionCurrentSubtitleEndCommand), Se.Language.Options.Shortcuts.SetVideoPositionCurrentSubtitleEnd },
+        { nameof(MainViewModel.ToggleAudioTracksCommand), Se.Language.Options.Shortcuts.ToggleAudioTracks },
+        { nameof(MainViewModel.ListErrorsCommand), Se.Language.General.ListErrors },
+        { nameof(MainViewModel.GoToPreviousErrorCommand), Se.Language.Options.Shortcuts.GoToPreviousError },
+        { nameof(MainViewModel.GoToNextErrorCommand), Se.Language.Options.Shortcuts.GoToNextError },
+        { nameof(MainViewModel.ShowAddToNameListCommand), Se.Language.Options.Shortcuts.AddNameToNameList },
+        { nameof(MainViewModel.ShowFindDoubleWordsCommand), Se.Language.Options.Shortcuts.FindDoubleWords },
+        { nameof(MainViewModel.ShowFindDoubleLinesCommand), Se.Language.Options.Shortcuts.FindDoubleLines },
+        { nameof(MainViewModel.SetColor1Command), string.Format(Se.Language.Options.Shortcuts.ColorX, "1") },
+        { nameof(MainViewModel.SetColor2Command), string.Format(Se.Language.Options.Shortcuts.ColorX, "2") },
+        { nameof(MainViewModel.SetColor3Command), string.Format(Se.Language.Options.Shortcuts.ColorX, "3") },
+        { nameof(MainViewModel.SetColor4Command), string.Format(Se.Language.Options.Shortcuts.ColorX, "4") },
+        { nameof(MainViewModel.SetColor5Command), string.Format(Se.Language.Options.Shortcuts.ColorX, "5") },
+        { nameof(MainViewModel.SetColor6Command), string.Format(Se.Language.Options.Shortcuts.ColorX, "6") },
+        { nameof(MainViewModel.SetColor7Command), string.Format(Se.Language.Options.Shortcuts.ColorX, "7") },
+        { nameof(MainViewModel.SetColor8Command), string.Format(Se.Language.Options.Shortcuts.ColorX, "8") },
+        { nameof(MainViewModel.RemoveColorCommand), Se.Language.General.RemoveColor },
+        { nameof(MainViewModel.SetActor1Command), string.Format(Se.Language.Options.Shortcuts.SetActorXY, "1", Se.Settings.Actor1) },
+        { nameof(MainViewModel.SetActor2Command), string.Format(Se.Language.Options.Shortcuts.SetActorXY, "2", Se.Settings.Actor2) },
+        { nameof(MainViewModel.SetActor3Command), string.Format(Se.Language.Options.Shortcuts.SetActorXY, "3", Se.Settings.Actor3) },
+        { nameof(MainViewModel.SetActor4Command), string.Format(Se.Language.Options.Shortcuts.SetActorXY, "4", Se.Settings.Actor4) },
+        { nameof(MainViewModel.SetActor5Command), string.Format(Se.Language.Options.Shortcuts.SetActorXY, "5", Se.Settings.Actor5) },
+        { nameof(MainViewModel.SetActor6Command), string.Format(Se.Language.Options.Shortcuts.SetActorXY, "6", Se.Settings.Actor6) },
+        { nameof(MainViewModel.SetActor7Command), string.Format(Se.Language.Options.Shortcuts.SetActorXY, "7", Se.Settings.Actor7) },
+        { nameof(MainViewModel.SetActor8Command), string.Format(Se.Language.Options.Shortcuts.SetActorXY, "8", Se.Settings.Actor8) },
+        { nameof(MainViewModel.SetActor9Command), string.Format(Se.Language.Options.Shortcuts.SetActorXY, "9", Se.Settings.Actor9) },
+        { nameof(MainViewModel.SetActor10Command), string.Format(Se.Language.Options.Shortcuts.SetActorXY, "10", Se.Settings.Actor10) },
+        { nameof(MainViewModel.SetNewActorCommand), Se.Language.Options.Shortcuts.SetNewActor },
+        { nameof(MainViewModel.RemoveActorCommand), Se.Language.General.Actor + " - " + Se.Language.General.Remove },
+        { nameof(MainViewModel.SurroundWith1Command), string.Format(Se.Language.Options.Shortcuts.SurroundWithXY,  Se.Settings.Surround1Left, Se.Settings.Surround1Right) },
+        { nameof(MainViewModel.SurroundWith2Command), string.Format(Se.Language.Options.Shortcuts.SurroundWithXY,  Se.Settings.Surround2Left, Se.Settings.Surround2Right) },
+        { nameof(MainViewModel.SurroundWith3Command), string.Format(Se.Language.Options.Shortcuts.SurroundWithXY,  Se.Settings.Surround3Left, Se.Settings.Surround3Right) },
+        { nameof(MainViewModel.InsertLineBeforeCommand), Se.Language.General.InsertBefore },
+        { nameof(MainViewModel.InsertLineAfterCommand), Se.Language.General.InsertAfter },
+        { nameof(MainViewModel.WaveformInsertNewSelectionCommand), Se.Language.Options.Shortcuts.WaveformInsertNewSelection },
+        { nameof(MainViewModel.WaveformInsertAtPositionAndFocusTextBoxCommand), Se.Language.General.InsertAtPositionAndFocusTextBox },
+        { nameof(MainViewModel.WaveformInsertAtPositionNoFocusTextBoxCommand), Se.Language.General.InsertAtPositionNoFocusTextBox },
+        { nameof(MainViewModel.WaveformPasteFromClipboardCommand), Se.Language.General.WaveformPasteFromClipboard },
+        { nameof(MainViewModel.WaveformCopyToClipboardCommand), Se.Language.General.CopySubtitle },
+        { nameof(MainViewModel.WaveformCopyTextToClipboardCommand), Se.Language.General.CopyTextOnly },
+        { nameof(MainViewModel.FocusSelectedLineCommand), Se.Language.General.FocusSelectedLine },
+        { nameof(MainViewModel.PlayFromStartOfVideoCommand), Se.Language.General.PlayFromStartOfVideo },
+        { nameof(MainViewModel.VideoPlayFromJustBeforeTextCommand), Se.Language.General.PlayFromJustBeforeText },
+        { nameof(MainViewModel.RemoveBlankLinesCommand), Se.Language.General.RemoveBlankLines },
+        { nameof(MainViewModel.InsertSubtitleAtVideoPositionSetEndAtKeyUpCommand), Se.Language.General.NewSubtitleStartKeyDownSetEndKeyUp },
+        { nameof(MainViewModel.SetSubtitleStartAtVideoPositionSetEndAtKeyUpAndGoToNextCommand), Se.Language.General.SetSubtitleStartAtVideoPositionSetEndAtKeyUpAndGoToNext },
+        { nameof(MainViewModel.SpeechToTextSelectedLinesCommand), Se.Language.General.SpeechToTextSelectedLines },
+        { nameof(MainViewModel.SpeechToTextSelectedLinesPromptForLangaugeAlwaysCommand), Se.Language.General.SpeechToTextSelectedLinesPromptAlways },
+        { nameof(MainViewModel.SpeechToTextSelectedLinesPromptForLangaugeFirstTimeCommand), Se.Language.General.SpeechToTextSelectedLinesPromptFirstTime },
+        { nameof(MainViewModel.PlaySelectedLinesWithoutLoopCommand), Se.Language.General.PlaySelectedLines },
+        { nameof(MainViewModel.PlaySelectedLinesWithLoopCommand), Se.Language.General.PlaySelectedLinesWithLoop },
+        { nameof(MainViewModel.PlaySelectedLinesAndFocusWaveformCommand), Se.Language.General.PlaySelectedLinesAndFocusWaveform },
+        { nameof(MainViewModel.PlaySelectedLinesWithLoopAndFocusWaveformCommand), Se.Language.General.PlaySelectedLinesWithLoopAndFocusWaveform },
+        { nameof(MainViewModel.ToggleCasingCommand), Se.Language.Options.Shortcuts.SelectionToggleCasing },
+        { nameof(MainViewModel.SelectionToLowerCommand), Se.Language.Options.Shortcuts.SelectionToLower },
+        { nameof(MainViewModel.SelectionToUpperCommand), Se.Language.Options.Shortcuts.SelectionToUpper },
+        { nameof(MainViewModel.SelectionToSentenceCaseCommand), Se.Language.Options.Shortcuts.SelectionToSentenceCase },
+        { nameof(MainViewModel.GoogleItCommand), Se.Language.Options.Shortcuts.GoogleIt },
+        { nameof(MainViewModel.ImportImageSubtitleForEditCommand), Se.Language.Options.Shortcuts.ImportImageSubtitleForEdit },
+        { nameof(MainViewModel.ShowMediaInformationCommand), Se.Language.Options.Shortcuts.ShowMediaInformation },
+        { nameof(MainViewModel.ShowSubtitleFormatPickerCommand), Se.Language.Options.Shortcuts.ChooseSubtitleFormat },
+        { nameof(MainViewModel.TrimWhitespaceSelectedLinesCommand), Se.Language.Options.Shortcuts.TrimWhitespaceSelectedLines },
+        { nameof(MainViewModel.FocusTextBoxCommand), Se.Language.Options.Shortcuts.FocusTextBox },
+        { nameof(MainViewModel.SortByNumberCommand), Se.Language.Options.Shortcuts.SortByNumber },
+        { nameof(MainViewModel.SortByStartTimeCommand), Se.Language.Options.Shortcuts.SortByStartTime },
+        { nameof(MainViewModel.SortByEndTimeCommand), Se.Language.Options.Shortcuts.SortByEndTime },
+        { nameof(MainViewModel.SortByDurationCommand), Se.Language.Options.Shortcuts.SortByDuration },
+        { nameof(MainViewModel.SortByGapCommand), Se.Language.Options.Shortcuts.SortByGap },
+        { nameof(MainViewModel.SortByTextCommand), Se.Language.Options.Shortcuts.SortByText },
+        { nameof(MainViewModel.SortByTextTotalLengthCommand), Se.Language.Options.Shortcuts.SortByTextTotalLength },
+        { nameof(MainViewModel.SortBySingleLineMaxLengthCommand), Se.Language.Options.Shortcuts.SortBySingleLineMaxLength },
+        { nameof(MainViewModel.SortByCpsCommand), Se.Language.Options.Shortcuts.SortByCps },
+        { nameof(MainViewModel.SortByWpmCommand), Se.Language.Options.Shortcuts.SortByWpm },
+        { nameof(MainViewModel.SortByNumberOfLinesCommand), Se.Language.Options.Shortcuts.SortByNumberOfLines },
+        { nameof(MainViewModel.SortByActorCommand), Se.Language.Options.Shortcuts.SortByActor },
+        { nameof(MainViewModel.SortByStyleCommand), Se.Language.Options.Shortcuts.SortByStyle },
+        { nameof(MainViewModel.VideoToggleBrightnessCommand), Se.Language.Options.Shortcuts.VideoToggleBrightness },
+        { nameof(MainViewModel.ShowPickLayerFilterCommand), Se.Language.General.FilterByLayer },
+        { nameof(MainViewModel.ShowPickLayerCommand), Se.Language.General.PickLayer },
+        { nameof(MainViewModel.CopyTextToClipboardCommand), Se.Language.Options.Shortcuts.CopyTextToClipboard },
+        { nameof(MainViewModel.CopyTextFromOriginalToClipboardCommand), Se.Language.Options.Shortcuts.CopyTextFromOriginalToClipboard },
+        { nameof(MainViewModel.ShowAssaImageColorPickerCommand), Se.Language.Assa.ImageColorPicker },
+        { nameof(MainViewModel.ShowAssaSetPositionCommand), Se.Language.Assa.SetPosition },
+        { nameof(MainViewModel.ShowAssaApplyCustomOverrideTagsCommand), Se.Language.Assa.ApplyOverrideTags },
+        { nameof(MainViewModel.ShowAssaDrawCommand), Se.Language.Options.Shortcuts.AssaDraw },
+        { nameof(MainViewModel.ShowAssaGenerateProgressBarCommand), Se.Language.Options.Shortcuts.AssaGenerateProgressBar },
+        { nameof(MainViewModel.ShowAssaGenerateBackgroundCommand), Se.Language.Options.Shortcuts.AssaGenerateBackgroundBox },
+        { nameof(MainViewModel.ShowAssaStylesCommand), Se.Language.Options.Shortcuts.AssaStyles },
+        { nameof(MainViewModel.ShowAssaPropertiesCommand), Se.Language.Options.Shortcuts.AssaProperties },
+        { nameof(MainViewModel.ShowAssaAttachmentsCommand), Se.Language.Options.Shortcuts.AssaAttachments },
+        { nameof(MainViewModel.RecalculateDurationSelectedLinesCommand), Se.Language.Options.Shortcuts.RecalculateDurationSelectedLines },
+        { nameof(MainViewModel.SetDurationMaxCpsSelectedLinesCommand), Se.Language.Options.Shortcuts.SetDurationMaxCpsSelectedLines },
+        { nameof(MainViewModel.WaveformToggleWaveformSpectrogramHeightCommand), Se.Language.Options.Shortcuts.ToggleWaveformAndSpectrogramHeight },
+        { nameof(MainViewModel.SpectrogramToggleStyleCommand), Se.Language.Options.Shortcuts.ToggleSpectrogramStyle },
+        { nameof(MainViewModel.ShowBeautifyTimeCodesCommand), Se.Language.Tools.BeautifyTimeCodes.Title },
+        { nameof(MainViewModel.ZoomLayoutInCommand), Se.Language.Options.Shortcuts.LayoutZoomIn },
+        { nameof(MainViewModel.ZoomLayoutOutCommand), Se.Language.Options.Shortcuts.LayoutZoomOut },
+        { nameof(MainViewModel.OpenSecondarySubtitleCommand), Se.Language.Video.OpenSecondarySubtitleOnVideoPlayer },
+        { nameof(MainViewModel.ToggleCurrentSubtitleWhilePlayingCommand), Se.Language.Video.ToggleCurrentSubtitleWhilePlaying },
+        { nameof(MainViewModel.ToggleSubtitlesOnVideoPlayerCommand), Se.Language.Video.ToggleSubtitlesOnVideoPlayer },
+        { nameof(MainViewModel.ToggleSmpteTimingCommand), Se.Language.Main.Menu.SmpteTiming },
+    };
+    }
+
+    private static List<AvailableShortcut> GetAllAvailableShortcuts(MainViewModel vm)
+    {
+        var shortcuts = new List<AvailableShortcut>();
+
+        AddShortcut(shortcuts, vm.SelectAllLinesCommand, nameof(vm.SelectAllLinesCommand), ShortcutCategory.SubtitleGrid);
+        AddShortcut(shortcuts, vm.InverseSelectionCommand, nameof(vm.InverseSelectionCommand), ShortcutCategory.SubtitleGrid);
+        AddShortcut(shortcuts, vm.DeleteSelectedLinesCommand, nameof(vm.DeleteSelectedLinesCommand), ShortcutCategory.SubtitleGrid);
+        AddShortcut(shortcuts, vm.RippleDeleteSelectedLinesCommand, nameof(vm.RippleDeleteSelectedLinesCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.DuplicateSelectedLinesCommand, nameof(vm.DuplicateSelectedLinesCommand), ShortcutCategory.SubtitleGrid);
+        // Alignment works on the selected lines regardless of where focus is, so these are active in
+        // the text box too - not only in the subtitle grid (discussion #11744).
+        AddShortcut(shortcuts, vm.ShowAlignmentPickerCommand, nameof(vm.ShowAlignmentPickerCommand), ShortcutCategory.SubtitleGridAndTextBox);
+        AddShortcut(shortcuts, vm.DoAlignmentAn1Command, nameof(vm.DoAlignmentAn1Command), ShortcutCategory.SubtitleGridAndTextBox);
+        AddShortcut(shortcuts, vm.DoAlignmentAn2Command, nameof(vm.DoAlignmentAn2Command), ShortcutCategory.SubtitleGridAndTextBox);
+        AddShortcut(shortcuts, vm.DoAlignmentAn3Command, nameof(vm.DoAlignmentAn3Command), ShortcutCategory.SubtitleGridAndTextBox);
+        AddShortcut(shortcuts, vm.DoAlignmentAn4Command, nameof(vm.DoAlignmentAn4Command), ShortcutCategory.SubtitleGridAndTextBox);
+        AddShortcut(shortcuts, vm.DoAlignmentAn5Command, nameof(vm.DoAlignmentAn5Command), ShortcutCategory.SubtitleGridAndTextBox);
+        AddShortcut(shortcuts, vm.DoAlignmentAn6Command, nameof(vm.DoAlignmentAn6Command), ShortcutCategory.SubtitleGridAndTextBox);
+        AddShortcut(shortcuts, vm.DoAlignmentAn7Command, nameof(vm.DoAlignmentAn7Command), ShortcutCategory.SubtitleGridAndTextBox);
+        AddShortcut(shortcuts, vm.DoAlignmentAn8Command, nameof(vm.DoAlignmentAn8Command), ShortcutCategory.SubtitleGridAndTextBox);
+        AddShortcut(shortcuts, vm.DoAlignmentAn9Command, nameof(vm.DoAlignmentAn9Command), ShortcutCategory.SubtitleGridAndTextBox);
+        AddShortcut(shortcuts, vm.AddOrEditBookmarkCommand, nameof(vm.AddOrEditBookmarkCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.ToggleBookmarkSelectedLinesNoTextCommand, nameof(vm.ToggleBookmarkSelectedLinesNoTextCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.CopyTextFromOriginalToTranslationCommand, nameof(vm.CopyTextFromOriginalToTranslationCommand), ShortcutCategory.SubtitleGrid, ShortcutGroup.Translate);
+        AddShortcut(shortcuts, vm.SwitchOriginalAndTranslationTextSelectedLinesCommand, nameof(vm.SwitchOriginalAndTranslationTextSelectedLinesCommand), ShortcutCategory.SubtitleGrid, ShortcutGroup.Translate);
+        AddShortcut(shortcuts, vm.MergeOriginalIntoTranslationSelectedLinesCommand, nameof(vm.MergeOriginalIntoTranslationSelectedLinesCommand), ShortcutCategory.SubtitleGrid, ShortcutGroup.Translate);
+        AddShortcut(shortcuts, vm.ListBookmarksCommand, nameof(vm.ListBookmarksCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.GoToNextBookmarkCommand, nameof(vm.GoToNextBookmarkCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.GoToPreviousBookmarkCommand, nameof(vm.GoToPreviousBookmarkCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.GoToNextEmptyLineCommand, nameof(vm.GoToNextEmptyLineCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.OpenDataFolderCommand, nameof(vm.OpenDataFolderCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.ToggleIsWaveformToolbarVisibleCommand, nameof(vm.ToggleIsWaveformToolbarVisibleCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.ToggleSubtitleGridFormattingCommand, nameof(vm.ToggleSubtitleGridFormattingCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.SetupLikeSe4Command, nameof(vm.SetupLikeSe4Command), ShortcutCategory.General);
+
+        // File
+        AddShortcut(shortcuts, vm.CommandFileOpenCommand, nameof(vm.CommandFileOpenCommand), ShortcutCategory.General, ShortcutGroup.File);
+        AddShortcut(shortcuts, vm.CommandExitCommand, nameof(vm.CommandExitCommand), ShortcutCategory.General, ShortcutGroup.File);
+        AddShortcut(shortcuts, vm.CommandFileNewCommand, nameof(vm.CommandFileNewCommand), ShortcutCategory.General, ShortcutGroup.File);
+        AddShortcut(shortcuts, vm.CommandFileNewKeepVideoCommand, nameof(vm.CommandFileNewKeepVideoCommand), ShortcutCategory.General, ShortcutGroup.File);
+        AddShortcut(shortcuts, vm.CommandFileSaveCommand, nameof(vm.CommandFileSaveCommand), ShortcutCategory.General, ShortcutGroup.File);
+        AddShortcut(shortcuts, vm.CommandFileSaveAsCommand, nameof(vm.CommandFileSaveAsCommand), ShortcutCategory.General, ShortcutGroup.File);
+        AddShortcut(shortcuts, vm.ShowStatisticsCommand, nameof(vm.ShowStatisticsCommand), ShortcutCategory.General, ShortcutGroup.File);
+        AddShortcut(shortcuts, vm.ShowCompareCommand, nameof(vm.ShowCompareCommand), ShortcutCategory.General, ShortcutGroup.File);
+        AddShortcut(shortcuts, vm.ShowRestoreAutoBackupCommand, nameof(vm.ShowRestoreAutoBackupCommand), ShortcutCategory.General, ShortcutGroup.File);
+        AddShortcut(shortcuts, vm.OpenContainingFolderCommand, nameof(vm.OpenContainingFolderCommand), ShortcutCategory.General, ShortcutGroup.File);
+        AddShortcut(shortcuts, vm.CopySubtitlePathToClipboardCommand, nameof(vm.CopySubtitlePathToClipboardCommand), ShortcutCategory.General, ShortcutGroup.File);
+        AddShortcut(shortcuts, vm.CopySubtitleOriginalPathToClipboardCommand, nameof(vm.CopySubtitleOriginalPathToClipboardCommand), ShortcutCategory.General, ShortcutGroup.File);
+        AddShortcut(shortcuts, vm.ImportTimeCodesCommand, nameof(vm.ImportTimeCodesCommand), ShortcutCategory.General, ShortcutGroup.File);
+        AddShortcut(shortcuts, vm.ShowImportSubtitleWithManuallyChosenEncodingCommand, nameof(vm.ShowImportSubtitleWithManuallyChosenEncodingCommand), ShortcutCategory.General, ShortcutGroup.File);
+        AddShortcut(shortcuts, vm.CommandFileOpenKeepVideoCommand, nameof(vm.CommandFileOpenKeepVideoCommand), ShortcutCategory.General, ShortcutGroup.File);
+        AddShortcut(shortcuts, vm.FileOpenOriginalCommand, nameof(vm.FileOpenOriginalCommand), ShortcutCategory.General, ShortcutGroup.File);
+        AddShortcut(shortcuts, vm.FileCloseOriginalCommand, nameof(vm.FileCloseOriginalCommand), ShortcutCategory.General, ShortcutGroup.File);
+        AddShortcut(shortcuts, vm.ToggleTranslationModeCommand, nameof(vm.ToggleTranslationModeCommand), ShortcutCategory.General, ShortcutGroup.Translate);
+        AddShortcut(shortcuts, vm.FileCloseTranslationCommand, nameof(vm.FileCloseTranslationCommand), ShortcutCategory.General, ShortcutGroup.File);
+        AddShortcut(shortcuts, vm.ExportBluRaySupCommand, nameof(vm.ExportBluRaySupCommand), ShortcutCategory.General, ShortcutGroup.File);
+        AddShortcut(shortcuts, vm.ShowExportCustomTextFormatCommand, nameof(vm.ShowExportCustomTextFormatCommand), ShortcutCategory.General, ShortcutGroup.File);
+        AddShortcut(shortcuts, vm.ShowExportPlainTextCommand, nameof(vm.ShowExportPlainTextCommand), ShortcutCategory.General, ShortcutGroup.File);
+        AddShortcut(shortcuts, vm.CopyMsRelativeToCurrentSubtitleLineToClipboardCommand, nameof(vm.CopyMsRelativeToCurrentSubtitleLineToClipboardCommand), ShortcutCategory.General);
+
+        AddShortcut(shortcuts, vm.UndoCommand, nameof(vm.UndoCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.RedoCommand, nameof(vm.RedoCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.ShowHistoryCommand, nameof(vm.ShowHistoryCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.ShowFindCommand, nameof(vm.ShowFindCommand), ShortcutCategory.General, ShortcutGroup.Search);
+        AddShortcut(shortcuts, vm.FindNextCommand, nameof(vm.FindNextCommand), ShortcutCategory.General, ShortcutGroup.Search);
+        AddShortcut(shortcuts, vm.FindPreviousCommand, nameof(vm.FindPreviousCommand), ShortcutCategory.General, ShortcutGroup.Search);
+        AddShortcut(shortcuts, vm.ShowReplaceCommand, nameof(vm.ShowReplaceCommand), ShortcutCategory.General, ShortcutGroup.Search);
+        AddShortcut(shortcuts, vm.ShowMultipleReplaceCommand, nameof(vm.ShowMultipleReplaceCommand), ShortcutCategory.General, ShortcutGroup.Search);
+        AddShortcut(shortcuts, vm.ShowGoToLineCommand, nameof(vm.ShowGoToLineCommand), ShortcutCategory.General, ShortcutGroup.Search);
+        AddShortcut(shortcuts, vm.RightToLeftToggleCommand, nameof(vm.RightToLeftToggleCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.ReverseRightToLeftStartEndCommand, nameof(vm.ReverseRightToLeftStartEndCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.ShowModifySelectionCommand, nameof(vm.ShowModifySelectionCommand), ShortcutCategory.General);
+
+        AddShortcut(shortcuts, vm.ShowGoToVideoPositionCommand, nameof(vm.ShowGoToVideoPositionCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.ToggleLinesItalicOrSelectedTextCommand, nameof(vm.ToggleLinesItalicOrSelectedTextCommand), ShortcutCategory.SubtitleGridAndTextBox);
+        AddShortcut(shortcuts, vm.ToggleLinesBoldOrSelectedTextCommand, nameof(vm.ToggleLinesBoldOrSelectedTextCommand), ShortcutCategory.SubtitleGridAndTextBox);
+
+        AddShortcut(shortcuts, vm.PlayCommand, nameof(vm.PlayCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.PlayNextCommand, nameof(vm.PlayNextCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.PlayNextAndStopCommand, nameof(vm.PlayNextAndStopCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.PlayNextAndLoopCommand, nameof(vm.PlayNextAndLoopCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.PlayPreviousCommand, nameof(vm.PlayPreviousCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.PlayPreviousAndStopCommand, nameof(vm.PlayPreviousAndStopCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.PlayPreviousAndLoopCommand, nameof(vm.PlayPreviousAndLoopCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.PauseCommand, nameof(vm.PauseCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.TogglePlayPauseCommand, nameof(vm.TogglePlayPauseCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.TogglePlayPause2Command, nameof(vm.TogglePlayPause2Command), ShortcutCategory.General, ShortcutGroup.Video);
+
+        AddShortcut(shortcuts, vm.CommandShowLayoutCommand, nameof(vm.CommandShowLayoutCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.ShowAutoTranslateCommand, nameof(vm.ShowAutoTranslateCommand), ShortcutCategory.General, ShortcutGroup.Translate);
+        AddShortcut(shortcuts, vm.ShowTranslateViaCopyPasteCommand, nameof(vm.ShowTranslateViaCopyPasteCommand), ShortcutCategory.General, ShortcutGroup.Translate);
+        AddShortcut(shortcuts, vm.CommandShowSettingsCommand, nameof(vm.CommandShowSettingsCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.CommandShowSettingsShortcutsCommand, nameof(vm.CommandShowSettingsShortcutsCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.ShowWordListsCommand, nameof(vm.ShowWordListsCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.CommandShowSettingsLanguageCommand, nameof(vm.CommandShowSettingsLanguageCommand), ShortcutCategory.General);
+
+        AddShortcut(shortcuts, vm.GoToPreviousLineCommand, nameof(vm.GoToPreviousLineCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.GoToNextLineCommand, nameof(vm.GoToNextLineCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.GoToNextLineCursorAtEndCommand, nameof(vm.GoToNextLineCursorAtEndCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.GoToFirstLineCommand, nameof(vm.GoToFirstLineCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.GoToLastLineCommand, nameof(vm.GoToLastLineCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.GoToPreviousLineAndSetVideoPositionCommand, nameof(vm.GoToPreviousLineAndSetVideoPositionCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.GoToNextLineAndSetVideoPositionCommand, nameof(vm.GoToNextLineAndSetVideoPositionCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.GoToPreviousLineFromVideoPositionCommand, nameof(vm.GoToPreviousLineFromVideoPositionCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.GoToNextLineFromVideoPositionCommand, nameof(vm.GoToNextLineFromVideoPositionCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.VideoGoToPreviousTimeCodeCommand, nameof(vm.VideoGoToPreviousTimeCodeCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.VideoGoToNextTimeCodeCommand, nameof(vm.VideoGoToNextTimeCodeCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.SaveLanguageFileCommand, nameof(vm.SaveLanguageFileCommand), ShortcutCategory.General);
+
+        AddShortcut(shortcuts, vm.UnbreakCommand, nameof(vm.UnbreakCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.UnbreakNoSpaceCommand, nameof(vm.UnbreakNoSpaceCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.AutoBreakCommand, nameof(vm.AutoBreakCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.SplitCommand, nameof(vm.SplitCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.SplitAtVideoPositionCommand, nameof(vm.SplitAtVideoPositionCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.SplitAtTextBoxCursorPositionCommand, nameof(vm.SplitAtTextBoxCursorPositionCommand), ShortcutCategory.TextBox);
+        AddShortcut(shortcuts, vm.SplitAtVideoPositionAndTextBoxCursorPositionCommand, nameof(vm.SplitAtVideoPositionAndTextBoxCursorPositionCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.TextBoxDeleteForwardCommand, nameof(vm.TextBoxDeleteForwardCommand), ShortcutCategory.TextBox);
+        AddShortcut(shortcuts, vm.TextBoxCutCommand, nameof(vm.TextBoxCutCommand), ShortcutCategory.TextBox);
+        AddShortcut(shortcuts, vm.TextBoxCut2Command, nameof(vm.TextBoxCut2Command), ShortcutCategory.TextBox);
+        AddShortcut(shortcuts, vm.TextBoxPasteCommand, nameof(vm.TextBoxPasteCommand), ShortcutCategory.TextBox);
+        AddShortcut(shortcuts, vm.TextBoxCopyCommand, nameof(vm.TextBoxCopyCommand), ShortcutCategory.TextBox);
+        AddShortcut(shortcuts, vm.TextBoxSelectAllCommand, nameof(vm.TextBoxSelectAllCommand), ShortcutCategory.TextBox);
+        AddShortcut(shortcuts, vm.TextBoxRemoveAllFormattingCommand, nameof(vm.TextBoxRemoveAllFormattingCommand), ShortcutCategory.TextBox);
+        AddShortcut(shortcuts, vm.TextBoxItalicCommand, nameof(vm.TextBoxItalicCommand), ShortcutCategory.TextBox);
+
+        // Tools
+        AddShortcut(shortcuts, vm.ShowBridgeGapsCommand, nameof(vm.ShowBridgeGapsCommand), ShortcutCategory.General, ShortcutGroup.Tools);
+        AddShortcut(shortcuts, vm.ShowToolsAdjustDurationsCommand, nameof(vm.ShowToolsAdjustDurationsCommand), ShortcutCategory.General, ShortcutGroup.Tools);
+        AddShortcut(shortcuts, vm.ShowApplyDurationLimitsCommand, nameof(vm.ShowApplyDurationLimitsCommand), ShortcutCategory.General, ShortcutGroup.Tools);
+        AddShortcut(shortcuts, vm.ShowToolsBatchConvertCommand, nameof(vm.ShowToolsBatchConvertCommand), ShortcutCategory.General, ShortcutGroup.Tools);
+        AddShortcut(shortcuts, vm.ShowApplyMinGapCommand, nameof(vm.ShowApplyMinGapCommand), ShortcutCategory.General, ShortcutGroup.Tools);
+        AddShortcut(shortcuts, vm.ShowToolsChangeCasingCommand, nameof(vm.ShowToolsChangeCasingCommand), ShortcutCategory.General, ShortcutGroup.Tools);
+        AddShortcut(shortcuts, vm.ShowToolsChangeFormattingCommand, nameof(vm.ShowToolsChangeFormattingCommand), ShortcutCategory.General, ShortcutGroup.Tools);
+        AddShortcut(shortcuts, vm.ShowToolsFixCommonErrorsCommand, nameof(vm.ShowToolsFixCommonErrorsCommand), ShortcutCategory.General, ShortcutGroup.Tools);
+        AddShortcut(shortcuts, vm.ShowToolsAiReviewCommand, nameof(vm.ShowToolsAiReviewCommand), ShortcutCategory.General, ShortcutGroup.Ai);
+        AddShortcut(shortcuts, vm.ToolsMakeEmptyTranslationFromCurrentSubtitleCommand, nameof(vm.ToolsMakeEmptyTranslationFromCurrentSubtitleCommand), ShortcutCategory.General, ShortcutGroup.Translate);
+        AddShortcut(shortcuts, vm.ShowToolsMergeLinesWithSameTextCommand, nameof(vm.ShowToolsMergeLinesWithSameTextCommand), ShortcutCategory.General, ShortcutGroup.Tools);
+        AddShortcut(shortcuts, vm.ShowToolsMergeLinesWithSameTimeCodesCommand, nameof(vm.ShowToolsMergeLinesWithSameTimeCodesCommand), ShortcutCategory.General, ShortcutGroup.Tools);
+        AddShortcut(shortcuts, vm.ShowToolsSplitBreakLongLinesCommand, nameof(vm.ShowToolsSplitBreakLongLinesCommand), ShortcutCategory.General, ShortcutGroup.Tools);
+        AddShortcut(shortcuts, vm.ShowToolsMergeShortLinesCommand, nameof(vm.ShowToolsMergeShortLinesCommand), ShortcutCategory.General, ShortcutGroup.Tools);
+        AddShortcut(shortcuts, vm.ShowToolsMergeContinuationLinesCommand, nameof(vm.ShowToolsMergeContinuationLinesCommand), ShortcutCategory.General, ShortcutGroup.Tools);
+        AddShortcut(shortcuts, vm.SnapAllTimesToFramesCommand, nameof(vm.SnapAllTimesToFramesCommand), ShortcutCategory.General, ShortcutGroup.Sync);
+        AddShortcut(shortcuts, vm.ShowToolsRemoveTextForHearingImpairedCommand, nameof(vm.ShowToolsRemoveTextForHearingImpairedCommand), ShortcutCategory.General, ShortcutGroup.Tools);
+        AddShortcut(shortcuts, vm.ShowToolsJoinCommand, nameof(vm.ShowToolsJoinCommand), ShortcutCategory.General, ShortcutGroup.Tools);
+        AddShortcut(shortcuts, vm.ShowToolsSplitCommand, nameof(vm.ShowToolsSplitCommand), ShortcutCategory.General, ShortcutGroup.Tools);
+
+        // Spell check
+        AddShortcut(shortcuts, vm.ShowSpellCheckCommand, nameof(vm.ShowSpellCheckCommand), ShortcutCategory.General, ShortcutGroup.Tools);
+        AddShortcut(shortcuts, vm.ShowSpellCheckDictionariesCommand, nameof(vm.ShowSpellCheckDictionariesCommand), ShortcutCategory.General, ShortcutGroup.Tools);
+        AddShortcut(shortcuts, vm.CommandPickLiveSpellCheckDictionaryCommand, nameof(vm.CommandPickLiveSpellCheckDictionaryCommand), ShortcutCategory.General, ShortcutGroup.Tools);
+
+        // Video
+        AddShortcut(shortcuts, vm.CommandVideoOpenCommand, nameof(vm.CommandVideoOpenCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.ShowVideoOpenFromUrlCommand, nameof(vm.ShowVideoOpenFromUrlCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.CommandVideoCloseCommand, nameof(vm.CommandVideoCloseCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.ShowSpeechToTextWhisperCommand, nameof(vm.ShowSpeechToTextWhisperCommand), ShortcutCategory.General, ShortcutGroup.Ai);
+        AddShortcut(shortcuts, vm.ShowVideoTextToSpeechCommand, nameof(vm.ShowVideoTextToSpeechCommand), ShortcutCategory.General, ShortcutGroup.Ai);
+        AddShortcut(shortcuts, vm.ShowVideoOcrCommand, nameof(vm.ShowVideoOcrCommand), ShortcutCategory.General, ShortcutGroup.Ai);
+        AddShortcut(shortcuts, vm.ShowVideoBurnInCommand, nameof(vm.ShowVideoBurnInCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.ShowVideoTransparentSubtitlesCommand, nameof(vm.ShowVideoTransparentSubtitlesCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.ShowShotChangesSubtitlesCommand, nameof(vm.ShowShotChangesSubtitlesCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.ShowShotChangesListCommand, nameof(vm.ShowShotChangesListCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.VideoUndockControlsCommand, nameof(vm.VideoUndockControlsCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.VideoRedockControlsCommand, nameof(vm.VideoRedockControlsCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.VideoGenerateBlankCommand, nameof(vm.VideoGenerateBlankCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.VideoReEncodeCommand, nameof(vm.VideoReEncodeCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.VideoCutCommand, nameof(vm.VideoCutCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.CutVideoSelectedLinesCommand, nameof(vm.CutVideoSelectedLinesCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.VideoFullScreenCommand, nameof(vm.VideoFullScreenCommand), ShortcutCategory.General, ShortcutGroup.Video);
+
+        AddShortcut(shortcuts, vm.ShowSyncAdjustAllTimesCommand, nameof(vm.ShowSyncAdjustAllTimesCommand), ShortcutCategory.General, ShortcutGroup.Sync);
+        AddShortcut(shortcuts, vm.ShowVisualSyncCommand, nameof(vm.ShowVisualSyncCommand), ShortcutCategory.General, ShortcutGroup.Sync);
+        AddShortcut(shortcuts, vm.ShowSyncChangeFrameRateCommand, nameof(vm.ShowSyncChangeFrameRateCommand), ShortcutCategory.General, ShortcutGroup.Sync);
+        AddShortcut(shortcuts, vm.ShowSyncChangeSpeedCommand, nameof(vm.ShowSyncChangeSpeedCommand), ShortcutCategory.General, ShortcutGroup.Sync);
+        AddShortcut(shortcuts, vm.ShowPointSyncCommand, nameof(vm.ShowPointSyncCommand), ShortcutCategory.General, ShortcutGroup.Sync);
+        AddShortcut(shortcuts, vm.ShowPointSyncViaOtherCommand, nameof(vm.ShowPointSyncViaOtherCommand), ShortcutCategory.General, ShortcutGroup.Sync);
+
+        AddShortcut(shortcuts, vm.VideoOneFrameBackCommand, nameof(vm.VideoOneFrameBackCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.VideoOneFrameForwardCommand, nameof(vm.VideoOneFrameForwardCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.WaveformVideoSeekBackCommand, nameof(vm.WaveformVideoSeekBackCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.WaveformVideoSeekForwardCommand, nameof(vm.WaveformVideoSeekForwardCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.Video100MsBackCommand, nameof(vm.Video100MsBackCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.Video100MsForwardCommand, nameof(vm.Video100MsForwardCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.Video500MsBackCommand, nameof(vm.Video500MsBackCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.Video500MsForwardCommand, nameof(vm.Video500MsForwardCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.VideoOneSecondBackCommand, nameof(vm.VideoOneSecondBackCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.VideoOneSecondForwardCommand, nameof(vm.VideoOneSecondForwardCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.VideoMoveCustom1BackCommand, nameof(vm.VideoMoveCustom1BackCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.VideoMoveCustom1ForwardCommand, nameof(vm.VideoMoveCustom1ForwardCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.VideoMoveCustom2BackCommand, nameof(vm.VideoMoveCustom2BackCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.VideoMoveCustom2ForwardCommand, nameof(vm.VideoMoveCustom2ForwardCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.VideoMoveCustom3BackCommand, nameof(vm.VideoMoveCustom3BackCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.VideoMoveCustom3ForwardCommand, nameof(vm.VideoMoveCustom3ForwardCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.VideoMoveCustom4BackCommand, nameof(vm.VideoMoveCustom4BackCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.VideoMoveCustom4ForwardCommand, nameof(vm.VideoMoveCustom4ForwardCommand), ShortcutCategory.General, ShortcutGroup.Video);
+
+        AddShortcut(shortcuts, vm.WaveformSetStartAndOffsetTheRestCommand, nameof(vm.WaveformSetStartAndOffsetTheRestCommand), ShortcutCategory.Waveform);
+        AddShortcut(shortcuts, vm.WaveformSetEndAndOffsetTheRestCommand, nameof(vm.WaveformSetEndAndOffsetTheRestCommand), ShortcutCategory.Waveform);
+        AddShortcut(shortcuts, vm.WaveformSetStartCommand, nameof(vm.WaveformSetStartCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.WaveformSetStartAndGoToNextCommand, nameof(vm.WaveformSetStartAndGoToNextCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.WaveformSetStartAndKeepDurationCommand, nameof(vm.WaveformSetStartAndKeepDurationCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.WaveformSetEndCommand, nameof(vm.WaveformSetEndCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.WaveformSetEndAndGoToNextCommand, nameof(vm.WaveformSetEndAndGoToNextCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.WaveformSetEndAddNewAndGoToNewCommand, nameof(vm.WaveformSetEndAddNewAndGoToNewCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.WaveformSetEndAddNewAndGoToNewNoFocusTextBoxCommand, nameof(vm.WaveformSetEndAddNewAndGoToNewNoFocusTextBoxCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.DoWaveformCenterCommand, nameof(vm.DoWaveformCenterCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.WaveformSetEndAndStartOfNextAfterGapCommand, nameof(vm.WaveformSetEndAndStartOfNextAfterGapCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.WaveformSetEndAndStartOfNextAfterGapAndGoToNextCommand, nameof(vm.WaveformSetEndAndStartOfNextAfterGapAndGoToNextCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.WaveformSetStartAndSetEndOfPreviousMinusGapCommand, nameof(vm.WaveformSetStartAndSetEndOfPreviousMinusGapCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.WaveformHorizontalZoomInCommand, nameof(vm.WaveformHorizontalZoomInCommand), ShortcutCategory.Waveform);
+        AddShortcut(shortcuts, vm.WaveformHorizontalZoomOutCommand, nameof(vm.WaveformHorizontalZoomOutCommand), ShortcutCategory.Waveform);
+        AddShortcut(shortcuts, vm.WaveformVerticalZoomInCommand, nameof(vm.WaveformVerticalZoomInCommand), ShortcutCategory.Waveform);
+        AddShortcut(shortcuts, vm.WaveformVerticalZoomOutCommand, nameof(vm.WaveformVerticalZoomOutCommand), ShortcutCategory.Waveform);
+        // General, not Waveform: it acts on the video position, not on anything the waveform has
+        // selected, and every other shot change command is General too. As a Waveform shortcut it
+        // only fired while the waveform had keyboard focus, which it often never gets (#11744).
+        AddShortcut(shortcuts, vm.ToggleShotChangesAtVideoPositionCommand, nameof(vm.ToggleShotChangesAtVideoPositionCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.ShowWaveformSeekSilenceCommand, nameof(vm.ShowWaveformSeekSilenceCommand), ShortcutCategory.Waveform);
+        AddShortcut(shortcuts, vm.SeekSilenceBackCommand, nameof(vm.SeekSilenceBackCommand), ShortcutCategory.Waveform);
+        AddShortcut(shortcuts, vm.SeekSilenceForwardCommand, nameof(vm.SeekSilenceForwardCommand), ShortcutCategory.Waveform);
+        AddShortcut(shortcuts, vm.GoToPreviousShotChangeCommand, nameof(vm.GoToPreviousShotChangeCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.GoToNextShotChangeCommand, nameof(vm.GoToNextShotChangeCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.ExtendSelectedLinesToNextShotChangeOrNextSubtitleCommand, nameof(vm.ExtendSelectedLinesToNextShotChangeOrNextSubtitleCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.ExtendSelectedLinesToPreviousShotChangeCommand, nameof(vm.ExtendSelectedLinesToPreviousShotChangeCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.SnapSelectedLinesToNearestShotChangeCommand, nameof(vm.SnapSelectedLinesToNearestShotChangeCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.SnapSelectedLinesStartToNextShotChangeCommand, nameof(vm.SnapSelectedLinesStartToNextShotChangeCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.SnapSelectedLinesEndToPreviousShotChangeCommand, nameof(vm.SnapSelectedLinesEndToPreviousShotChangeCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.SetInCueToClosestShotChangeLeftGreenZoneCommand, nameof(vm.SetInCueToClosestShotChangeLeftGreenZoneCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.SetInCueToClosestShotChangeRightGreenZoneCommand, nameof(vm.SetInCueToClosestShotChangeRightGreenZoneCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.SetOutCueToClosestShotChangeLeftGreenZoneCommand, nameof(vm.SetOutCueToClosestShotChangeLeftGreenZoneCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.SetOutCueToClosestShotChangeRightGreenZoneCommand, nameof(vm.SetOutCueToClosestShotChangeRightGreenZoneCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.MoveAllShotChangeOneFrameBackCommand, nameof(vm.MoveAllShotChangeOneFrameBackCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.MoveAllShotChangeOneFrameForwardCommand, nameof(vm.MoveAllShotChangeOneFrameForwardCommand), ShortcutCategory.General, ShortcutGroup.Video);
+
+        AddShortcut(shortcuts, vm.ResetWaveformZoomAndSpeedCommand, nameof(vm.ResetWaveformZoomAndSpeedCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.ExtendSelectedToPreviousCommand, nameof(vm.ExtendSelectedToPreviousCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.ExtendSelectedToNextCommand, nameof(vm.ExtendSelectedToNextCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.ExtendPreviousEndToSelectedStartCommand, nameof(vm.ExtendPreviousEndToSelectedStartCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.ExtendNextStartToSelectedEndCommand, nameof(vm.ExtendNextStartToSelectedEndCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.ToggleLockTimeCodesCommand, nameof(vm.ToggleLockTimeCodesCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.ShowHelpCommand, nameof(vm.ShowHelpCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.ShowSourceViewCommand, nameof(vm.ShowSourceViewCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.MergeWithLineBeforeCommand, nameof(vm.MergeWithLineBeforeCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.MergeWithLineAfterCommand, nameof(vm.MergeWithLineAfterCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.MergeSelectedLinesCommand, nameof(vm.MergeSelectedLinesCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.MergeWithLineBeforeKeepBreaksCommand, nameof(vm.MergeWithLineBeforeKeepBreaksCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.MergeWithLineAfterKeepBreaksCommand, nameof(vm.MergeWithLineAfterKeepBreaksCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.MergeWithLineBeforeAsDialogCommand, nameof(vm.MergeWithLineBeforeAsDialogCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.MergeWithLineAfterAsDialogCommand, nameof(vm.MergeWithLineAfterAsDialogCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.ToggleDialogDashesCommand, nameof(vm.ToggleDialogDashesCommand), ShortcutCategory.SubtitleGridAndTextBox);
+        AddShortcut(shortcuts, vm.MoveStartOneFrameBackCommand, nameof(vm.MoveStartOneFrameBackCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.MoveStartOneFrameForwardCommand, nameof(vm.MoveStartOneFrameForwardCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.MoveEndOneFrameBackCommand, nameof(vm.MoveEndOneFrameBackCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.MoveEndOneFrameForwardCommand, nameof(vm.MoveEndOneFrameForwardCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.MoveStartOneFrameBackKeepGapPrevCommand, nameof(vm.MoveStartOneFrameBackKeepGapPrevCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.MoveStartOneFrameForwardKeepGapPrevCommand, nameof(vm.MoveStartOneFrameForwardKeepGapPrevCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.MoveEndOneFrameBackKeepGapNextCommand, nameof(vm.MoveEndOneFrameBackKeepGapNextCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.MoveEndOneFrameForwardKeepGapNextCommand, nameof(vm.MoveEndOneFrameForwardKeepGapNextCommand), ShortcutCategory.General);
+
+        AddShortcut(shortcuts, vm.MergeSelectedLinesDialogCommand, nameof(vm.MergeSelectedLinesDialogCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.MergeSelectedLinesBilingualCommand, nameof(vm.MergeSelectedLinesBilingualCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.MergeSelectedLinesAndUnbreakCommand, nameof(vm.MergeSelectedLinesAndUnbreakCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.MergeSelectedLinesAndUnbreakCjkCommand, nameof(vm.MergeSelectedLinesAndUnbreakCjkCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.ShowColorPickerCommand, nameof(vm.ShowColorPickerCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.FetchFirstWordFromNextSubtitleCommand, nameof(vm.FetchFirstWordFromNextSubtitleCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.MoveLastWordToNextSubtitleCommand, nameof(vm.MoveLastWordToNextSubtitleCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.MoveLastWordFromFirstLineDownCurrentSubtitleCommand, nameof(vm.MoveLastWordFromFirstLineDownCurrentSubtitleCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.MoveFirstWordFromNextLineUpCurrentSubtitleCommand, nameof(vm.MoveFirstWordFromNextLineUpCurrentSubtitleCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.MoveTextFromCursorToNextAndGoToNextCommand, nameof(vm.MoveTextFromCursorToNextAndGoToNextCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.MoveTextFromCursorToNextAndGoToNextAndPlayCommand, nameof(vm.MoveTextFromCursorToNextAndGoToNextAndPlayCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.ToggleFocusGridAndWaveformCommand, nameof(vm.ToggleFocusGridAndWaveformCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.ToggleFocusTextBoxAndWaveformCommand, nameof(vm.ToggleFocusTextBoxAndWaveformCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.ToggleFocusTextBoxAndSubtitleGridCommand, nameof(vm.ToggleFocusTextBoxAndSubtitleGridCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.SubtitleGridCutCommand, nameof(vm.SubtitleGridCutCommand), ShortcutCategory.SubtitleGrid);
+        AddShortcut(shortcuts, vm.SubtitleGridCopyCommand, nameof(vm.SubtitleGridCopyCommand), ShortcutCategory.SubtitleGrid);
+        AddShortcut(shortcuts, vm.SubtitleGridPasteCommand, nameof(vm.SubtitleGridPasteCommand), ShortcutCategory.SubtitleGrid);
+        AddShortcut(shortcuts, vm.ColumnDeleteTextCommand, nameof(vm.ColumnDeleteTextCommand), ShortcutCategory.SubtitleGrid);
+        AddShortcut(shortcuts, vm.ColumnDeleteTextAndShiftCellsUpCommand, nameof(vm.ColumnDeleteTextAndShiftCellsUpCommand), ShortcutCategory.SubtitleGrid);
+        AddShortcut(shortcuts, vm.ColumnInsertEmptyTextAndShiftCellsDownCommand, nameof(vm.ColumnInsertEmptyTextAndShiftCellsDownCommand), ShortcutCategory.SubtitleGrid);
+        AddShortcut(shortcuts, vm.ColumnPasteFromClipboardCommand, nameof(vm.ColumnPasteFromClipboardCommand), ShortcutCategory.SubtitleGrid);
+        AddShortcut(shortcuts, vm.ColumnTextUpCommand, nameof(vm.ColumnTextUpCommand), ShortcutCategory.SubtitleGrid);
+        AddShortcut(shortcuts, vm.ColumnTextDownCommand, nameof(vm.ColumnTextDownCommand), ShortcutCategory.SubtitleGrid);
+        AddShortcut(shortcuts, vm.ImportPlainTextCommand, nameof(vm.ImportPlainTextCommand), ShortcutCategory.General, ShortcutGroup.File);
+        AddShortcut(shortcuts, vm.ExportEbuStlCommand, nameof(vm.ExportEbuStlCommand), ShortcutCategory.General, ShortcutGroup.File);
+        AddShortcut(shortcuts, vm.ExportPacCommand, nameof(vm.ExportPacCommand), ShortcutCategory.General, ShortcutGroup.File);
+        AddShortcut(shortcuts, vm.FixRightToLeftViaUnicodeControlCharactersCommand, nameof(vm.FixRightToLeftViaUnicodeControlCharactersCommand), ShortcutCategory.General, ShortcutGroup.Tools);
+        AddShortcut(shortcuts, vm.RemoveUnicodeControlCharactersCommand, nameof(vm.RemoveUnicodeControlCharactersCommand), ShortcutCategory.General, ShortcutGroup.Tools);
+        AddShortcut(shortcuts, vm.ShowToolsRenumberCommand, nameof(vm.ShowToolsRenumberCommand), ShortcutCategory.General, ShortcutGroup.Tools);
+        AddShortcut(shortcuts, vm.EvenlyDistributeSelectedLinesCommand, nameof(vm.EvenlyDistributeSelectedLinesCommand), ShortcutCategory.SubtitleGrid);
+        AddShortcut(shortcuts, vm.AutoTranslateSelectedLinesCommand, nameof(vm.AutoTranslateSelectedLinesCommand), ShortcutCategory.General, ShortcutGroup.Translate);
+        AddShortcut(shortcuts, vm.ShowAssaChangeResolutionCommand, nameof(vm.ShowAssaChangeResolutionCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.ShowChooseProfileCommand, nameof(vm.ShowChooseProfileCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.TogglePlaybackSpeedCommand, nameof(vm.TogglePlaybackSpeedCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.PlaybackSlowerCommand, nameof(vm.PlaybackSlowerCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.PlaybackFasterCommand, nameof(vm.PlaybackFasterCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.VideoSetPositionCurrentSubtitleStartCommand, nameof(vm.VideoSetPositionCurrentSubtitleStartCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.VideoSetPositionCurrentSubtitleEndCommand, nameof(vm.VideoSetPositionCurrentSubtitleEndCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.ToggleAudioTracksCommand, nameof(vm.ToggleAudioTracksCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.ListErrorsCommand, nameof(vm.ListErrorsCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.GoToPreviousErrorCommand, nameof(vm.GoToPreviousErrorCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.GoToNextErrorCommand, nameof(vm.GoToNextErrorCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.ShowAddToNameListCommand, nameof(vm.ShowAddToNameListCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.ShowFindDoubleWordsCommand, nameof(vm.ShowFindDoubleWordsCommand), ShortcutCategory.General, ShortcutGroup.Search);
+        AddShortcut(shortcuts, vm.ShowFindDoubleLinesCommand, nameof(vm.ShowFindDoubleLinesCommand), ShortcutCategory.General, ShortcutGroup.Search);
+        AddShortcut(shortcuts, vm.SetColor1Command, nameof(vm.SetColor1Command), ShortcutCategory.SubtitleGridAndTextBox);
+        AddShortcut(shortcuts, vm.SetColor2Command, nameof(vm.SetColor2Command), ShortcutCategory.SubtitleGridAndTextBox);
+        AddShortcut(shortcuts, vm.SetColor3Command, nameof(vm.SetColor3Command), ShortcutCategory.SubtitleGridAndTextBox);
+        AddShortcut(shortcuts, vm.SetColor4Command, nameof(vm.SetColor4Command), ShortcutCategory.SubtitleGridAndTextBox);
+        AddShortcut(shortcuts, vm.SetColor5Command, nameof(vm.SetColor5Command), ShortcutCategory.SubtitleGridAndTextBox);
+        AddShortcut(shortcuts, vm.SetColor6Command, nameof(vm.SetColor6Command), ShortcutCategory.SubtitleGridAndTextBox);
+        AddShortcut(shortcuts, vm.SetColor7Command, nameof(vm.SetColor7Command), ShortcutCategory.SubtitleGridAndTextBox);
+        AddShortcut(shortcuts, vm.SetColor8Command, nameof(vm.SetColor8Command), ShortcutCategory.SubtitleGridAndTextBox);
+        AddShortcut(shortcuts, vm.RemoveColorCommand, nameof(vm.RemoveColorCommand), ShortcutCategory.SubtitleGridAndTextBox);
+        AddShortcut(shortcuts, vm.SetActor1Command, nameof(vm.SetActor1Command), ShortcutCategory.SubtitleGrid);
+        AddShortcut(shortcuts, vm.SetActor2Command, nameof(vm.SetActor2Command), ShortcutCategory.SubtitleGrid);
+        AddShortcut(shortcuts, vm.SetActor3Command, nameof(vm.SetActor3Command), ShortcutCategory.SubtitleGrid);
+        AddShortcut(shortcuts, vm.SetActor4Command, nameof(vm.SetActor4Command), ShortcutCategory.SubtitleGrid);
+        AddShortcut(shortcuts, vm.SetActor5Command, nameof(vm.SetActor5Command), ShortcutCategory.SubtitleGrid);
+        AddShortcut(shortcuts, vm.SetActor6Command, nameof(vm.SetActor6Command), ShortcutCategory.SubtitleGrid);
+        AddShortcut(shortcuts, vm.SetActor7Command, nameof(vm.SetActor7Command), ShortcutCategory.SubtitleGrid);
+        AddShortcut(shortcuts, vm.SetActor8Command, nameof(vm.SetActor8Command), ShortcutCategory.SubtitleGrid);
+        AddShortcut(shortcuts, vm.SetActor9Command, nameof(vm.SetActor9Command), ShortcutCategory.SubtitleGrid);
+        AddShortcut(shortcuts, vm.SetActor10Command, nameof(vm.SetActor10Command), ShortcutCategory.SubtitleGrid);
+        AddShortcut(shortcuts, vm.SetNewActorCommand, nameof(vm.SetNewActorCommand), ShortcutCategory.SubtitleGrid);
+        AddShortcut(shortcuts, vm.RemoveActorCommand, nameof(vm.RemoveActorCommand), ShortcutCategory.SubtitleGrid);
+        AddShortcut(shortcuts, vm.SurroundWith1Command, nameof(vm.SurroundWith1Command), ShortcutCategory.SubtitleGridAndTextBox);
+        AddShortcut(shortcuts, vm.SurroundWith2Command, nameof(vm.SurroundWith2Command), ShortcutCategory.SubtitleGridAndTextBox);
+        AddShortcut(shortcuts, vm.SurroundWith3Command, nameof(vm.SurroundWith3Command), ShortcutCategory.SubtitleGridAndTextBox);
+        AddShortcut(shortcuts, vm.InsertLineBeforeCommand, nameof(vm.InsertLineBeforeCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.InsertLineAfterCommand, nameof(vm.InsertLineAfterCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.WaveformInsertNewSelectionCommand, nameof(vm.WaveformInsertNewSelectionCommand), ShortcutCategory.Waveform);
+        AddShortcut(shortcuts, vm.WaveformInsertAtPositionAndFocusTextBoxCommand, nameof(vm.WaveformInsertAtPositionAndFocusTextBoxCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.WaveformInsertAtPositionNoFocusTextBoxCommand, nameof(vm.WaveformInsertAtPositionNoFocusTextBoxCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.WaveformPasteFromClipboardCommand, nameof(vm.WaveformPasteFromClipboardCommand), ShortcutCategory.Waveform);
+        AddShortcut(shortcuts, vm.WaveformCopyToClipboardCommand, nameof(vm.WaveformCopyToClipboardCommand), ShortcutCategory.Waveform);
+        AddShortcut(shortcuts, vm.WaveformCopyTextToClipboardCommand, nameof(vm.WaveformCopyTextToClipboardCommand), ShortcutCategory.Waveform);
+        AddShortcut(shortcuts, vm.FocusSelectedLineCommand, nameof(vm.FocusSelectedLineCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.PlayFromStartOfVideoCommand, nameof(vm.PlayFromStartOfVideoCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.VideoPlayFromJustBeforeTextCommand, nameof(vm.VideoPlayFromJustBeforeTextCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.RemoveBlankLinesCommand, nameof(vm.RemoveBlankLinesCommand), ShortcutCategory.General, ShortcutGroup.Tools);
+        AddShortcut(shortcuts, vm.InsertSubtitleAtVideoPositionSetEndAtKeyUpCommand, nameof(vm.InsertSubtitleAtVideoPositionSetEndAtKeyUpCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.SetSubtitleStartAtVideoPositionSetEndAtKeyUpAndGoToNextCommand, nameof(vm.SetSubtitleStartAtVideoPositionSetEndAtKeyUpAndGoToNextCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.SpeechToTextSelectedLinesCommand, nameof(vm.SpeechToTextSelectedLinesCommand), ShortcutCategory.General, ShortcutGroup.Ai);
+        AddShortcut(shortcuts, vm.SpeechToTextSelectedLinesPromptForLangaugeAlwaysCommand, nameof(vm.SpeechToTextSelectedLinesPromptForLangaugeAlwaysCommand), ShortcutCategory.General, ShortcutGroup.Ai);
+        AddShortcut(shortcuts, vm.SpeechToTextSelectedLinesPromptForLangaugeFirstTimeCommand, nameof(vm.SpeechToTextSelectedLinesPromptForLangaugeFirstTimeCommand), ShortcutCategory.General, ShortcutGroup.Ai);
+        AddShortcut(shortcuts, vm.PlaySelectedLinesWithoutLoopCommand, nameof(vm.PlaySelectedLinesWithoutLoopCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.PlaySelectedLinesWithLoopCommand, nameof(vm.PlaySelectedLinesWithLoopCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.PlaySelectedLinesAndFocusWaveformCommand, nameof(vm.PlaySelectedLinesAndFocusWaveformCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.PlaySelectedLinesWithLoopAndFocusWaveformCommand, nameof(vm.PlaySelectedLinesWithLoopAndFocusWaveformCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        // "Toggle casing" also works on selected lines in the grid, but it belongs next to the two
+        // other casing actions when browsing shortcuts - the group is display-only (#13093).
+        AddShortcut(shortcuts, vm.ToggleCasingCommand, nameof(vm.ToggleCasingCommand), ShortcutCategory.SubtitleGridAndTextBox, ShortcutGroup.TextBox);
+        AddShortcut(shortcuts, vm.SelectionToLowerCommand, nameof(vm.SelectionToLowerCommand), ShortcutCategory.TextBox);
+        AddShortcut(shortcuts, vm.SelectionToUpperCommand, nameof(vm.SelectionToUpperCommand), ShortcutCategory.TextBox);
+        AddShortcut(shortcuts, vm.SelectionToSentenceCaseCommand, nameof(vm.SelectionToSentenceCaseCommand), ShortcutCategory.TextBox);
+        AddShortcut(shortcuts, vm.GoogleItCommand, nameof(vm.GoogleItCommand), ShortcutCategory.TextBox, ShortcutGroup.Search);
+        AddShortcut(shortcuts, vm.ImportImageSubtitleForEditCommand, nameof(vm.ImportImageSubtitleForEditCommand), ShortcutCategory.General, ShortcutGroup.File);
+        AddShortcut(shortcuts, vm.ShowMediaInformationCommand, nameof(vm.ShowMediaInformationCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.ShowSubtitleFormatPickerCommand, nameof(vm.ShowSubtitleFormatPickerCommand), ShortcutCategory.General, ShortcutGroup.File);
+        AddShortcut(shortcuts, vm.TrimWhitespaceSelectedLinesCommand, nameof(vm.TrimWhitespaceSelectedLinesCommand), ShortcutCategory.SubtitleGrid);
+        AddShortcut(shortcuts, vm.FocusTextBoxCommand, nameof(vm.FocusTextBoxCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.SortByNumberCommand, nameof(vm.SortByNumberCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.SortByStartTimeCommand, nameof(vm.SortByStartTimeCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.SortByEndTimeCommand, nameof(vm.SortByEndTimeCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.SortByDurationCommand, nameof(vm.SortByDurationCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.SortByGapCommand, nameof(vm.SortByGapCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.SortByTextCommand, nameof(vm.SortByTextCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.SortByTextTotalLengthCommand, nameof(vm.SortByTextTotalLengthCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.SortBySingleLineMaxLengthCommand, nameof(vm.SortBySingleLineMaxLengthCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.SortByCpsCommand, nameof(vm.SortByCpsCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.SortByWpmCommand, nameof(vm.SortByWpmCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.SortByNumberOfLinesCommand, nameof(vm.SortByNumberOfLinesCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.SortByActorCommand, nameof(vm.SortByActorCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.SortByStyleCommand, nameof(vm.SortByStyleCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.VideoToggleBrightnessCommand, nameof(vm.VideoToggleBrightnessCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.ShowPickLayerFilterCommand, nameof(vm.ShowPickLayerFilterCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.ShowPickLayerCommand, nameof(vm.ShowPickLayerCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.CopyTextToClipboardCommand, nameof(vm.CopyTextToClipboardCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.CopyTextFromOriginalToClipboardCommand, nameof(vm.CopyTextFromOriginalToClipboardCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.ShowAssaImageColorPickerCommand, nameof(vm.ShowAssaImageColorPickerCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.ShowAssaSetPositionCommand, nameof(vm.ShowAssaSetPositionCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.ShowAssaApplyCustomOverrideTagsCommand, nameof(vm.ShowAssaApplyCustomOverrideTagsCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.ShowAssaDrawCommand, nameof(vm.ShowAssaDrawCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.ShowAssaGenerateProgressBarCommand, nameof(vm.ShowAssaGenerateProgressBarCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.ShowAssaGenerateBackgroundCommand, nameof(vm.ShowAssaGenerateBackgroundCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.ShowAssaStylesCommand, nameof(vm.ShowAssaStylesCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.ShowAssaPropertiesCommand, nameof(vm.ShowAssaPropertiesCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.ShowAssaAttachmentsCommand, nameof(vm.ShowAssaAttachmentsCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.RecalculateDurationSelectedLinesCommand, nameof(vm.RecalculateDurationSelectedLinesCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.SetDurationMaxCpsSelectedLinesCommand, nameof(vm.SetDurationMaxCpsSelectedLinesCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.FillSelectedLinesWithClipboardCommand, nameof(vm.FillSelectedLinesWithClipboardCommand), ShortcutCategory.SubtitleGrid);
+        AddShortcut(shortcuts, vm.WaveformToggleWaveformSpectrogramHeightCommand, nameof(vm.WaveformToggleWaveformSpectrogramHeightCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.SpectrogramToggleStyleCommand, nameof(vm.SpectrogramToggleStyleCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.ShowBeautifyTimeCodesCommand, nameof(vm.ShowBeautifyTimeCodesCommand), ShortcutCategory.General, ShortcutGroup.Tools);
+        AddShortcut(shortcuts, vm.ZoomLayoutInCommand, nameof(vm.ZoomLayoutInCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.ZoomLayoutOutCommand, nameof(vm.ZoomLayoutOutCommand), ShortcutCategory.General);
+        AddShortcut(shortcuts, vm.OpenSecondarySubtitleCommand, nameof(vm.OpenSecondarySubtitleCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.ToggleCurrentSubtitleWhilePlayingCommand, nameof(vm.ToggleCurrentSubtitleWhilePlayingCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.ToggleSubtitlesOnVideoPlayerCommand, nameof(vm.ToggleSubtitlesOnVideoPlayerCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.ToggleSmpteTimingCommand, nameof(vm.ToggleSmpteTimingCommand), ShortcutCategory.General, ShortcutGroup.Video);
+
+        return shortcuts;
+    }
+
+    public static List<SeShortCut> GetDefaultShortcuts(MainViewModel vm)
+    {
+        var cmd = GetCommandOrWin();
+
+        return
+        [
+            new(nameof(vm.UndoCommand), [cmd, "Z"]),
+            new(nameof(vm.RedoCommand), [cmd, "Y"]),
+            new(nameof(vm.ShowGoToLineCommand), [cmd, "G"]),
+            new(nameof(vm.AddOrEditBookmarkCommand), [cmd, "Shift", "B"]),
+            new(nameof(vm.GoToPreviousLineCommand), ["Alt", "Up"]),
+            new(nameof(vm.GoToNextLineCommand), ["Alt", "Down"]),
+            // Go to first/last line (also sets the video position by default, #13194).
+            new(nameof(vm.GoToFirstLineCommand), [cmd, nameof(Avalonia.Input.Key.Home)], ShortcutCategory.General),
+            new(nameof(vm.GoToLastLineCommand), [cmd, nameof(Avalonia.Input.Key.End)], ShortcutCategory.General),
+            new(nameof(vm.SelectAllLinesCommand), [cmd, "A"], ShortcutCategory.SubtitleGrid),
+            new(nameof(vm.InverseSelectionCommand), [cmd, "Shift", "I"], ShortcutCategory.SubtitleGrid),
+            new(nameof(vm.ToggleLinesItalicOrSelectedTextCommand), [cmd, "I"], ShortcutCategory.SubtitleGrid),
+            new(nameof(vm.DeleteSelectedLinesCommand), ["Delete"], ShortcutCategory.SubtitleGrid),
+            new(nameof(vm.ShowFindCommand), [cmd, "F"], ShortcutCategory.General),
+            new(nameof(vm.FindNextCommand), [nameof(Avalonia.Input.Key.F3)], ShortcutCategory.General),
+            new(nameof(vm.FindPreviousCommand), ["Shift", nameof(Avalonia.Input.Key.F3)], ShortcutCategory.General),
+            new(nameof(vm.ShowReplaceCommand), [cmd, "H"], ShortcutCategory.General),
+            new(nameof(vm.ShowMultipleReplaceCommand), [cmd, "Shift", "R"], ShortcutCategory.General),
+            new(nameof(vm.OpenDataFolderCommand), [cmd, "Alt", "Shift", "D"], ShortcutCategory.General),
+            new(nameof(vm.SaveLanguageFileCommand), [cmd, "Alt", "Shift", "L"], ShortcutCategory.General),
+            new(nameof(vm.CommandFileNewCommand), [cmd, "N"], ShortcutCategory.General),
+            new(nameof(vm.CommandFileOpenCommand), [cmd, "O"], ShortcutCategory.General),
+            new(nameof(vm.CommandFileSaveCommand), [cmd, "S"], ShortcutCategory.General),
+            new(nameof(vm.TogglePlayPauseCommand), [nameof(Avalonia.Input.Key.Space)], ShortcutCategory.General),
+            new(nameof(vm.TogglePlayPause2Command), [cmd, nameof(Avalonia.Input.Key.Space)], ShortcutCategory.General),
+            new(nameof(vm.VideoOneSecondBackCommand), [nameof(Avalonia.Input.Key.Left)], ShortcutCategory.General),
+            new(nameof(vm.VideoOneSecondForwardCommand), [nameof(Avalonia.Input.Key.Right)], ShortcutCategory.General),
+            new(nameof(vm.ShowHelpCommand), [nameof(Avalonia.Input.Key.F1)], ShortcutCategory.General),
+            new(nameof(vm.ShowSourceViewCommand), [nameof(Avalonia.Input.Key.F2)], ShortcutCategory.General),
+            // Forward delete for Apple keyboards, where the Delete key is only a backspace.
+            new(nameof(vm.TextBoxDeleteForwardCommand), ["Shift", nameof(Avalonia.Input.Key.Back)], ShortcutCategory.TextBox),
+            new(nameof(vm.TextBoxCut2Command), ["Shift", nameof(Avalonia.Input.Key.Delete) ], ShortcutCategory.TextBox),
+            new(nameof(vm.TextBoxCutCommand), [cmd, nameof(Avalonia.Input.Key.X)], ShortcutCategory.TextBox),
+            new(nameof(vm.TextBoxPasteCommand), [cmd, nameof(Avalonia.Input.Key.V)], ShortcutCategory.TextBox),
+            new(nameof(vm.TextBoxCopyCommand), [cmd, nameof(Avalonia.Input.Key.C)], ShortcutCategory.TextBox),
+            new(nameof(vm.TextBoxSelectAllCommand), [cmd, nameof(Avalonia.Input.Key.A)], ShortcutCategory.TextBox),
+            new(nameof(vm.SubtitleGridCutCommand), [cmd, nameof(Avalonia.Input.Key.X)], ShortcutCategory.SubtitleGrid),
+            new(nameof(vm.SubtitleGridPasteCommand), [cmd, nameof(Avalonia.Input.Key.V)], ShortcutCategory.SubtitleGrid),
+            new(nameof(vm.SubtitleGridCopyCommand), [cmd, nameof(Avalonia.Input.Key.C)], ShortcutCategory.SubtitleGrid),
+            new(nameof(vm.ListErrorsCommand), [cmd, nameof(Avalonia.Input.Key.F8)], ShortcutCategory.SubtitleGrid),
+            new(nameof(vm.GoToPreviousErrorCommand), ["Shift", nameof(Avalonia.Input.Key.F8)], ShortcutCategory.SubtitleGrid),
+            new(nameof(vm.GoToNextErrorCommand), [nameof(Avalonia.Input.Key.F8)], ShortcutCategory.SubtitleGrid),
+            new(nameof(vm.ShowSpellCheckCommand), ["Alt", nameof(Avalonia.Input.Key.F7)], ShortcutCategory.SubtitleGrid),
+            new(nameof(vm.ShowToolsChangeCasingCommand), [cmd, "Shift", nameof(Avalonia.Input.Key.C)], ShortcutCategory.General),
+            new(nameof(vm.ShowToolsFixCommonErrorsCommand), [cmd, "Shift", nameof(Avalonia.Input.Key.F)], ShortcutCategory.General),
+            new(nameof(vm.ShowToolsAiReviewCommand), [cmd, "Alt", nameof(Avalonia.Input.Key.R)], ShortcutCategory.General),
+            new(nameof(vm.ShowToolsBatchConvertCommand), [cmd, nameof(Avalonia.Input.Key.B)], ShortcutCategory.General),
+            new(nameof(vm.ShowToolsRemoveTextForHearingImpairedCommand), [cmd, "Shift", nameof(Avalonia.Input.Key.H)], ShortcutCategory.General),
+            new(nameof(vm.ShowSyncAdjustAllTimesCommand), [cmd, "Shift", nameof(Avalonia.Input.Key.A)], ShortcutCategory.General),
+            new(nameof(vm.WaveformPasteFromClipboardCommand), [cmd, nameof(Avalonia.Input.Key.V)], ShortcutCategory.Waveform),
+            new(nameof(vm.WaveformCopyToClipboardCommand), [cmd, nameof(Avalonia.Input.Key.C)], ShortcutCategory.Waveform),
+            new(nameof(vm.FillSelectedLinesWithClipboardCommand), [cmd, "Shift", nameof(Avalonia.Input.Key.V)], ShortcutCategory.SubtitleGrid),
+
+            // Tools / dialogs (V4 defaults)
+            new(nameof(vm.CommandFileSaveAsCommand), [cmd, "Shift", nameof(Avalonia.Input.Key.S)], ShortcutCategory.General),
+            new(nameof(vm.MergeSelectedLinesCommand), [cmd, "Shift", nameof(Avalonia.Input.Key.M)], ShortcutCategory.General),
+            new(nameof(vm.ShowAutoTranslateCommand), [cmd, "Shift", nameof(Avalonia.Input.Key.G)], ShortcutCategory.General),
+            new(nameof(vm.ShowPointSyncCommand), [cmd, "Shift", nameof(Avalonia.Input.Key.P)], ShortcutCategory.General),
+            new(nameof(vm.ShowFindDoubleWordsCommand), [cmd, "Shift", nameof(Avalonia.Input.Key.D)], ShortcutCategory.General),
+            new(nameof(vm.ShowAddToNameListCommand), [cmd, "Shift", nameof(Avalonia.Input.Key.L)], ShortcutCategory.General),
+            new(nameof(vm.RightToLeftToggleCommand), [cmd, "Shift", "Alt", nameof(Avalonia.Input.Key.R)], ShortcutCategory.General),
+
+            // Timing / creation (V4 defaults)
+            // Note: WaveformSetEndAndGoToNext deliberately ships without its V4 default (F10).
+            // Bare F10 activates the main menu bar (Windows standard, #11745), and a registered
+            // single-key F10 shortcut suppresses that (#12504) - so a shipped F10 default would
+            // permanently kill F10 menu activation for everyone (#13083). Users who want the V4
+            // behavior can still assign F10 to the action themselves; that user-defined shortcut
+            // then wins over the menu toggle. Se.MigrateShortcuts clears the old persisted default.
+            new(nameof(vm.WaveformSetStartCommand), [nameof(Avalonia.Input.Key.F11)], ShortcutCategory.General),
+            new(nameof(vm.WaveformSetEndCommand), [nameof(Avalonia.Input.Key.F12)], ShortcutCategory.General),
+            new(nameof(vm.InsertLineAfterCommand), ["Alt", nameof(Avalonia.Input.Key.Insert)], ShortcutCategory.General),
+            new(nameof(vm.InsertLineBeforeCommand), [cmd, "Shift", nameof(Avalonia.Input.Key.Insert)], ShortcutCategory.General),
+            new(nameof(vm.AutoBreakCommand), [cmd, "Alt", nameof(Avalonia.Input.Key.B)], ShortcutCategory.General),
+            new(nameof(vm.PlaySelectedLinesWithoutLoopCommand), [nameof(Avalonia.Input.Key.F5)], ShortcutCategory.General),
+            new(nameof(vm.ExtendSelectedToNextCommand), [cmd, "Shift", nameof(Avalonia.Input.Key.E)], ShortcutCategory.General),
+            new(nameof(vm.ToggleTranslationModeCommand), [cmd, "Shift", nameof(Avalonia.Input.Key.O)], ShortcutCategory.General),
+            new(nameof(vm.ExtendSelectedToPreviousCommand), ["Alt", "Shift", nameof(Avalonia.Input.Key.E)], ShortcutCategory.General),
+
+            // Text casing / split (V4 defaults)
+            new(nameof(vm.SelectionToLowerCommand), [cmd, nameof(Avalonia.Input.Key.U)], ShortcutCategory.General),
+            new(nameof(vm.SelectionToUpperCommand), [cmd, "Shift", nameof(Avalonia.Input.Key.U)], ShortcutCategory.General),
+            new(nameof(vm.ToggleCasingCommand), [cmd, "Shift", nameof(Avalonia.Input.Key.F3)], ShortcutCategory.General),
+            new(nameof(vm.SplitAtTextBoxCursorPositionCommand), [cmd, "Alt", nameof(Avalonia.Input.Key.V)], ShortcutCategory.General),
+
+            // Video / waveform / navigation (V4 defaults)
+            new(nameof(vm.FocusSelectedLineCommand), [cmd, nameof(Avalonia.Input.Key.L)], ShortcutCategory.General),
+            new(nameof(vm.Video500MsBackCommand), ["Alt", nameof(Avalonia.Input.Key.Left)], ShortcutCategory.General),
+            new(nameof(vm.Video500MsForwardCommand), ["Alt", nameof(Avalonia.Input.Key.Right)], ShortcutCategory.General),
+            new(nameof(vm.VideoFullScreenCommand), ["Alt", nameof(Avalonia.Input.Key.Return)], ShortcutCategory.General),
+            new(nameof(vm.WaveformVerticalZoomInCommand), ["Shift", nameof(Avalonia.Input.Key.Add)], ShortcutCategory.General),
+            new(nameof(vm.WaveformVerticalZoomOutCommand), ["Shift", nameof(Avalonia.Input.Key.Subtract)], ShortcutCategory.General),
+            new(nameof(vm.PauseCommand), [cmd, "Alt", nameof(Avalonia.Input.Key.P)], ShortcutCategory.General),
+            new(nameof(vm.SetupLikeSe4Command), [cmd, nameof(Avalonia.Input.Key.D4)], ShortcutCategory.General),
+        ];
+    }
+
+    private static string GetCommandOrWin()
+    {
+        if (OperatingSystem.IsMacOS())
+        {
+            return "Win";
+        }
+
+        return "Ctrl";
+    }
+
+    public class AvailableShortcut
+    {
+        public string Name { get; set; }
+        public ShortcutCategory Category { get; set; }
+        public ShortcutGroup Group { get; set; }
+
+        public AvailableShortcut(IRelayCommand relayCommand, string shortcutName)
+        {
+            Name = shortcutName;
+            RelayCommand = relayCommand;
+            Category = ShortcutCategory.General;
+            Group = ShortcutGroupUi.FromCategory(ShortcutCategory.General);
+        }
+
+        public AvailableShortcut(IRelayCommand relayCommand, string shortcutName, ShortcutCategory category)
+        {
+            Name = shortcutName;
+            RelayCommand = relayCommand;
+            Category = category;
+            Group = ShortcutGroupUi.FromCategory(category);
+        }
+
+        public IRelayCommand RelayCommand { get; set; }
+    }
+}

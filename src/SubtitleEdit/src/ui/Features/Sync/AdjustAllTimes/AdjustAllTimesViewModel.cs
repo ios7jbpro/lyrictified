@@ -1,0 +1,273 @@
+using Avalonia.Controls;
+using Avalonia.Input;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using Nikse.SubtitleEdit.Core.Common;
+using Nikse.SubtitleEdit.Features.Shared;
+using Nikse.SubtitleEdit.Logic;
+using Nikse.SubtitleEdit.Logic.Config;
+using System;
+using System.Threading.Tasks;
+
+namespace Nikse.SubtitleEdit.Features.Sync.AdjustAllTimes;
+
+public partial class AdjustAllTimesViewModel : ObservableObject
+{
+    [ObservableProperty] private TimeSpan _adjustment;
+    [ObservableProperty] private bool _adjustAll;
+    [ObservableProperty] private bool _adjustSelectedLines;
+    [ObservableProperty] private bool _adjustSelectedLinesAndForward;
+    [ObservableProperty] private string _statusText;
+
+    private IAdjustCallback? _adjustCallback;
+    private bool _isNegativeAdjustment = false;
+    private TimeSpan _totalAdjustment;
+
+    public Window? Window { get; set; }
+
+    public bool OkPressed { get; private set; }
+
+    public AdjustAllTimesViewModel()
+    {
+        LoadSettings();
+        StatusText = string.Empty;
+    }
+
+    public void Initialize(IAdjustCallback adjustCallback, int selectedLinesCount, bool forceSelectedLines = false)
+    {
+        _adjustCallback = adjustCallback;
+
+        if (forceSelectedLines)
+        {
+            SelectAdjustSelectedLines();
+            return;
+        }
+
+        if (selectedLinesCount > 1)
+        {
+            AdjustSelectedLines = true;
+        }
+        else if (selectedLinesCount == 1 && AdjustSelectedLines)
+        {
+            AdjustSelectedLines = false;
+            AdjustAll = true;
+        }
+
+        string choice = Se.Settings.Synchronization.AdjustAllTimesLineSelectionChoice;
+        if (Se.Settings.Synchronization.AdjustAllTimesRememberLineSelectionChoice && !string.IsNullOrEmpty(choice))
+        {
+            AdjustAll = choice == "All";
+            AdjustSelectedLines = choice == "Selected";
+            AdjustSelectedLinesAndForward = choice == "SelectedAndForward";
+        }
+    }
+
+    internal void SelectAdjustSelectedLines()
+    {
+        AdjustAll = false;
+        AdjustSelectedLinesAndForward = false;
+        AdjustSelectedLines = true;
+    }
+
+    private void LoadSettings()
+    {
+        Adjustment = TimeSpan.FromSeconds(Se.Settings.Synchronization.AdjustAllTimes.Seconds);
+        if (Se.Settings.Synchronization.AdjustAllTimes.IsSelectedLinesAndForwardSelected)
+        {
+            AdjustSelectedLinesAndForward = true;
+        }
+        else if (Se.Settings.Synchronization.AdjustAllTimes.IsSelectedLinesSelected)
+        {
+            AdjustSelectedLines = true;
+        }
+        else
+        {
+            AdjustAll = true;
+        }
+    }
+
+    private void SaveSettings()
+    {
+        Se.Settings.Synchronization.AdjustAllTimes.Seconds = Adjustment.TotalSeconds;
+        Se.Settings.Synchronization.AdjustAllTimes.IsSelectedLinesAndForwardSelected = AdjustSelectedLinesAndForward;
+        Se.Settings.Synchronization.AdjustAllTimes.IsSelectedLinesSelected = AdjustSelectedLines;
+        Se.Settings.Synchronization.AdjustAllTimes.IsAllSelected = AdjustAll;
+
+        Se.SaveSettings();
+    }
+
+    [RelayCommand]
+    private void ShowEarlier()
+    {
+        _totalAdjustment -= Adjustment;
+        ShowStatus(string.Format(Se.Language.General.TotalAdjustmentX, new TimeCode(_totalAdjustment).ToShortDisplayString()));
+        _isNegativeAdjustment = true;
+        Apply();
+    }
+
+    [RelayCommand]
+    private void ShowEarlierTimeSpan(TimeSpan ts)
+    {
+        Adjustment = ts;
+        _totalAdjustment -= Adjustment;
+        ShowStatus(string.Format(Se.Language.General.TotalAdjustmentX, new TimeCode(_totalAdjustment).ToShortDisplayString()));
+        _isNegativeAdjustment = true;
+        Apply();
+    }
+
+    [RelayCommand]
+    private void ShowLater()
+    {
+        _totalAdjustment += Adjustment;
+        ShowStatus(string.Format(Se.Language.General.TotalAdjustmentX, new TimeCode(_totalAdjustment).ToShortDisplayString()));
+        _isNegativeAdjustment = false;
+        Apply();
+    }
+
+    [RelayCommand]
+    private void ShowLaterTimeSpan(TimeSpan ts)
+    {
+        Adjustment = ts;
+        _totalAdjustment += Adjustment;
+        ShowStatus(string.Format(Se.Language.General.TotalAdjustmentX, new TimeCode(_totalAdjustment).ToShortDisplayString()));
+        _isNegativeAdjustment = false;
+        Apply();
+    }
+
+    [RelayCommand]
+    private async Task ShowHelp()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        await MessageBox.Show(
+            Window,
+            Se.Language.General.Information,
+            GetShortcutsText(),
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Information);
+    }
+
+    private void Apply()
+    {
+        SaveSettings();
+        InvokeAdjustCallback();
+    }
+
+    [RelayCommand]
+    private void Ok()
+    {
+        if (Se.Settings.Synchronization.AdjustAllTimesRememberLineSelectionChoice)
+        {
+            if (AdjustAll)
+            {
+                Se.Settings.Synchronization.AdjustAllTimesLineSelectionChoice = "All";
+            }
+            else if (AdjustSelectedLines)
+            {
+                Se.Settings.Synchronization.AdjustAllTimesLineSelectionChoice = "Selected";
+            }
+            else if (AdjustSelectedLinesAndForward)
+            {
+                Se.Settings.Synchronization.AdjustAllTimesLineSelectionChoice = "SelectedAndForward";
+            }
+        }
+
+        OkPressed = true;
+        Window?.Close();
+    }
+
+    private void ShowStatus(string statusText)
+    {
+        StatusText = statusText;
+    }
+
+    private void InvokeAdjustCallback()
+    {
+        var ts = _isNegativeAdjustment ? -Adjustment : Adjustment;
+
+        _adjustCallback?.Adjust(
+            ts,
+            AdjustAll,
+            AdjustSelectedLines,
+            AdjustSelectedLinesAndForward);
+    }
+
+    internal void OnKeyDown(KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            e.Handled = true;
+            Window?.Close();
+        }
+        else if ((e.Key == Key.Right || e.Key == Key.FnRightArrow) && e.KeyModifiers == KeyModifiers.Shift)
+        {
+            e.Handled = true;
+            ShowLaterTimeSpan(GetSmallStep());
+        }
+        else if ((e.Key == Key.Right || e.Key == Key.FnRightArrow) && e.KeyModifiers == KeyModifiers.Control)
+        {
+            e.Handled = true;
+            ShowLaterTimeSpan(GetMediumStep());
+        }
+        else if ((e.Key == Key.Right || e.Key == Key.FnRightArrow) && e.KeyModifiers == KeyModifiers.Alt)
+        {
+            e.Handled = true;
+            ShowLaterTimeSpan(GetLargeStep());
+        }
+        else if ((e.Key == Key.Left || e.Key == Key.FnLeftArrow) && e.KeyModifiers == KeyModifiers.Shift)
+        {
+            e.Handled = true;
+            ShowEarlierTimeSpan(GetSmallStep());
+        }
+        else if ((e.Key == Key.Left || e.Key == Key.FnLeftArrow) && e.KeyModifiers == KeyModifiers.Control)
+        {
+            e.Handled = true;
+            ShowEarlierTimeSpan(GetMediumStep());
+        }
+        else if ((e.Key == Key.Left || e.Key == Key.FnLeftArrow) && e.KeyModifiers == KeyModifiers.Alt)
+        {
+            e.Handled = true;
+            ShowEarlierTimeSpan(GetLargeStep());
+        }
+        else if (UiUtil.IsHelp(e))
+        {
+            e.Handled = true;
+            UiUtil.ShowHelp("features/adjust-all-times");
+        }
+    }
+
+    // The shortcut steps follow the time code display mode: frames when the time codes are
+    // shown as frames, plain milliseconds otherwise.
+    private static TimeSpan GetSmallStep() => Se.Settings.General.UseFrameMode ? GetFrameDuration(1) : TimeSpan.FromMilliseconds(10);
+    private static TimeSpan GetMediumStep() => Se.Settings.General.UseFrameMode ? GetFrameDuration(10) : TimeSpan.FromMilliseconds(100);
+    private static TimeSpan GetLargeStep() => Se.Settings.General.UseFrameMode ? TimeSpan.FromSeconds(1) : TimeSpan.FromMilliseconds(500);
+
+    internal static string GetShortcutsText() => Se.Settings.General.UseFrameMode
+        ? Se.Language.Sync.AdjustAllShortcutsFrames
+        : Se.Language.Sync.AdjustAllShortcuts;
+
+    private static TimeSpan GetFrameDuration(int frames)
+    {
+        var frameRate = Se.Settings.General.CurrentFrameRate;
+        if (frameRate < 10 || frameRate > 500)
+        {
+            frameRate = 25.0;
+        }
+
+        return TimeSpan.FromMilliseconds(Math.Round(frames * 1000.0 / frameRate, MidpointRounding.AwayFromZero));
+    }
+
+    internal void OnClosing(WindowClosingEventArgs e)
+    {
+        UiUtil.SaveWindowPosition(Window);
+    }
+
+    internal void ResetForNewSubtitle()
+    {
+        _totalAdjustment = TimeSpan.Zero;
+        StatusText = string.Empty;
+    }
+}

@@ -1,0 +1,52 @@
+﻿using Nikse.SubtitleEdit.Core.Common;
+using Nikse.SubtitleEdit.Logic.Config;
+using System.Globalization;
+
+namespace Nikse.SubtitleEdit.Logic.NetflixQualityCheck;
+
+/// <summary>
+/// Minimum duration: 5/6 second (833 ms) - also see https://github.com/SubtitleEdit/plugins/issues/129
+/// </summary>
+public class NetflixCheckMinDuration : INetflixQualityChecker
+{
+    public string Name { get; set; }
+
+    public NetflixCheckMinDuration(string name)
+    {
+        Name = name;
+    }
+
+    public void Check(Subtitle subtitle, NetflixQualityController controller)
+    {
+        for (int index = 0; index < subtitle.Paragraphs.Count; index++)
+        {
+            var p = subtitle.Paragraphs[index];
+
+            if (controller.Language == "ja")
+            {
+                if (p.DurationTotalMilliseconds < 500)
+                {
+                    string comment = Se.Language.Tools.NetflixCheckAndFix.MinimumDurationJapanese;
+                    controller.AddRecord(p, p.StartTime.ToHHMMSSFF(), p.DurationTotalSeconds.ToString(CultureInfo.InvariantCulture), comment);
+                }
+                continue;
+            }
+
+            var next = subtitle.GetParagraphOrDefault(index + 1);
+            if (p.DurationTotalMilliseconds < 833 && !p.StartTime.IsMaxTime)
+            {
+                Paragraph? fixedParagraph = null;
+                var canBeFixed = false;
+                if (next == null || next.StartTime.TotalMilliseconds > p.StartTime.TotalMilliseconds + 834)
+                {
+                    // we can fix duration
+                    fixedParagraph = new Paragraph(p, false);
+                    fixedParagraph.EndTime.TotalMilliseconds = fixedParagraph.StartTime.TotalMilliseconds + 834;
+                    canBeFixed = true;
+                }
+                string comment = Se.Language.Tools.NetflixCheckAndFix.MinimumDuration;
+                controller.AddRecord(p, fixedParagraph, comment, string.Empty, canBeFixed);
+            }
+        }
+    }
+}

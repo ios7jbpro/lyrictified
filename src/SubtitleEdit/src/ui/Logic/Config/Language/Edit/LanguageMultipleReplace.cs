@@ -1,0 +1,35 @@
+﻿namespace Nikse.SubtitleEdit.Logic.Config.Language.Edit;
+
+public class LanguageMultipleReplace
+{
+    public string EditRule { get; set; }
+    public string NewRule { get; set; }
+    public string EditCategory { get; set; }
+    public string NewCategory { get; set; }
+    public string CategoryName { get; set; }
+    public string ExportReplaceRules { get; set; }
+    public string AppliedRules { get; set; }
+    public string FindRule { get; set; }
+    public string XLinesAffected { get; set; }
+    public string DeleteCategoryConfirm { get; set; }
+    public string DeleteRuleConfirm { get; set; }
+    public string FindWhat { get; set; }
+    public string DescriptionOptional { get; set; }
+
+    public LanguageMultipleReplace()
+    {
+        EditRule = "Edit rule";
+        EditCategory = "Edit category";
+        NewRule = "New rule";
+        NewCategory = "New category";
+        CategoryName = "Category name";
+        ExportReplaceRules = "Export rules";
+        AppliedRules = "Applied rules";
+        FindRule = "Find rule";
+        XLinesAffected = "{0:#,##0} lines affected";
+        DeleteCategoryConfirm = "Delete category '{0}'?";
+        DeleteRuleConfirm = "Delete rule '{0}'?";
+        FindWhat = "Find what";
+        DescriptionOptional = "Description (optional)";
+    }
+}

@@ -1,0 +1,173 @@
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Data;
+using Avalonia.Layout;
+using Avalonia.Media;
+using Nikse.SubtitleEdit.Logic;
+using Nikse.SubtitleEdit.Logic.Config;
+
+namespace Nikse.SubtitleEdit.Features.Ocr;
+
+public class PreProcessingWindow : Window
+{
+    public PreProcessingWindow(PreProcessingViewModel vm)
+    {
+        UiUtil.InitializeWindow(this, GetType().Name);
+        Title = Se.Language.Ocr.PreProcessingTitle;
+        CanResize = true;
+        Width = 800;
+        Height = 600;
+        MinWidth = 700;
+        MinHeight = 500;
+        vm.Window = this;
+        DataContext = vm;
+
+        var checkBoxCropTransparent = new CheckBox
+        {
+            Content = Se.Language.Ocr.CropTransparent,
+            Margin = new Thickness(0, 0, 55, 0),
+            [!CheckBox.IsCheckedProperty] = new Binding(nameof(vm.CropTransparentColors)) { Mode = BindingMode.TwoWay },
+        };
+        checkBoxCropTransparent.IsCheckedChanged += (s, e) => vm.RequestPreviewUpdate();
+
+        var checkBoxInverseColors = new CheckBox
+        {
+            Content = Se.Language.Ocr.InverseColors,
+            Margin = new Thickness(0, 0, 55, 0),
+            [!CheckBox.IsCheckedProperty] = new Binding(nameof(vm.InverseColors)) { Mode = BindingMode.TwoWay },
+        };
+        checkBoxInverseColors.IsCheckedChanged += (s, e) => vm.RequestPreviewUpdate();
+
+        var checkBoxBinarize = new CheckBox
+        {
+            Content = Se.Language.Ocr.Binarize,
+            Margin = new Thickness(0, 0, 55, 0),
+            [!CheckBox.IsCheckedProperty] = new Binding(nameof(vm.Binarize)) { Mode = BindingMode.TwoWay },
+        };
+        checkBoxBinarize.IsCheckedChanged += (s, e) => vm.RequestPreviewUpdate();
+
+        var checkBoxOneColor = new CheckBox
+        {
+            Content = Se.Language.Ocr.OneColor,
+            [!CheckBox.IsCheckedProperty] = new Binding(nameof(vm.ToOneColor)) { Mode = BindingMode.TwoWay },
+        };
+        checkBoxOneColor.IsCheckedChanged += (s, e) => vm.RequestPreviewUpdate();
+        var labelOneColorThreshold = UiUtil.MakeLabel(Se.Language.Ocr.DarknessThreshold);
+        var numericUpDownOneColorThreshold = UiUtil.MakeNumericUpDownInt(1, 255, 128, 200, vm, nameof(vm.OneColorDarknessThreshold))
+            .WithBindEnabled(nameof(vm.ToOneColor));
+        numericUpDownOneColorThreshold.ValueChanged += (s, e) => vm.RequestPreviewUpdate();
+        var panelOneColor = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 10,
+            Children =
+            {
+                checkBoxOneColor,
+                labelOneColorThreshold,
+                numericUpDownOneColorThreshold,
+            }
+        };
+
+        var checkBoxRemoveBorders = new CheckBox
+        {
+            Content = Se.Language.Ocr.RemoveBorders,
+            [!CheckBox.IsCheckedProperty] = new Binding(nameof(vm.RemoveBorders)) { Mode = BindingMode.TwoWay },
+        };
+        checkBoxRemoveBorders.IsCheckedChanged += (s, e) => vm.RequestPreviewUpdate();
+        var labelBorderSize = UiUtil.MakeLabel(Se.Language.Ocr.BorderSize);
+        var numericUpDownBorderSize = UiUtil.MakeNumericUpDownInt(1, 20, 2, 200, vm, nameof(vm.BorderSize))
+            .WithBindEnabled(nameof(vm.RemoveBorders));
+        numericUpDownBorderSize.ValueChanged += (s, e) => vm.RequestPreviewUpdate();
+        var panelRemoveBorders = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 10,
+            Children =
+            {
+                checkBoxRemoveBorders,
+                labelBorderSize,
+                numericUpDownBorderSize,
+            }
+        };
+
+        var buttonOk = UiUtil.MakeButtonOk(vm.OkCommand);
+        var buttonCancel = UiUtil.MakeButtonCancel(vm.CancelCommand);
+        var panelButtons = UiUtil.MakeButtonBar(buttonOk, buttonCancel);
+
+        var grid = new Grid
+        {
+            RowDefinitions =
+            {
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Star) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Star) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+            },
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) },
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) },
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+            },
+            Margin = UiUtil.MakeWindowMargin(),
+            ColumnSpacing = 10,
+            RowSpacing = 10,
+            Width = double.NaN,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+
+        grid.Add(checkBoxCropTransparent, 0);
+        grid.Add(checkBoxInverseColors, 0, 1);
+        grid.Add(checkBoxBinarize, 0, 2);
+
+        grid.Add(UiUtil.MakeBorderForControl(panelOneColor), 1, 0, 1, 3);
+
+        grid.Add(UiUtil.MakeBorderForControl(panelRemoveBorders), 2, 0, 1, 3);
+
+        grid.Add(MakeOriginalImageView(vm), 3, 0, 1, 3);
+        grid.Add(MakePostProcessedImageView(vm), 4, 0, 1, 3);
+        grid.Add(panelButtons, 5, 0, 1, 3);
+
+        Content = grid;
+
+        // initial focus on an input, not an action button - a focused button clicks on bare Space
+        Activated += delegate { checkBoxCropTransparent.Focus(); };
+        KeyDown += vm.KeyDown;
+    }
+
+    private static Control MakeOriginalImageView(PreProcessingViewModel vm)
+    {
+        var image = new Image
+        {
+            DataContext = vm,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+            Stretch = Stretch.Uniform,
+            Source = vm.SourceBitmap,
+            MaxHeight = 200,
+        };
+
+        var border = UiUtil.MakeBorderForControl(image);
+        border.Background = UiUtil.GetCheckerboardBrush();
+        return border;
+    }
+
+    private static Border MakePostProcessedImageView(PreProcessingViewModel vm)
+    {
+        var image = new Image
+        {
+            [!Image.SourceProperty] = new Binding(nameof(vm.PreviewImage)),
+            DataContext = vm,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+            Stretch = Stretch.Uniform,
+            MaxHeight = 200,
+        };
+
+        var border = UiUtil.MakeBorderForControl(image);
+        border.Background = UiUtil.GetCheckerboardBrush();
+        return border;
+    }
+}

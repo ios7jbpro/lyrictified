@@ -1,0 +1,470 @@
+﻿using Avalonia.Threading;
+using Nikse.SubtitleEdit.Logic.Config;
+using Nikse.SubtitleEdit.Logic.Initializers;
+using SharpCompress.Archives.SevenZip;
+using SharpCompress.Readers;
+using System;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Threading;
+
+namespace Nikse.SubtitleEdit.Logic.SevenZipExtractor;
+
+public static class Unpacker
+{
+    public static void Extract7Zip(string tempFileName, string dir, string skipFolderLevel, CancellationTokenSource cancellationTokenSource, Action<string> updateProgressText)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            updateProgressText(Se.Language.General.Unpacking7ZipArchiveDotDotDot);
+        });
+
+        if (OperatingSystem.IsLinux())
+        {
+            // Prefer a pre-installed 7-zip (e.g. /app/bin/7zr bundled in the Flatpak, or a
+            // distro p7zip) - it lives on a read-only, always-executable mount, unlike the
+            // 7zr unpacked to the app data folder below, which can fail on noexec setups.
+            // Also the only fast path on Linux ARM64, where no 7zr asset is bundled.
+            var linuxSevenZipPath = GetLinuxSevenZipPath();
+            if (linuxSevenZipPath != null)
+            {
+                try
+                {
+                    Unpack7ZipViaSystemExecutable(linuxSevenZipPath, tempFileName, dir, skipFolderLevel, cancellationTokenSource, updateProgressText);
+                    return;
+                }
+                catch (Exception exception)
+                {
+                    Se.LogError(exception, $"System 7-zip extraction of \"{tempFileName}\" failed, trying next extraction method");
+                }
+            }
+        }
+
+        if (OperatingSystem.IsWindows() ||
+            (OperatingSystem.IsLinux() && RuntimeInformation.ProcessArchitecture == Architecture.X64))
+        {
+            try
+            {
+                Unpack7ZipVia77zExecutable(tempFileName, dir, skipFolderLevel, cancellationTokenSource, updateProgressText);
+                return;
+            }
+            catch (Exception exception)
+            {
+                // e.g. bundled 7zr/7za missing or not executable (seen in Flatpak) - fall
+                // back to the managed extractor instead of failing the whole install.
+                Se.LogError(exception, $"7-zip executable extraction of \"{tempFileName}\" failed, falling back to managed extraction");
+            }
+        }
+
+        if (OperatingSystem.IsMacOS())
+        {
+            var macSevenZipPath = GetMacSevenZipPath();
+            if (macSevenZipPath != null)
+            {
+                try
+                {
+                    Unpack7ZipViaSystemExecutable(macSevenZipPath, tempFileName, dir, skipFolderLevel, cancellationTokenSource, updateProgressText);
+                    return;
+                }
+                catch (Exception exception)
+                {
+                    Se.LogError(exception, $"System 7zz extraction of \"{tempFileName}\" failed, falling back to managed extraction");
+                }
+            }
+        }
+
+        Extract7ZipSlow(tempFileName, dir, skipFolderLevel, cancellationTokenSource, updateProgressText);
+    }
+
+    private static string? GetLinuxSevenZipPath()
+    {
+        // 7zr (7z-archives only) and 7zz/7z (full) all support "x <archive> -o<dir> -y"
+        var paths = new[]
+        {
+            "/app/bin/7zr",   // bundled in the Flatpak
+            "/usr/bin/7zr",
+            "/usr/bin/7zz",
+            "/usr/bin/7z",
+            "/usr/local/bin/7zz",
+            "/usr/local/bin/7z"
+        };
+
+        foreach (var path in paths)
+        {
+            if (File.Exists(path))
+            {
+                return path;
+            }
+        }
+
+        return null;
+    }
+
+    private static string? GetMacSevenZipPath()
+    {
+        var paths = new[]
+        {
+            "/opt/homebrew/bin/7zz",
+            "/usr/local/bin/7zz"
+        };
+
+        foreach (var path in paths)
+        {
+            if (File.Exists(path))
+            {
+                return path;
+            }
+        }
+
+        return null;
+    }
+
+    private static void Unpack7ZipViaSystemExecutable(string sevenZipPath, string tempFileName, string dir, string skipFolderLevel, CancellationTokenSource cancellationTokenSource, Action<string> updateProgressText)
+    {
+        // Extract to a temporary directory if we need to skip folder levels
+        var extractPath = string.IsNullOrEmpty(skipFolderLevel) ? dir : Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+
+        try
+        {
+            if (!Directory.Exists(extractPath))
+            {
+                Directory.CreateDirectory(extractPath);
+            }
+
+            using var process = new System.Diagnostics.Process
+            {
+                StartInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = sevenZipPath,
+                    Arguments = $"x \"{tempFileName}\" -o\"{extractPath}\" -y",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                }
+            };
+
+            process.Start();
+
+            while (!process.StandardOutput.EndOfStream)
+            {
+                if (cancellationTokenSource.IsCancellationRequested)
+                {
+                    try
+                    {
+                        process.Kill();
+                    }
+                    catch
+                    {
+                        // Ignore if already exited
+                    }
+                    return;
+                }
+
+                var line = process.StandardOutput.ReadLine();
+                if (!string.IsNullOrWhiteSpace(line) && (line.Contains("Extracting") || line.Contains("Unpacking")))
+                {
+                    var displayLine = line.Length > 50 ? "..." + line.Substring(line.Length - 46) : line;
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        updateProgressText(displayLine);
+                    });
+                }
+            }
+
+            process.WaitForExit();
+
+            if (process.ExitCode != 0)
+            {
+                var error = process.StandardError.ReadToEnd();
+                throw new Exception($"7zz extraction failed with exit code {process.ExitCode} (command: \"{sevenZipPath}\" x \"{tempFileName}\" -o\"{extractPath}\" -y): {error}");
+            }
+
+            // If we need to skip folder levels, move files from temp to final destination
+            if (!string.IsNullOrEmpty(skipFolderLevel))
+            {
+                MoveFilesSkippingFolderLevel(extractPath, dir, skipFolderLevel, cancellationTokenSource, updateProgressText);
+            }
+        }
+        finally
+        {
+            // Clean up temporary directory if we used one
+            if (!string.IsNullOrEmpty(skipFolderLevel) && Directory.Exists(extractPath))
+            {
+                try
+                {
+                    Directory.Delete(extractPath, true);
+                }
+                catch
+                {
+                    // Ignore cleanup errors
+                }
+            }
+        }
+    }
+
+    private static void Unpack7ZipVia77zExecutable(string tempFileName, string dir, string skipFolderLevel, CancellationTokenSource cancellationTokenSource, Action<string> updateProgressText)
+    {
+        new SevenZipInitializer().UpdateSevenZipIfNeeded().Wait();
+
+
+        var sevenZipPath = Path.Combine(Se.SevenZipFolder, "7zr"); // 7zr is the standalone version for 7zip archives
+        if (OperatingSystem.IsWindows())
+        {
+            sevenZipPath = Path.Combine(Se.SevenZipFolder, "7za.exe"); // 7za.exe is the windows executable for 7zip archives
+        }
+
+        if (!File.Exists(sevenZipPath))
+        {
+            throw new FileNotFoundException($"7-zip executable not found at {sevenZipPath}");
+        }
+
+        // Make sure 7zr is executable on Linux
+        if (OperatingSystem.IsLinux())
+        {
+            LinuxHelper.MakeExecutable(sevenZipPath);
+        }
+
+        // Extract to a temporary directory if we need to skip folder levels
+        var extractPath = string.IsNullOrEmpty(skipFolderLevel) ? dir : Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+
+        try
+        {
+            if (!Directory.Exists(extractPath))
+            {
+                Directory.CreateDirectory(extractPath);
+            }
+
+            using var process = new System.Diagnostics.Process
+            {
+                StartInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = sevenZipPath,
+                    Arguments = $"x \"{tempFileName}\" -o\"{extractPath}\" -y",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                }
+            };
+
+            try
+            {
+                process.Start();
+            }
+            catch (Exception exception)
+            {
+                throw new Exception($"Could not start 7-zip (command: \"{sevenZipPath}\" x \"{tempFileName}\" -o\"{extractPath}\" -y)", exception);
+            }
+
+            while (!process.StandardOutput.EndOfStream)
+            {
+                if (cancellationTokenSource.IsCancellationRequested)
+                {
+                    try
+                    {
+                        process.Kill();
+                    }
+                    catch
+                    {
+                        // Ignore if already exited
+                    }
+                    return;
+                }
+
+                var line = process.StandardOutput.ReadLine();
+                if (!string.IsNullOrWhiteSpace(line) && line.Contains("Extracting"))
+                {
+                    var displayLine = line.Length > 50 ? "..." + line.Substring(line.Length - 46) : line;
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        updateProgressText(displayLine);
+                    });
+                }
+            }
+
+            process.WaitForExit();
+
+            if (process.ExitCode != 0)
+            {
+                var error = process.StandardError.ReadToEnd();
+                throw new Exception($"7zip extraction failed with exit code {process.ExitCode} (command: \"{sevenZipPath}\" x \"{tempFileName}\" -o\"{extractPath}\" -y): {error}");
+            }
+
+            // If we need to skip folder levels, move files from temp to final destination
+            if (!string.IsNullOrEmpty(skipFolderLevel))
+            {
+                MoveFilesSkippingFolderLevel(extractPath, dir, skipFolderLevel, cancellationTokenSource, updateProgressText);
+            }
+        }
+        finally
+        {
+            // Clean up temporary directory if we used one
+            if (!string.IsNullOrEmpty(skipFolderLevel) && Directory.Exists(extractPath))
+            {
+                try
+                {
+                    Directory.Delete(extractPath, true);
+                }
+                catch
+                {
+                    // Ignore cleanup errors
+                }
+            }
+        }
+    }
+
+    private static void MoveFilesSkippingFolderLevel(string sourceDir, string targetDir, string skipFolderLevel, CancellationTokenSource cancellationTokenSource, Action<string> updateProgressText)
+    {
+        var skipPath = Path.Combine(sourceDir, skipFolderLevel.Replace('/', Path.DirectorySeparatorChar));
+
+        if (!Directory.Exists(skipPath))
+        {
+            skipPath = sourceDir;
+        }
+
+        MoveDirectoryContents(skipPath, targetDir, cancellationTokenSource, updateProgressText);
+    }
+
+    private static void MoveDirectoryContents(string sourceDir, string targetDir, CancellationTokenSource cancellationTokenSource, Action<string> updateProgressText)
+    {
+        if (!Directory.Exists(targetDir))
+        {
+            Directory.CreateDirectory(targetDir);
+        }
+
+        // Move all files
+        foreach (var file in Directory.GetFiles(sourceDir))
+        {
+            if (cancellationTokenSource.IsCancellationRequested)
+            {
+                return;
+            }
+
+            var fileName = Path.GetFileName(file);
+            var destFile = Path.Combine(targetDir, fileName);
+
+            var displayName = fileName;
+            if (displayName.Length > 30)
+            {
+                displayName = "..." + displayName.Substring(displayName.Length - 26).Trim();
+            }
+
+            Dispatcher.UIThread.Post(() =>
+            {
+                updateProgressText(string.Format(Se.Language.General.UnpackingX, displayName));
+            });
+
+            File.Move(file, destFile, true);
+        }
+
+        // Move all subdirectories recursively
+        foreach (var subDir in Directory.GetDirectories(sourceDir))
+        {
+            if (cancellationTokenSource.IsCancellationRequested)
+            {
+                return;
+            }
+
+            var dirName = Path.GetFileName(subDir);
+            var destSubDir = Path.Combine(targetDir, dirName);
+            MoveDirectoryContents(subDir, destSubDir, cancellationTokenSource, updateProgressText);
+        }
+    }
+
+    public static void Extract7ZipSlow(string tempFileName, string dir, string? skipFolderLevel, CancellationTokenSource cancellationTokenSource, Action<string> updateProgressText)
+    {
+        using Stream stream = File.OpenRead(tempFileName);
+        using var archive = SevenZipArchive.OpenArchive(stream);
+        double totalSize = archive.TotalUncompressedSize;
+        double unpackedSize = 0;
+
+        var reader = archive.ExtractAllEntries();
+        var targetRoot = Path.GetFullPath(dir);
+        while (reader.MoveToNextEntry())
+        {
+            if (cancellationTokenSource.IsCancellationRequested)
+            {
+                return;
+            }
+
+            if (!string.IsNullOrEmpty(reader.Entry.Key))
+            {
+                var entryFullName = reader.Entry.Key.Replace('\\', '/');
+                var normalizedSkipFolder = skipFolderLevel?.Replace('\\', '/').Trim('/') ?? string.Empty;
+                if (!string.IsNullOrEmpty(normalizedSkipFolder))
+                {
+                    if (entryFullName.Equals(normalizedSkipFolder, StringComparison.Ordinal))
+                    {
+                        entryFullName = string.Empty;
+                    }
+                    else if (entryFullName.StartsWith(normalizedSkipFolder + "/", StringComparison.Ordinal))
+                    {
+                        entryFullName = entryFullName[(normalizedSkipFolder.Length + 1)..];
+                    }
+                }
+
+                entryFullName = entryFullName.Replace('/', Path.DirectorySeparatorChar);
+                if (Path.IsPathRooted(entryFullName))
+                {
+                    throw new InvalidDataException($"Archive entry is rooted outside the extraction folder: {reader.Entry.Key}");
+                }
+
+                entryFullName = entryFullName.TrimStart(Path.DirectorySeparatorChar);
+                if (string.IsNullOrEmpty(entryFullName))
+                {
+                    if (reader.Entry.IsDirectory)
+                    {
+                        Directory.CreateDirectory(dir);
+                        continue;
+                    }
+
+                    throw new InvalidDataException("Archive contains an empty file entry name.");
+                }
+
+                var fullFileName = Path.GetFullPath(Path.Combine(targetRoot, entryFullName));
+                var relativePath = Path.GetRelativePath(targetRoot, fullFileName);
+                if (relativePath.Equals("..", StringComparison.Ordinal) ||
+                    relativePath.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) ||
+                    Path.IsPathRooted(relativePath))
+                {
+                    throw new InvalidDataException($"Archive entry is outside the extraction folder: {reader.Entry.Key}");
+                }
+
+                if (reader.Entry.IsDirectory)
+                {
+                    if (!Directory.Exists(fullFileName))
+                    {
+                        Directory.CreateDirectory(fullFileName);
+                    }
+
+                    continue;
+                }
+
+                var fullPath = Path.GetDirectoryName(fullFileName);
+                if (fullPath == null)
+                {
+                    continue;
+                }
+
+                Directory.CreateDirectory(fullPath);
+
+                var displayName = entryFullName;
+                if (displayName.Length > 30)
+                {
+                    displayName = "..." + displayName.Remove(0, displayName.Length - 26).Trim();
+                }
+                Dispatcher.UIThread.Post(() =>
+                {
+                    updateProgressText(string.Format(Se.Language.General.UnpackingX, displayName));
+                });
+
+                // WriteEntryToDirectory appends the entry's original full key again. Since
+                // fullPath already contains the stripped relative path, that produced the
+                // repeated .../numpy/core/Faster-Whisper-XXL/... nesting reported in #13278.
+                reader.WriteEntryToFile(fullFileName);
+                unpackedSize += reader.Entry.Size;
+            }
+        }
+    }
+}

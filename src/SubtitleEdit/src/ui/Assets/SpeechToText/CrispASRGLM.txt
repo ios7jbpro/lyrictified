@@ -1,0 +1,6 @@
+
+🧩 GLM ASR (ChatGLM)
+
+Type: Large Language Model ASR
+Focus: 🎯 Chinese (Mandarin + Cantonese) and multilingual speech recognition
+

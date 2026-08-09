@@ -1,0 +1,488 @@
+using Nikse.SubtitleEdit.Core.Common;
+using Nikse.SubtitleEdit.Core.Dictionaries;
+using Nikse.SubtitleEdit.Core.Forms.FixCommonErrors;
+using Nikse.SubtitleEdit.Core.Interfaces;
+using Nikse.SubtitleEdit.UiLogic.Ocr.FixEngine;
+using Nikse.SubtitleEdit.UiLogic.SpellCheck;
+using SkiaSharp;
+using System.Collections.Concurrent;
+using System.Globalization;
+
+namespace SeConv.Core;
+
+/// <summary>
+/// Runs Subtitle Edit's FixCommonErrors rule suite against a Subtitle. Each rule from
+/// <see cref="Nikse.SubtitleEdit.Core.Forms.FixCommonErrors"/> is invoked once with an
+/// <see cref="EmptyFixCallback"/> (no UI reporting). Results mutate the passed subtitle
+/// in place.
+///
+/// Rule IDs are stable string keys (matching the rule class name) so users can pass
+/// them via <c>--FixCommonErrorsRules</c>. Matching is case-insensitive.
+/// <c>FixCommonOcrErrors</c> runs as a final pass when a dictionary folder is configured
+/// (<c>--dictionary-folder</c>), using the shared OCR-fix engine + Hunspell from libuilogic
+/// (#11744).
+/// </summary>
+internal static class FixCommonErrorsRunner
+{
+    // Upper bound on convergence passes (SE4 used a fixed 3); we loop until stable but
+    // never beyond this, to guard against a rule pair that oscillates forever.
+    private const int MaxPasses = 10;
+
+    // Pseudo-rule id for the OCR-fix pass (not an IFixCommonError; needs a dictionary + the engine).
+    internal const string OcrFixRuleId = "FixCommonOcrErrors";
+
+    private static readonly IReadOnlyList<(string Id, Func<IFixCommonError> Factory)> Rules = BuildRules();
+    // Dictionary paths are case-sensitive on Linux. Prefer an occasional duplicate cache entry
+    // on Windows over returning another directory's names list on a case-sensitive file system.
+    private static readonly ConcurrentDictionary<string, HashSet<string>> NamesByFolderAndLanguage = new(StringComparer.Ordinal);
+
+    public static IReadOnlyList<string> AvailableRuleIds { get; } =
+        Rules.Select(r => r.Id).Append(OcrFixRuleId).ToArray();
+
+    /// <summary>
+    /// Rules that only run when the subtitle's language (auto-detected, or forced via
+    /// <c>--fce-language</c>) matches the mapped two-letter ISO code. Single source of truth
+    /// for both the runtime gate (<see cref="IsLanguageOnlyRule"/>) and the <c>list-fce-rules</c>
+    /// display. Mirrors the GUI's per-language rule additions in <c>FixCommonErrorsViewModel</c>.
+    /// A gated rule runs only when the language matches — auto-detected from the content, or
+    /// forced with <c>--fce-language:&lt;code&gt;</c>. Naming it in <c>--FixCommonErrorsRules</c>
+    /// selects it but does not bypass the gate (issue #11037).
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> LanguageGates { get; } =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            [nameof(FixAloneLowercaseIToUppercaseI)] = "en",
+            [nameof(FixDanishLetterI)] = "da",
+            [nameof(FixSpanishInvertedQuestionAndExclamationMarks)] = "es",
+            [nameof(FixTurkishAnsiToUnicode)] = "tr",
+        };
+
+    /// <summary>
+    /// Maps each CLI rule ID to the label the GUI's <em>Fix Common Errors</em> window shows for
+    /// the same rule, so users who prototyped in the desktop app can find the matching
+    /// <c>--fix-common-errors-rules</c> ID (issue #11037 review). Single source of truth for the
+    /// <c>list-fce-rules</c> "GUI equivalent" column and the published rule-mapping table.
+    /// Kept in sync with the GUI strings in <c>LanguageFixCommonErrors</c> /
+    /// <c>FixCommonErrorsViewModel.MakeDefaultRules</c>; a test asserts every
+    /// <see cref="AvailableRuleIds"/> entry has a label here.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> GuiLabels { get; } =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            [nameof(AddMissingQuotes)] = "Add missing quotes (\")",
+            [nameof(Fix3PlusLines)] = "Fix subtitles with more than two lines",
+            [nameof(FixAloneLowercaseIToUppercaseI)] = "Fix alone lowercase 'i' to 'I' (English)",
+            [nameof(FixCommas)] = "Fix commas",
+            [nameof(FixContinuationStyle)] = "Fix continuation style",
+            [nameof(FixDanishLetterI)] = "Fix Danish letter 'i'",
+            [nameof(FixDialogsOnOneLine)] = "Split dialogs on one line",
+            [nameof(FixDoubleApostrophes)] = "Fix double apostrophe characters ('') to a single quote (\")",
+            [nameof(FixDoubleDash)] = "Fix '--' -> '...'",
+            [nameof(FixDoubleGreaterThan)] = "Remove '>>'",
+            [nameof(FixEllipsesStart)] = "Remove leading '...'",
+            [nameof(FixEmptyLines)] = "Remove empty lines/unused line breaks",
+            [nameof(FixHyphensInDialog)] = "Fix dash in dialogs via style",
+            [nameof(FixHyphensRemoveDashSingleLine)] = "Remove dialog dashes in single lines",
+            [nameof(FixInvalidItalicTags)] = "Fix invalid italic tags",
+            [nameof(FixLongDisplayTimes)] = "Fix long display times",
+            [nameof(FixLongLines)] = "Break long lines",
+            [nameof(FixMissingOpenBracket)] = "Fix missing [ or ( in line",
+            [nameof(FixMissingPeriodsAtEndOfLine)] = "Add period after lines where next line starts with uppercase letter",
+            [nameof(FixMissingSpaces)] = "Fix missing spaces",
+            [nameof(FixMusicNotation)] = "Replace music symbols with preferred symbol",
+            [nameof(FixOverlappingDisplayTimes)] = "Fix overlapping display times",
+            [nameof(FixShortDisplayTimes)] = "Fix short display times",
+            [nameof(FixShortGaps)] = "Fix short gaps",
+            [nameof(FixShortLines)] = "Remove line breaks in short texts with only one sentence",
+            [nameof(FixShortLinesAll)] = "Remove line breaks in short texts (all except dialogs)",
+            [nameof(FixShortLinesPixelWidth)] = "Unbreak subtitles that can fit on one line (pixel width)",
+            [nameof(FixSpanishInvertedQuestionAndExclamationMarks)] = "Fix Spanish inverted question and exclamation marks",
+            [nameof(FixStartWithUppercaseLetterAfterColon)] = "Start with uppercase letter after colon/semicolon",
+            [nameof(FixStartWithUppercaseLetterAfterParagraph)] = "Start with uppercase letter after paragraph",
+            [nameof(FixStartWithUppercaseLetterAfterPeriodInsideParagraph)] = "Start with uppercase letter after period inside paragraph",
+            [nameof(FixTurkishAnsiToUnicode)] = "Fix Turkish ANSI (Icelandic) letters to Unicode",
+            [nameof(FixUnnecessaryLeadingDots)] = "Remove unnecessary leading dots",
+            [nameof(FixUnneededPeriods)] = "Remove unneeded periods",
+            [nameof(FixUnneededSpaces)] = "Remove unneeded spaces",
+            [nameof(FixUppercaseIInsideWords)] = "Fix uppercase 'i' inside lowercase words (OCR error)",
+            [nameof(NormalizeStrings)] = "Normalize strings",
+            [nameof(RemoveDialogFirstLineInNonDialogs)] = "Remove start dash in first line for non-dialogs",
+            [nameof(RemoveSpaceBetweenNumbers)] = "Remove space between numbers",
+            [OcrFixRuleId] = "Fix common OCR errors (using OCR replace list)",
+        };
+
+    /// <summary>
+    /// Runs every available rule against the subtitle. Equivalent to
+    /// <c>Run(subtitle, null)</c>.
+    /// </summary>
+    public static void RunAll(Subtitle subtitle) => Run(subtitle, null);
+
+    /// <summary>
+    /// Runs the specified rules. <paramref name="ruleIds"/> selects which rules execute
+    /// (<c>null</c>/empty = all). Language-conditional rules run only when the language matches
+    /// (see <paramref name="languageOverride"/> / auto-detect); selecting one by name does not
+    /// bypass its gate. Rules execute in canonical order, not caller order, to keep behaviour
+    /// stable across invocations.
+    /// </summary>
+    public static void Run(
+        Subtitle subtitle,
+        IReadOnlyCollection<string>? ruleIds,
+        string? languageOverride = null)
+    {
+        if (subtitle == null || subtitle.Paragraphs.Count == 0)
+        {
+            return;
+        }
+
+        HashSet<string>? wanted = null;
+        if (ruleIds != null && ruleIds.Count > 0)
+        {
+            wanted = new HashSet<string>(ruleIds, StringComparer.OrdinalIgnoreCase);
+        }
+
+        // --fce-language forces the language used for gating (and OCR-fix), so a genuinely
+        // Spanish/Danish/Turkish file that auto-detects wrong still gets its per-language
+        // rule. Falls back to content auto-detection, then "en".
+        var language = NormalizeLanguageOverride(languageOverride)
+            ?? LanguageAutoDetect.AutoDetectGoogleLanguageOrNull(subtitle)
+            ?? "en";
+        var callbacks = new EmptyFixCallback
+        {
+            Language = language,
+
+            // Without this the uppercase-after-period rules treat every abbreviation period as a
+            // sentence ending, e.g. Dutch "dhr. de vries" -> "dhr. De vries" (#13082).
+            Abbreviations = AbbreviationList.Load(SpellCheckConfig.DictionariesFolder(), language),
+
+            // Same names-list backing as the GUI dialog (which loads it since #13085): without it
+            // IsName() always returns false, so "Add missing period" adds a period before
+            // always-uppercase names like "Roemenië" on the next line (#12286).
+            Names = LoadNames(language),
+        };
+
+        // Fix Common Errors is not idempotent in a single pass: one rule can create a
+        // condition another rule fixes on the next pass. SE4's batch converter ran the
+        // whole suite three times per /FixCommonErrors (issue #11873). Run to convergence
+        // here - repeat until a pass changes nothing, capped to avoid pathological loops.
+        var previousSnapshot = Snapshot(subtitle);
+        for (var pass = 0; pass < MaxPasses; pass++)
+        {
+            RunSinglePass(subtitle, wanted, language, callbacks);
+
+            var snapshot = Snapshot(subtitle);
+            if (snapshot == previousSnapshot)
+            {
+                break;
+            }
+
+            previousSnapshot = snapshot;
+        }
+
+        // OCR-fix pass: deterministic rules above run first; this spell-check-driven pass runs last.
+        // It needs a dictionary folder (--dictionary-folder) and the OCR-fix engine, so it is gated
+        // separately from the IFixCommonError rule list. Runs as part of the full suite, or when the
+        // user names it explicitly (#11744).
+        if (wanted == null || wanted.Contains(OcrFixRuleId))
+        {
+            RunOcrFix(subtitle, language);
+        }
+    }
+
+    private static HashSet<string> LoadNames(string language)
+    {
+        var folder = SpellCheckConfig.DictionariesFolder();
+        var normalizedFolder = string.IsNullOrEmpty(folder) ? string.Empty : Path.GetFullPath(folder);
+        var key = normalizedFolder + "\0" + language;
+        return NamesByFolderAndLanguage.GetOrAdd(
+            key,
+            _ => new NameList(folder, language, false, string.Empty).GetNames());
+    }
+
+    /// <summary>
+    /// Applies the OCR-fix engine (OCR replace lists + Hunspell spell-check guessing) to every line,
+    /// the headless equivalent of the GUI's "Fix common OCR errors". No-op when no dictionary folder
+    /// is configured. When no Hunspell dictionary matches the language the OCR replace list is still
+    /// applied (the spell-check-driven guessing is skipped). (#11744, #12126)
+    /// </summary>
+    private static void RunOcrFix(Subtitle subtitle, string twoLetterLanguage)
+    {
+        var folder = SpellCheckConfig.DictionariesFolder();
+        if (string.IsNullOrEmpty(folder) || !System.IO.Directory.Exists(folder))
+        {
+            return;
+        }
+
+        var threeLetter = Iso639Dash2LanguageCode.GetThreeLetterCodeFromTwoLetterCode(twoLetterLanguage);
+        if (string.IsNullOrEmpty(threeLetter))
+        {
+            return;
+        }
+
+        var spellChecker = new SpellChecker();
+
+        // Fall back to an empty dictionary display when no Hunspell dictionary is installed for the
+        // language: the OCR replace list is still applied, the spell-check-driven "guess" path is just a
+        // no-op. Only en_US.dic ships with SE, so gating on a matching .dic made this silently do nothing
+        // for other languages on a fresh config - a regression from SE 4 (issue #12126).
+        var dictionary = spellChecker.GetDictionaryLanguages(folder)
+            .FirstOrDefault(d => d.GetThreeLetterCode() == threeLetter)
+            ?? new SpellCheckDictionaryDisplay();
+
+        IOcrFixEngine engine = new OcrFixEngine(spellChecker);
+        engine.Initialize(subtitle, threeLetter, dictionary);
+
+        for (var i = 0; i < subtitle.Paragraphs.Count; i++)
+        {
+            var p = subtitle.Paragraphs[i];
+            var fixedText = engine.FixOcrErrors(i, p.Text, true).GetText();
+            if (fixedText != p.Text)
+            {
+                p.Text = fixedText;
+            }
+        }
+    }
+
+    private static void RunSinglePass(
+        Subtitle subtitle,
+        HashSet<string>? wanted,
+        string language,
+        EmptyFixCallback callbacks)
+    {
+        foreach (var (id, factory) in Rules)
+        {
+            if (wanted != null && !wanted.Contains(id))
+            {
+                continue;
+            }
+
+            // Language-conditional rules mirror the GUI's Fix Common Errors window
+            // (FixCommonErrorsViewModel.cs:359-377), which only surfaces these rules
+            // when the detected language matches. Running e.g. the Spanish inverted-mark
+            // fix on French content would insert ¿ / ¡ on every question — issue #11037.
+            // Naming the rule in --FixCommonErrorsRules selects it but does not bypass the
+            // gate; force a mismatching language with --fce-language:<code> instead.
+            if (IsLanguageOnlyRule(id, language))
+            {
+                continue;
+            }
+
+            try
+            {
+                factory().Fix(subtitle, callbacks);
+            }
+            catch
+            {
+                // A rogue rule shouldn't kill the conversion. Skip and continue.
+            }
+        }
+    }
+
+    // A signature of the subtitle's timing + text, used to detect when a Fix Common
+    // Errors pass has stopped changing anything (convergence). A 64-bit FNV-1a hash over
+    // the same fields - only compared against the previous pass within this run, so it
+    // avoids building (and discarding) a full-subtitle string on every pass.
+    private static long Snapshot(Subtitle subtitle)
+    {
+        const long fnvPrime = 1099511628211L;
+        var hash = unchecked((long)14695981039346656037UL); // FNV offset basis
+        unchecked
+        {
+            foreach (var p in subtitle.Paragraphs)
+            {
+                hash = (hash ^ BitConverter.DoubleToInt64Bits(p.StartTime.TotalMilliseconds)) * fnvPrime;
+                hash = (hash ^ BitConverter.DoubleToInt64Bits(p.EndTime.TotalMilliseconds)) * fnvPrime;
+
+                var text = p.Text ?? string.Empty;
+                foreach (var c in text)
+                {
+                    hash = (hash ^ c) * fnvPrime;
+                }
+
+                hash = (hash ^ '\n') * fnvPrime;
+            }
+        }
+
+        return hash;
+    }
+
+    /// <summary>
+    /// Returns true when <paramref name="ruleId"/> is a language-conditional rule
+    /// that should not run because the detected language doesn't match. Mirrors
+    /// the GUI's per-language rule additions in <c>FixCommonErrorsViewModel</c>.
+    /// </summary>
+    private static bool IsLanguageOnlyRule(string ruleId, string language)
+        => LanguageGates.TryGetValue(ruleId, out var required)
+           && !required.Equals(language, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Normalizes a user-supplied <c>--fce-language</c> value to a two-letter ISO code so it can
+    /// match the <see cref="LanguageGates"/> map. Accepts a two-letter code (<c>es</c>), a
+    /// three-letter code (<c>spa</c>), or an English name (<c>Spanish</c>). Returns <c>null</c>
+    /// for null/blank input (no override) or when the value can't be resolved — the caller then
+    /// falls back to content auto-detection.
+    /// </summary>
+    internal static string? NormalizeLanguageOverride(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var v = value.Trim();
+        if (v.Length == 2)
+        {
+            return v.ToLowerInvariant();
+        }
+
+        var culture = CultureInfo.GetCultures(CultureTypes.NeutralCultures)
+            .FirstOrDefault(c =>
+                c.TwoLetterISOLanguageName.Equals(v, StringComparison.OrdinalIgnoreCase)
+                || c.ThreeLetterISOLanguageName.Equals(v, StringComparison.OrdinalIgnoreCase)
+                || c.EnglishName.Equals(v, StringComparison.OrdinalIgnoreCase));
+
+        return culture?.TwoLetterISOLanguageName;
+    }
+
+    /// <summary>
+    /// Resolves a comma-separated rule spec into a concrete set of rule IDs. Supports:
+    /// <list type="bullet">
+    ///   <item><c>all</c> — every rule (also the default when spec is null/empty/whitespace).</item>
+    ///   <item><c>FixCommas,FixEllipsesStart</c> — explicit allow-list.</item>
+    ///   <item><c>all,-FixDanishLetterI</c> — start from all, then subtract.</item>
+    ///   <item><c>-FixCommas</c> (negations only) — implied <c>all</c>, then subtract.</item>
+    /// </list>
+    /// Matching is case-insensitive. Throws <see cref="ArgumentException"/> for unknown IDs.
+    /// Returned IDs are in canonical order.
+    /// </summary>
+    public static IReadOnlyList<string> ResolveRuleIds(string? spec)
+    {
+        if (string.IsNullOrWhiteSpace(spec))
+        {
+            return AvailableRuleIds;
+        }
+
+        var available = new HashSet<string>(AvailableRuleIds, StringComparer.OrdinalIgnoreCase);
+        var tokens = spec.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        var hasPositive = tokens.Any(t => !t.StartsWith('-'));
+        var selected = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        // Negation-only specs ("-FixCommas,-FixDanishLetterI") imply a leading "all".
+        if (!hasPositive)
+        {
+            foreach (var a in AvailableRuleIds)
+            {
+                selected.Add(a);
+            }
+        }
+
+        foreach (var raw in tokens)
+        {
+            var negate = raw.StartsWith('-');
+            var id = negate ? raw[1..].Trim() : raw;
+
+            if (string.IsNullOrEmpty(id))
+            {
+                continue;
+            }
+
+            if (id.Equals("all", StringComparison.OrdinalIgnoreCase))
+            {
+                if (negate)
+                {
+                    selected.Clear();
+                }
+                else
+                {
+                    foreach (var a in AvailableRuleIds)
+                    {
+                        selected.Add(a);
+                    }
+                }
+                continue;
+            }
+
+            if (!available.Contains(id))
+            {
+                throw new ArgumentException(
+                    $"Unknown FixCommonErrors rule '{id}'. Run 'seconv list-fce-rules' to see available IDs.");
+            }
+
+            if (negate)
+            {
+                selected.Remove(id);
+            }
+            else
+            {
+                selected.Add(id);
+            }
+        }
+
+        return AvailableRuleIds.Where(selected.Contains).ToArray();
+    }
+
+    /// <summary>
+    /// Canonical rule list. Order here defines execution order. <c>FixCommonOcrErrors</c>
+    /// is intentionally omitted — it requires an UI-side IOcrFixEngine and SpellCheck
+    /// setup that seconv doesn't carry. The other 38 rules cover most cleanup.
+    /// </summary>
+    private static IReadOnlyList<(string Id, Func<IFixCommonError> Factory)> BuildRules() =>
+    [
+        (nameof(AddMissingQuotes), () => new AddMissingQuotes()),
+        (nameof(Fix3PlusLines), () => new Fix3PlusLines()),
+        (nameof(FixAloneLowercaseIToUppercaseI), () => new FixAloneLowercaseIToUppercaseI()),
+        (nameof(FixCommas), () => new FixCommas()),
+        (nameof(FixContinuationStyle), () => new FixContinuationStyle { FixAction = "Fix continuation style" }),
+        (nameof(FixDanishLetterI), () => new FixDanishLetterI()),
+        (nameof(FixDialogsOnOneLine), () => new FixDialogsOnOneLine()),
+        (nameof(FixDoubleApostrophes), () => new FixDoubleApostrophes()),
+        (nameof(FixDoubleDash), () => new FixDoubleDash()),
+        (nameof(FixDoubleGreaterThan), () => new FixDoubleGreaterThan()),
+        (nameof(FixEllipsesStart), () => new FixEllipsesStart()),
+        (nameof(FixEmptyLines), () => new FixEmptyLines()),
+        (nameof(FixHyphensInDialog), () => new FixHyphensInDialog()),
+        (nameof(FixHyphensRemoveDashSingleLine), () => new FixHyphensRemoveDashSingleLine()),
+        (nameof(FixInvalidItalicTags), () => new FixInvalidItalicTags()),
+        (nameof(FixLongDisplayTimes), () => new FixLongDisplayTimes()),
+        (nameof(FixLongLines), () => new FixLongLines()),
+        (nameof(FixMissingOpenBracket), () => new FixMissingOpenBracket()),
+        (nameof(FixMissingPeriodsAtEndOfLine), () => new FixMissingPeriodsAtEndOfLine()),
+        (nameof(FixMissingSpaces), () => new FixMissingSpaces()),
+        (nameof(FixMusicNotation), () => new FixMusicNotation()),
+        (nameof(FixOverlappingDisplayTimes), () => new FixOverlappingDisplayTimes()),
+        (nameof(FixShortDisplayTimes), () => new FixShortDisplayTimes()),
+        (nameof(FixShortGaps), () => new FixShortGaps()),
+        (nameof(FixShortLines), () => new FixShortLines()),
+        (nameof(FixShortLinesAll), () => new FixShortLinesAll()),
+        (nameof(FixShortLinesPixelWidth), () => new FixShortLinesPixelWidth(MeasurePixelWidth)),
+        (nameof(FixSpanishInvertedQuestionAndExclamationMarks), () => new FixSpanishInvertedQuestionAndExclamationMarks()),
+        (nameof(FixStartWithUppercaseLetterAfterColon), () => new FixStartWithUppercaseLetterAfterColon()),
+        (nameof(FixStartWithUppercaseLetterAfterParagraph), () => new FixStartWithUppercaseLetterAfterParagraph()),
+        (nameof(FixStartWithUppercaseLetterAfterPeriodInsideParagraph), () => new FixStartWithUppercaseLetterAfterPeriodInsideParagraph()),
+        (nameof(FixTurkishAnsiToUnicode), () => new FixTurkishAnsiToUnicode()),
+        (nameof(FixUnnecessaryLeadingDots), () => new FixUnnecessaryLeadingDots()),
+        (nameof(FixUnneededPeriods), () => new FixUnneededPeriods()),
+        (nameof(FixUnneededSpaces), () => new FixUnneededSpaces()),
+        (nameof(FixUppercaseIInsideWords), () => new FixUppercaseIInsideWords()),
+        (nameof(NormalizeStrings), () => new NormalizeStrings()),
+        (nameof(RemoveDialogFirstLineInNonDialogs), () => new RemoveDialogFirstLineInNonDialogs()),
+        (nameof(RemoveSpaceBetweenNumbers), () => new RemoveSpaceBetweenNumbers()),
+    ];
+
+    /// <summary>
+    /// Pixel-width measurer for FixShortLinesPixelWidth. Mirrors UI's implementation:
+    /// 14pt of the default Skia typeface. Headless contexts get the same numbers.
+    /// </summary>
+    // Cached per thread: MeasurePixelWidth runs once per subtitle line, so building a new
+    // SKFont every call was wasteful - and the old code disposed SKTypeface.Default, which
+    // is a shared instance that must not be disposed. [ThreadStatic] keeps it safe even if
+    // conversions are ever run in parallel.
+    [ThreadStatic] private static SKFont? _pixelWidthFont;
+
+    private static int MeasurePixelWidth(string text)
+    {
+        _pixelWidthFont ??= new SKFont(SKTypeface.Default, 14);
+        var width = _pixelWidthFont.MeasureText(text);
+        return (int)Math.Round(width, MidpointRounding.AwayFromZero);
+    }
+}

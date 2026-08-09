@@ -1,0 +1,6 @@
+
+🎙️ Kyutai STT
+
+Type: Mimi neural audio codec (SEANet + 8L transformer + RVQ) + 16L causal LM
+Focus: 🇬🇧 English + 🇫🇷 French — native per-token and word-level timestamps
+

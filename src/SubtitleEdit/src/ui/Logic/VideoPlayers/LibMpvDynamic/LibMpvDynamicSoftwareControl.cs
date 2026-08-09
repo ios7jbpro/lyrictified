@@ -1,0 +1,204 @@
+using System;
+using System.Threading.Tasks;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Media;
+using Avalonia.Media.Imaging;
+using Avalonia.Platform;
+using Avalonia.Threading;
+using Avalonia.Input;
+using Nikse.SubtitleEdit.Logic.Config;
+
+namespace Nikse.SubtitleEdit.Logic.VideoPlayers.LibMpvDynamic;
+
+public class LibMpvDynamicSoftwareControl : Control
+{
+    private LibMpvDynamicPlayer? _mpvPlayer;
+    private WriteableBitmap? _renderTarget;
+    private bool _isInitialized;
+
+    public LibMpvDynamicPlayer? Player => _mpvPlayer;
+
+    public LibMpvDynamicSoftwareControl(LibMpvDynamicPlayer mpvPlayer)
+    {
+        _mpvPlayer = mpvPlayer;
+        ClipToBounds = true;
+        Cursor = new Cursor(StandardCursorType.Arrow);
+    }
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+
+        if (_mpvPlayer == null)
+        {
+            throw new InvalidOperationException("MpvPlayer is not initialized");
+        }
+
+        System.Diagnostics.Debug.WriteLine("Initializing MpvPlayer with software rendering");
+
+        try
+        {
+            _mpvPlayer.InitializeWithSoftwareRendering();
+            _mpvPlayer.PlayerSubName = "sw";
+            _mpvPlayer.RequestRender += OnMpvRequestRender;
+            _isInitialized = true;
+            System.Diagnostics.Debug.WriteLine("MpvPlayer initialized successfully with software rendering!");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to initialize MpvPlayer: {ex.Message}");
+        }
+    }
+
+    private void OnMpvRequestRender()
+    {
+        // Request a redraw on the UI thread
+        Dispatcher.UIThread.Post(InvalidateVisual, DispatcherPriority.Background);
+    }
+
+    public override void Render(DrawingContext context)
+    {
+        base.Render(context);
+
+        if (!_isInitialized || _mpvPlayer == null || VisualRoot == null)
+        {
+            context.FillRectangle(Brushes.Black, new Rect(0, 0, Bounds.Width, Bounds.Height));
+            return;
+        }
+
+        var bitmapSize = GetPixelSize();
+
+        if (bitmapSize.Width <= 0 || bitmapSize.Height <= 0)
+        {
+            System.Diagnostics.Debug.WriteLine("Skipping render - invalid size");
+            return;
+        }
+
+        // Recreate bitmap if size changed
+        if (_renderTarget == null ||
+            _renderTarget.PixelSize.Width != bitmapSize.Width ||
+            _renderTarget.PixelSize.Height != bitmapSize.Height)
+        {
+            _renderTarget?.Dispose();
+            _renderTarget = new WriteableBitmap(
+                bitmapSize,
+                new Vector(96.0, 96.0),
+                PixelFormat.Bgra8888,
+                AlphaFormat.Premul);
+        }
+
+        // If no file is loaded, show black screen
+        if (string.IsNullOrEmpty(_mpvPlayer.FileName))
+        {
+            context.FillRectangle(Brushes.Black, new Rect(0, 0, Bounds.Width, Bounds.Height));
+            return;
+        }
+
+        try
+        {
+            using (var lockedBitmap = _renderTarget.Lock())
+            {
+#if ANDROID
+        var pixelFormat = "rgba";
+#else
+                var pixelFormat = "bgra";
+#endif
+                _mpvPlayer.SoftwareRender(
+                    lockedBitmap.Size.Width,
+                    lockedBitmap.Size.Height,
+                    lockedBitmap.Address,
+                    pixelFormat);
+            }
+
+            var destRect = new Rect(0, 0, Bounds.Width, Bounds.Height);
+            context.DrawImage(_renderTarget, destRect);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Software render error: {ex.Message}");
+            context.FillRectangle(Brushes.Black, new Rect(0, 0, Bounds.Width, Bounds.Height));
+        }
+    }
+
+    private PixelSize GetPixelSize()
+    {
+        // Don't apply scaling - use bounds directly as pixel size
+        // This matches the working LibMpv.Avalonia implementation
+        return new PixelSize(
+            (int)Bounds.Width,
+            (int)Bounds.Height);
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnDetachedFromVisualTree(e);
+
+        // mpv_terminate_destroy (called from LibMpvDynamicPlayer.Dispose) stops every
+        // mpv worker and blocks until they exit. When mpv is idle this returns in
+        // milliseconds, but when a file load is still in flight on a slow or stuck
+        // path — network mount, weird codec, demuxer hung in I/O — it can stall the
+        // calling thread for many seconds. That's the UI thread here, which is what
+        // produces the "dialog opens, can only be killed from Task Manager" freeze
+        // reported in #11176 for the BurnIn logo/effect dialogs.
+        //
+        // Detach the render callback synchronously (so this control is collectible
+        // immediately) but hand the native dispose off to a worker thread; the OS
+        // reclaims the mpv resources at its own pace without holding the UI hostage.
+        var playerToDispose = _mpvPlayer;
+        _mpvPlayer = null;
+        if (playerToDispose != null)
+        {
+            playerToDispose.RequestRender -= OnMpvRequestRender;
+            _ = Task.Run(() =>
+            {
+                try
+                {
+                    playerToDispose.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    Se.LogError(ex, "LibMpvDynamicSoftwareControl background dispose");
+                }
+            });
+        }
+
+        _renderTarget?.Dispose();
+        _renderTarget = null;
+
+        _isInitialized = false;
+    }
+
+    public async void LoadFile(string path)
+    {
+        if (_mpvPlayer == null)
+        {
+            return;
+        }
+
+        try
+        {
+            var loadTask = _mpvPlayer.LoadFile(path);
+
+            // Trigger initial render
+            InvalidateVisual();
+
+            await loadTask;
+        }
+        catch (Exception exception)
+        {
+            // The load task was previously discarded, hiding open failures entirely.
+            Se.LogError(exception, $"mpv failed to load video file: {path}");
+        }
+    }
+
+    public void TogglePlayPause()
+    {
+        _mpvPlayer?.PlayOrPause();
+    }
+
+    public void Unload()
+    {
+        _mpvPlayer?.CloseFile();
+    }
+}

@@ -1,0 +1,379 @@
+using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Threading;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using Nikse.SubtitleEdit.Controls.VideoPlayer;
+using Nikse.SubtitleEdit.Core.Common;
+using Nikse.SubtitleEdit.Core.SubtitleFormats;
+using Nikse.SubtitleEdit.Features.Main;
+using Nikse.SubtitleEdit.Features.Sync.VisualSync;
+using Nikse.SubtitleEdit.Logic;
+using Nikse.SubtitleEdit.Logic.Config;
+using Nikse.SubtitleEdit.Logic.VideoPlayers.LibMpvDynamic;
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
+
+namespace Nikse.SubtitleEdit.Features.Assa.AssaApplyCustomOverrideTags;
+
+public partial class AssaApplyCustomOverrideTagsViewModel : ObservableObject
+{
+    [ObservableProperty] private ObservableCollection<OverrideTagDisplay> _overrideTags;
+    [ObservableProperty] private OverrideTagDisplay? _selectedOverrideTag;
+    [ObservableProperty] private ObservableCollection<SubtitleDisplayItem> _paragraphs;
+    [ObservableProperty] private int _selectedParagraphIndex = -1;
+    [ObservableProperty] private bool _isAudioVisualizerVisible;
+    [ObservableProperty] private bool _isHistoryVisible;
+    [ObservableProperty] private string _currentTag;
+    [ObservableProperty] private bool _adjustAll;
+    [ObservableProperty] private bool _adjustSelectedLines;
+    [ObservableProperty] private bool _adjustSelectedLinesAndForward;
+    [ObservableProperty] private string _selectionInfo;
+
+    public Window? Window { get; set; }
+    public bool OkPressed { get; private set; }
+    public Subtitle UpdatedSubtitle { get; set; }
+    public VideoPlayerControl VideoPlayerControl { get; set; }
+    public ComboBox ComboBoxLeft { get; set; }
+    public ComboBox ComboBoxRight { get; set; }
+
+    private readonly IWindowService _windowService;
+
+    private readonly string _tempSubtitleFileName;
+    private readonly SubtitleFormat _assaFormat;
+    private LibMpvDynamicPlayer? _mpvPlayer;
+    private bool _isSubtitleLoaded;
+    private string _oldSubtitleText;
+    private string? _header;
+    private string? _footer;
+    private string? _videoFileName;
+    private DispatcherTimer _positionTimer = new DispatcherTimer();
+    private List<SubtitleLineViewModel> _subtitleLines = new List<SubtitleLineViewModel>();
+    private List<SubtitleLineViewModel> _selectedSubtitleLines = new List<SubtitleLineViewModel>();
+
+    public AssaApplyCustomOverrideTagsViewModel(IWindowService windowService)
+    {
+        _windowService = windowService;
+
+        OverrideTags = new ObservableCollection<OverrideTagDisplay>(OverrideTagDisplay.List());
+        _videoFileName = string.Empty;
+        VideoPlayerControl = new VideoPlayerControl(new EmptyVideoPlayer());
+        ComboBoxLeft = new ComboBox();
+        ComboBoxRight = new ComboBox();
+        Paragraphs = new ObservableCollection<SubtitleDisplayItem>();
+        CurrentTag = string.Empty;
+        _assaFormat = new AdvancedSubStationAlpha();
+        _oldSubtitleText = string.Empty;
+        SelectionInfo = string.Empty;
+        AdjustAll = true;
+        UpdatedSubtitle = new Subtitle();
+
+        // Toggle play/pause on surface click
+        VideoPlayerControl.SurfacePointerPressed += (_, __) => VideoPlayerControl.TogglePlayPause();
+
+        SelectedOverrideTag = OverrideTags.FirstOrDefault(p => p.Tag == Se.Settings.Assa.LastOverrideTag) ?? OverrideTags[0];
+
+        _tempSubtitleFileName = System.IO.Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString() + ".ass");
+
+        IsHistoryVisible = Se.Settings.Assa.LastOverrideTags.Count > 0;
+    }
+
+    public void Initialize(
+        Subtitle subtitle,
+        List<SubtitleLineViewModel> paragraphs,
+        List<SubtitleLineViewModel> selectedParagraphs,
+        string? videoFileName)
+    {
+        Paragraphs = new ObservableCollection<SubtitleDisplayItem>(paragraphs.Select(p => new SubtitleDisplayItem(p)));
+        _header = subtitle.Header;
+        _footer = subtitle.Footer;
+        _videoFileName = videoFileName;
+        _subtitleLines = paragraphs;
+        _selectedSubtitleLines = selectedParagraphs;
+
+        if (selectedParagraphs.Count > 1)
+        {
+            AdjustSelectedLines = true;
+        }
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (!string.IsNullOrEmpty(videoFileName))
+            {
+                _ = VideoPlayerControl.Open(videoFileName);
+            }
+
+            if (_subtitleLines.Count > 10)
+            {
+                SelectionInfo = string.Format(Se.Language.General.SelectedlinesX, _selectedSubtitleLines.Count);
+            }
+            else 
+            {
+                SelectionInfo = string.Format(Se.Language.General.SelectedlinesX, string.Join(", ", _selectedSubtitleLines.Select(s => s.Number)));
+            }
+
+            StartTitleTimer();
+        });
+    }
+
+    private void StartTitleTimer()
+    {
+        _positionTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+        _positionTimer.Tick += (s, e) =>
+        {
+            if (_mpvPlayer == null)
+            {
+                return;
+            }
+
+            var subtitle = BuildTaggedSubtitle();
+            var text = _assaFormat.ToText(subtitle, string.Empty);
+            if (_oldSubtitleText == text)
+            {
+                return;
+            }
+
+            File.WriteAllText(_tempSubtitleFileName, text);
+            if (!_isSubtitleLoaded)
+            {
+                _isSubtitleLoaded = true;
+                _mpvPlayer.SubAdd(_tempSubtitleFileName);
+            }
+            else
+            {
+                _mpvPlayer.SubReload();
+            }
+
+            _oldSubtitleText = text;
+        };
+
+        _positionTimer.Start();
+    }
+
+    private Subtitle BuildTaggedSubtitle()
+    {
+        return BuildTaggedSubtitle(_header, _footer, _subtitleLines, _selectedSubtitleLines, CurrentTag,
+            AdjustAll, AdjustSelectedLines, AdjustSelectedLinesAndForward, _assaFormat);
+    }
+
+    /// <summary>
+    /// Applies the override tag to the chosen lines and returns the result as a subtitle that
+    /// keeps the file's header, so both the mpv preview and the OK result render/save with the
+    /// real styles.
+    /// </summary>
+    internal static Subtitle BuildTaggedSubtitle(
+        string? header,
+        string? footer,
+        List<SubtitleLineViewModel> lines,
+        List<SubtitleLineViewModel> selectedLines,
+        string tag,
+        bool adjustAll,
+        bool adjustSelectedLines,
+        bool adjustSelectedLinesAndForward,
+        SubtitleFormat format)
+    {
+        var subtitle = new Subtitle { Header = header, Footer = footer };
+
+        // No selection means "selected lines"/"and forward" have nothing to apply to.
+        var firstSelectedIndex = selectedLines.Count > 0
+            ? lines.FindIndex(l => l.Id == selectedLines[0].Id)
+            : -1;
+        if (firstSelectedIndex < 0)
+        {
+            firstSelectedIndex = int.MaxValue;
+        }
+
+        var selectedIds = new HashSet<Guid>(selectedLines.Select(s => s.Id));
+        for (var idx = 0; idx < lines.Count; idx++)
+        {
+            var p = new SubtitleLineViewModel(lines[idx]);
+
+            if (adjustAll ||
+                adjustSelectedLines && selectedIds.Contains(p.Id) ||
+                adjustSelectedLinesAndForward && idx >= firstSelectedIndex)
+            {
+                p.Text = tag + p.Text;
+            }
+
+            subtitle.Paragraphs.Add(p.ToParagraph(format));
+        }
+
+        return subtitle;
+    }
+
+    [RelayCommand]
+    private async Task ShowHistory()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var result = await _windowService.ShowDialogAsync<AssaTagHistoryWindow, AssaTagHistoryViewModel>(Window, (vm) => 
+        { 
+        });
+
+        if (result.OkPressed && !string.IsNullOrEmpty(result.SelectedOverrideTag))
+        {
+            CurrentTag = result.SelectedOverrideTag;
+        }
+    }
+
+    [RelayCommand]
+    private void Append()
+    {
+        var tag = SelectedOverrideTag;
+        if (tag == null)
+        {
+            return;
+        }
+
+        var newTag = CurrentTag + tag.Tag;
+        newTag = newTag.Replace("}{", string.Empty);
+        CurrentTag = newTag;
+    }
+
+    [RelayCommand]
+    private void Use()
+    {
+        var tag = SelectedOverrideTag;
+        if (tag == null)
+        {
+            return;
+        }
+
+        CurrentTag = tag.Tag;
+    }
+
+    [RelayCommand]
+    private void Clear()
+    {
+        CurrentTag = string.Empty;
+    }
+
+    [RelayCommand]
+    private void Ok()
+    {
+        // Build the result here rather than reusing the preview timer's snapshot: the timer only
+        // runs when a video is loaded (OK used to be a silent no-op without one), and its last
+        // tick could be up to 500 ms behind the current tag.
+        UpdatedSubtitle = BuildTaggedSubtitle();
+        OkPressed = true;
+        Window?.Close();
+    }
+
+    [RelayCommand]
+    private void Cancel()
+    {
+        Window?.Close();
+    }
+
+    [RelayCommand]
+    private async Task PlayAndBack()
+    {
+        if (SelectedParagraphIndex <= 0)
+        {
+            await PlayAndBack(VideoPlayerControl, 3000);
+            return;
+        }
+
+        var selected = Paragraphs[SelectedParagraphIndex];
+        VideoPlayerControl.Position = selected.Subtitle.StartTime.TotalSeconds;
+        await PlayAndBack(VideoPlayerControl, (int)selected.Subtitle.Duration.TotalMilliseconds);
+    }
+
+    private async Task PlayAndBack(VideoPlayerControl videoPlayer, int milliseconds)
+    {
+        var originalPosition = videoPlayer.Position;
+        videoPlayer.VideoPlayer.Play();
+        await Task.Delay(milliseconds);
+        videoPlayer.VideoPlayer.Pause();
+        videoPlayer.Position = originalPosition;
+    }
+
+    internal void OnClosing()
+    {
+        _positionTimer.Stop();
+        VideoPlayerControl.VideoPlayer.CloseFile();
+        try
+        {
+            if (File.Exists(_tempSubtitleFileName))
+            {
+                File.Delete(_tempSubtitleFileName);
+            }
+        }
+        catch
+        {
+            // ignore
+        }
+
+        var tag = SelectedOverrideTag?.Tag ?? string.Empty;
+        if (!string.IsNullOrEmpty(tag))
+        {
+            Se.Settings.Assa.LastOverrideTag = tag;
+
+            Se.Settings.Assa.LastOverrideTags.Remove(tag);
+            Se.Settings.Assa.LastOverrideTags.Insert(0, tag);
+        }
+    }
+
+    internal async void OnLoaded()
+    {
+        if (string.IsNullOrEmpty(_videoFileName))
+        {
+            return;
+        }
+
+        // Wait a bit for video players to finish opening the file (or until they report a duration)
+        await VideoPlayerControl.WaitForPlayersReadyAsync();
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            _mpvPlayer = VideoPlayerControl.VideoPlayer as LibMpvDynamicPlayer;
+
+            if (Paragraphs.Count == 0)
+            {
+                return;
+            }
+
+            if (_selectedSubtitleLines.Count == 0)
+            {
+                SelectedParagraphIndex = 0;
+                return;
+            }
+
+            var firstSelected = _selectedSubtitleLines[0];
+            SelectedParagraphIndex = Paragraphs.IndexOf(Paragraphs.First(p => p.Subtitle.Id == firstSelected.Id));
+            VideoPlayerControl.Position = firstSelected.StartTime.TotalSeconds;
+        });
+    }
+
+    internal void OnKeyDownHandler(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            e.Handled = true;
+            Window?.Close();
+        }
+        else if (UiUtil.IsHelp(e))
+        {
+            e.Handled = true;
+            UiUtil.ShowHelp("features/assa-override-tags");
+        }
+    }
+
+    internal void ComboBoxParagraphsChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (SelectedParagraphIndex <= 0)
+        {
+            return;
+        }
+
+        var selected = Paragraphs[SelectedParagraphIndex];
+        VideoPlayerControl.Position = selected.Subtitle.StartTime.TotalSeconds;
+    }
+}

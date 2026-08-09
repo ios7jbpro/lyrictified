@@ -1,0 +1,114 @@
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Data;
+using Avalonia.Layout;
+using Nikse.SubtitleEdit.Controls;
+using Nikse.SubtitleEdit.Logic;
+using Nikse.SubtitleEdit.Logic.Config;
+
+namespace Nikse.SubtitleEdit.Features.Shared.BinaryEdit.BinaryAdjustAllTimes;
+
+public class BinaryAdjustAllTimesWindow : Window
+{
+    public BinaryAdjustAllTimesWindow(BinaryAdjustAllTimesViewModel vm)
+    {
+        UiUtil.InitializeWindow(this, GetType().Name);
+        Title = Se.Language.Sync.AdjustAllTimes;
+        SizeToContent = SizeToContent.WidthAndHeight;
+        CanResize = false;
+        vm.Window = this;
+        DataContext = vm;
+
+        var timeCodeUpDown = new TimeCodeUpDown
+        {
+            DataContext = vm,
+            Margin = new Thickness(0, 0, 0, 10),
+            [!TimeCodeUpDown.ValueProperty] = new Binding(nameof(vm.Adjustment))
+            {
+                Mode = BindingMode.TwoWay,
+            }
+        };
+
+        var panelRadioButtons = new StackPanel
+        {
+            Orientation = Orientation.Vertical,
+            Spacing = 0,
+            Children =
+            {
+                new RadioButton
+                {
+                    Content = Se.Language.Sync.AdjustAll,
+                    [!RadioButton.IsCheckedProperty] = new Binding(nameof(vm.AdjustAll))
+                },
+                new RadioButton
+                {
+                    Content = Se.Language.Sync.AdjustSelectedLines,
+                    [!RadioButton.IsCheckedProperty] = new Binding(nameof(vm.AdjustSelectedLines)),
+                    [!RadioButton.IsEnabledProperty] = new Binding(nameof(vm.IsSelectionAvailable)),
+                },
+                new RadioButton
+                {
+                    Content = Se.Language.Sync.AdjustSelectedLinesAndForward,
+                    [!RadioButton.IsCheckedProperty] = new Binding(nameof(vm.AdjustSelectedLinesAndForward)),
+                    [!RadioButton.IsEnabledProperty] = new Binding(nameof(vm.IsSelectionAvailable)),
+                }
+            },
+        };
+
+        var totalAdjustmentLabel = new TextBlock
+        {
+            [!TextBlock.TextProperty] = new Binding(nameof(vm.TotalAdjustmentInfo)),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        var buttonShowEarlier = UiUtil.MakeButton(Se.Language.Sync.ShowEarlier, vm.ShowEarlierCommand)
+            .WithMinWidth(110);
+        buttonShowEarlier.Margin = new Thickness(0, 0, 0, 10);
+
+        var buttonShowLater = UiUtil.MakeButton(Se.Language.Sync.ShowLater, vm.ShowLaterCommand)
+            .WithMinWidth(110);
+
+        var panelShowButtons = new StackPanel
+        {
+            Orientation = Orientation.Vertical,
+            VerticalAlignment = VerticalAlignment.Top,
+            Children =
+            {
+                buttonShowEarlier,
+                buttonShowLater,
+            },
+        };
+
+        var buttonOk = UiUtil.MakeButtonDone(vm.OkCommand);
+
+        var grid = new Grid
+        {
+            RowDefinitions =
+            {
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+            },
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) },
+            },
+            Margin = UiUtil.MakeWindowMargin(),
+            ColumnSpacing = 10,
+            Width = double.NaN,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+
+        grid.Add(timeCodeUpDown, 0, 0);
+        grid.Add(panelRadioButtons, 1, 0);
+        grid.Add(totalAdjustmentLabel, 2, 0);
+        grid.Add(panelShowButtons, 0, 1, 2, 1);
+        grid.Add(buttonOk, 2, 1);
+
+        Content = grid;
+
+        Activated += delegate { timeCodeUpDown.Focus(); }; // initial focus on an input, not an action button - a focused button clicks on bare Space
+        KeyDown += (_, e) => vm.OnKeyDown(e);
+    }
+}

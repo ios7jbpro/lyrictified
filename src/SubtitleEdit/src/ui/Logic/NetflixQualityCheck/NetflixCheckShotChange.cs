@@ -1,0 +1,136 @@
+﻿using Nikse.SubtitleEdit.Core.Common;
+using Nikse.SubtitleEdit.Core.SubtitleFormats;
+using Nikse.SubtitleEdit.Logic.Config;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Nikse.SubtitleEdit.Logic.NetflixQualityCheck;
+
+/// <summary>
+/// Check the newly-updated timing to Shot Changes rules.
+/// https://partnerhelp.netflixstudios.com/hc/en-us/articles/360051554394-Timed-Text-Style-Guide-Subtitle-Timing-Guidelines
+/// </summary>
+public class NetflixCheckShotChange : INetflixQualityChecker
+{
+    public static string ShotChangeDirectory = string.Empty;
+
+    public string Name { get; set; }
+
+    public NetflixCheckShotChange(string name)
+    {
+        Name = name;
+    }
+
+    public void Check(Subtitle subtitle, NetflixQualityController controller)
+    {
+        if (!controller.VideoExists)
+        {
+            return;
+        }
+
+        var shotChanges = ShotChangeHelper.FromDisk(controller.VideoFileName, ShotChangeDirectory);
+        if (shotChanges == null || shotChanges.Count == 0)
+        {
+            return;
+        }
+
+        if (Configuration.Settings.General.CurrentVideoIsSmpte)
+        {
+            shotChanges = shotChanges.Select(sc => Math.Round(sc /= 1.001, 3, MidpointRounding.AwayFromZero)).ToList();
+        }
+
+        int halfSecGapInFrames = (int)Math.Round(controller.FrameRate / 2, MidpointRounding.AwayFromZero);
+        double twoFramesGap = 1000.0 / controller.FrameRate * 2.0;
+
+        foreach (Paragraph p in subtitle.Paragraphs)
+        {
+            // These frame values are invariant across all shot changes - compute once per paragraph
+            // instead of recomputing inside every Where/FirstOrDefault predicate.
+            var startFrame = SubtitleFormat.MillisecondsToFrames(p.StartTime.TotalMilliseconds);
+            var endFrame = SubtitleFormat.MillisecondsToFrames(p.EndTime.TotalMilliseconds);
+
+            List<double> previousStartShotChanges = shotChanges.Where(x => SubtitleFormat.MillisecondsToFrames(x * 1000) < startFrame).ToList();
+            List<double> nextStartShotChanges = shotChanges.Where(x => SubtitleFormat.MillisecondsToFrames(x * 1000) > startFrame).ToList();
+            List<double> previousEndShotChanges = shotChanges.Where(x => SubtitleFormat.MillisecondsToFrames(x * 1000) < endFrame).ToList();
+            List<double> nextEndShotChanges = shotChanges.Where(x => SubtitleFormat.MillisecondsToFrames(x * 1000) > endFrame).ToList();
+            var onShotChange = shotChanges.FirstOrDefault(x => SubtitleFormat.MillisecondsToFrames(x * 1000) == endFrame);
+
+            if (previousStartShotChanges.Count > 0)
+            {
+                double nearestStartPrevShotChange = previousStartShotChanges.Aggregate((x, y) => Math.Abs(x - p.StartTime.TotalSeconds) < Math.Abs(y - p.StartTime.TotalSeconds) ? x : y);
+                var gapToShotChange = SubtitleFormat.MillisecondsToFrames(p.StartTime.TotalMilliseconds - nearestStartPrevShotChange * 1000);
+                if (gapToShotChange != 0 && gapToShotChange < halfSecGapInFrames)
+                {
+                    var fixedParagraph = new Paragraph(p, false);
+                    fixedParagraph.StartTime.TotalMilliseconds = nearestStartPrevShotChange * 1000;
+                    var comment = string.Format(Se.Language.Tools.NetflixCheckAndFix.ShotChangeInCueWithinXFramesAfterSnap, halfSecGapInFrames);
+                    controller.AddRecord(p, fixedParagraph, comment, string.Empty, true);
+                }
+            }
+
+            if (nextStartShotChanges.Count > 0)
+            {
+                double nearestStartNextShotChange = nextStartShotChanges.Aggregate((x, y) => Math.Abs(x - p.StartTime.TotalSeconds) < Math.Abs(y - p.StartTime.TotalSeconds) ? x : y);
+                var gapToShotChange = SubtitleFormat.MillisecondsToFrames(nearestStartNextShotChange * 1000 - p.StartTime.TotalMilliseconds);
+                var threshold = (int)Math.Round(halfSecGapInFrames * 0.75, MidpointRounding.AwayFromZero);
+                if (gapToShotChange != 0 && gapToShotChange < halfSecGapInFrames)
+                {
+                    var fixedParagraph = new Paragraph(p, false);
+                    string comment;
+                    var canBeFixed = false;
+                    if (gapToShotChange < threshold)
+                    {
+                        fixedParagraph.StartTime.TotalMilliseconds = nearestStartNextShotChange * 1000;
+                        comment = string.Format(Se.Language.Tools.NetflixCheckAndFix.ShotChangeInCue1ToXFramesBeforeSnap, threshold - 1);
+                        canBeFixed = true;
+                    }
+                    else
+                    {
+                        fixedParagraph.StartTime.TotalMilliseconds = nearestStartNextShotChange * 1000 - (1000.0 / controller.FrameRate * halfSecGapInFrames);
+                        comment = string.Format(Se.Language.Tools.NetflixCheckAndFix.ShotChangeInCueXToYFramesBeforePull, threshold, halfSecGapInFrames - 1, halfSecGapInFrames);
+                    }
+
+                    controller.AddRecord(p, fixedParagraph, comment, string.Empty, canBeFixed);
+                }
+            }
+
+            if (previousEndShotChanges.Count > 0)
+            {
+                double nearestEndPrevShotChange = previousEndShotChanges.Aggregate((x, y) => Math.Abs(x - p.EndTime.TotalSeconds) < Math.Abs(y - p.EndTime.TotalSeconds) ? x : y);
+                if (SubtitleFormat.MillisecondsToFrames(p.EndTime.TotalMilliseconds - nearestEndPrevShotChange * 1000) < halfSecGapInFrames)
+                {
+                    var fixedParagraph = new Paragraph(p, false);
+                    fixedParagraph.EndTime.TotalMilliseconds = nearestEndPrevShotChange * 1000 - twoFramesGap;
+                    var comment = string.Format(Se.Language.Tools.NetflixCheckAndFix.ShotChangeOutCueWithinXFramesAfterChange, halfSecGapInFrames);
+                    controller.AddRecord(p, fixedParagraph, comment, string.Empty, true);
+                }
+            }
+
+            if (nextEndShotChanges.Count > 0)
+            {
+                double nearestEndNextShotChange = nextEndShotChanges.Aggregate((x, y) => Math.Abs(x - p.EndTime.TotalSeconds) < Math.Abs(y - p.EndTime.TotalSeconds) ? x : y);
+                // "If an out-time is within half a second of the last frame before the shot change,
+                // extend the out-time to the shot change, respecting the two-frame gap from the shot
+                // change." An out-cue already sitting on the two-frame gap is what we would move it
+                // to, so it is not an issue.
+                var framesToShotChange = SubtitleFormat.MillisecondsToFrames(nearestEndNextShotChange * 1000 - p.EndTime.TotalMilliseconds);
+                if (framesToShotChange < halfSecGapInFrames && framesToShotChange != 2)
+                {
+                    var fixedParagraph = new Paragraph(p, false);
+                    fixedParagraph.EndTime.TotalMilliseconds = nearestEndNextShotChange * 1000 - twoFramesGap;
+                    var comment = string.Format(Se.Language.Tools.NetflixCheckAndFix.ShotChangeOutCueWithinXFramesOfChange, halfSecGapInFrames);
+                    controller.AddRecord(p, fixedParagraph, comment, string.Empty, true);
+                }
+            }
+
+            if (onShotChange > 0)
+            {
+                var fixedParagraph = new Paragraph(p, false);
+                fixedParagraph.EndTime.TotalMilliseconds = onShotChange * 1000 - twoFramesGap;
+                var comment = Se.Language.Tools.NetflixCheckAndFix.ShotChangeOutCueOnShotChange;
+                controller.AddRecord(p, fixedParagraph, comment, string.Empty, true);
+            }
+        }
+    }
+}

@@ -1,0 +1,21 @@
+﻿using Avalonia.Input;
+using CommunityToolkit.Mvvm.Input;
+using System.Collections.Generic;
+
+namespace Nikse.SubtitleEdit.Logic;
+
+public interface IShortcutManager
+{
+    void OnKeyPressed(object? sender, KeyEventArgs e);
+    void OnKeyReleased(object? sender, KeyEventArgs e);
+    void ClearKeys();
+    void RegisterShortcut(ShortCut shortcut);
+    bool HasSingleKeyShortcut(string keyName);
+    IRelayCommand? CheckShortcuts(KeyEventArgs keyEventArgs, string activeControl);
+    void ClearShortcuts();
+    HashSet<Key> GetActiveKeys();
+    int ActiveKeyCount { get; }
+    bool TryGetSingleActiveKey(out Key key);
+    bool IsControlPressed();
+    bool IsShiftPressed();
+}

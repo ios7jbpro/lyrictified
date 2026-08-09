@@ -1,0 +1,24 @@
+# Adjust All Times
+
+Shift all subtitle timings by a fixed amount.
+
+- **Menu:** Synchronization → Adjust all times...
+
+<!-- Screenshot: Adjust all times window -->
+![Adjust All Times](../screenshots/adjust-all-times.png)
+
+## Options
+
+- **Adjustment** — Time amount to shift
+- **Show earlier** / **Show later** — Apply the adjustment as a negative or positive shift
+- **Apply to** — All lines, selected lines only, or selected lines and forward
+
+The window remembers its position and stays open across New/Open, so adjustments can be made while continuing to work on the subtitle.
+
+## Keyboard shortcuts
+
+- Shift/Ctrl/Alt + Left or Right arrow — Show earlier/later
+  - Time codes shown as milliseconds: 10 ms / 100 ms / 500 ms
+  - Time codes shown as frames: 1 frame / 10 frames / 1 second
+
+> **Note:** "Selected lines and forward" applies the shift to the currently selected lines and every line after them.

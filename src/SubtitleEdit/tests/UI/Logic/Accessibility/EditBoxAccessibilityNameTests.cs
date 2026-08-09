@@ -1,0 +1,162 @@
+using System.Linq;
+using Avalonia;
+using Avalonia.Automation;
+using Avalonia.Automation.Peers;
+using Avalonia.Controls;
+using Avalonia.Headless;
+using Avalonia.Headless.XUnit;
+using Avalonia.Themes.Fluent;
+using Avalonia.VisualTree;
+using Nikse.SubtitleEdit.Controls;
+using Nikse.SubtitleEdit.Logic;
+using UITests.Logic.Accessibility;
+
+[assembly: AvaloniaTestApplication(typeof(TestAppBuilder))]
+
+// Avalonia 12 defaults to PerTest isolation, which resets the dispatcher and rebuilds the
+// whole application - including a Compositor on a timer-driven render loop - for every
+// test. That re-initialization races under CI load: DefaultRenderLoop.Add throws
+// "The calling thread cannot access this object" from AvaloniaHeadlessPlatform.Initialize
+// during a random test's cleanup (~2 in 5 runs on GitHub Actions). One shared application
+// per assembly initializes once and closes the race window. The suite is safe to share:
+// tests close their windows and restore any Application-level state they touch.
+[assembly: AvaloniaTestIsolation(AvaloniaTestIsolationLevel.PerAssembly)]
+
+namespace UITests.Logic.Accessibility;
+
+public class TestApp : Application
+{
+    public override void Initialize()
+    {
+        // The custom up/down controls embed a ButtonSpinner + TextBox that need a
+        // theme to resolve their templates when shown in a headless window.
+        Styles.Add(new FluentTheme());
+
+        // Windows built in code use Attached.SetIcon; without the providers Program.cs
+        // registers at startup, constructing such a window throws KeyNotFoundException.
+        RegisterIconProvidersOnce();
+    }
+
+    private static bool _iconProvidersRegistered;
+
+    private static void RegisterIconProvidersOnce()
+    {
+        if (_iconProvidersRegistered)
+        {
+            return;
+        }
+
+        _iconProvidersRegistered = true;
+        Optris.Icons.Avalonia.IconProvider.Current
+            .Register<Optris.Icons.Avalonia.FontAwesome.FontAwesomeIconProvider>()
+            .Register<Optris.Icons.Avalonia.MaterialDesign.MaterialDesignIconProvider>();
+    }
+}
+
+public static class TestAppBuilder
+{
+    public static AppBuilder BuildAvaloniaApp() =>
+        AppBuilder.Configure<TestApp>()
+            // Real Skia text shaping (not the headless drawing stub) so tests exercise the
+            // same glyph metrics and bidi-run geometry as the app; the RTL canary tests
+            // depend on it (HarfBuzz gives directional marks their true zero width).
+            .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
+            .UseSkia()
+            .WithInterFont();
+}
+
+/// <summary>
+/// Verifies the editor's time/duration controls expose an accessible Name to the
+/// platform automation layer (what NVDA / JAWS / Narrator / VoiceOver read aloud).
+/// The custom controls receive keyboard focus on an inner PART_TextBox, so the name
+/// set on the outer control must be forwarded to that text box (issue #11553).
+/// </summary>
+public class EditBoxAccessibilityNameTests : IDisposable
+{
+    // Every window opened by a test is closed again in Dispose: if a test stops early, an
+    // unclosed window would outlive the test and race with the headless session teardown.
+    private readonly List<Window> _windows = new();
+
+    public void Dispose()
+    {
+        foreach (var window in _windows)
+        {
+            window.Close();
+        }
+
+        _windows.Clear();
+    }
+
+    private TextBox GetInnerTextBox(Control control)
+    {
+        // Force the control's template to apply so PART_TextBox exists and the
+        // name-forwarding in OnApplyTemplate runs.
+        var window = new Window { Content = control, Width = 320, Height = 120 };
+        _windows.Add(window);
+        window.Show();
+        control.ApplyTemplate();
+
+        return control.GetVisualDescendants().OfType<TextBox>().Single();
+    }
+
+    private static string? AutomationName(Control control)
+        => ControlAutomationPeer.CreatePeerForElement(control)?.GetName();
+
+    [AvaloniaFact]
+    public void StartTime_NameReachesAutomationPeer()
+    {
+        var startTime = new TimeCodeUpDown();
+        AutomationProperties.SetName(startTime, "Start time");
+
+        var inner = GetInnerTextBox(startTime);
+
+        Assert.Equal("Start time", AutomationProperties.GetName(inner));
+        Assert.Equal("Start time", AutomationName(inner));
+    }
+
+    [AvaloniaFact]
+    public void EndTime_NameReachesAutomationPeer()
+    {
+        var endTime = new TimeCodeUpDown();
+        AutomationProperties.SetName(endTime, "Hide time");
+
+        var inner = GetInnerTextBox(endTime);
+
+        Assert.Equal("Hide time", AutomationName(inner));
+    }
+
+    [AvaloniaFact]
+    public void Duration_NameReachesAutomationPeer()
+    {
+        var duration = new SecondsUpDown();
+        AutomationProperties.SetName(duration, "Duration");
+
+        var inner = GetInnerTextBox(duration);
+
+        Assert.Equal("Duration", AutomationName(inner));
+    }
+
+    [AvaloniaFact]
+    public void PlainTextBox_NameReachesAutomationPeer()
+    {
+        // The non-color-tag editor path is a plain TextBox; the name is set directly.
+        var textBox = new TextBox();
+        AutomationProperties.SetName(textBox, "Text");
+
+        Assert.Equal("Text", AutomationName(textBox));
+    }
+
+    [AvaloniaFact]
+    public void NumericUpDown_ForwardsAccessibleNameToInnerTextBox()
+    {
+        // Built via the real UiUtil factory, which wires up name forwarding to the
+        // inner PART_TextBox (the focused element). Covers the Layer field and every
+        // other numeric field in the app.
+        var nud = UiUtil.MakeNumericUpDownInt(0, 100, 0, double.NaN, new object());
+        AutomationProperties.SetName(nud, "Layer");
+
+        var inner = GetInnerTextBox(nud);
+
+        Assert.Equal("Layer", AutomationName(inner));
+    }
+}

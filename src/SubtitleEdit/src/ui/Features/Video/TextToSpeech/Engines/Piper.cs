@@ -1,0 +1,358 @@
+﻿using Avalonia.Platform;
+using Nikse.SubtitleEdit.Core.Common;
+using Nikse.SubtitleEdit.Features.Video.TextToSpeech.Voices;
+using Nikse.SubtitleEdit.Logic.Config;
+using Nikse.SubtitleEdit.Logic.Download;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace Nikse.SubtitleEdit.Features.Video.TextToSpeech.Engines;
+
+public class Piper : ITtsEngine
+{
+    public string Name => "Piper";
+    public string Description => "free/fast/good";
+    public bool HasLanguageParameter => false;
+    public bool HasApiKey => false;
+    public bool HasRegion => false;
+    public bool HasModel => false;
+    public bool HasKeyFile => false;
+
+    public Task<bool> IsInstalled(string? region)
+    {
+        return Task.FromResult(File.Exists(GetPiperExecutableFileName()));
+    }
+
+    /// <summary>
+    /// Returns the update status of the installed Piper engine relative to the release pinned in
+    /// <c>TtsDownloadService</c>. Reads the key/hash from the <c>.installed.sha256</c> sidecar
+    /// written at install time; returns <see cref="DownloadHashManager.UpdateStatus.Unknown"/> when
+    /// Piper is not installed or the sidecar is missing (installs predating hash tracking).
+    /// </summary>
+    public static DownloadHashManager.UpdateStatus GetEngineUpdateStatus()
+    {
+        if (!File.Exists(GetPiperExecutableFileName()))
+        {
+            return DownloadHashManager.UpdateStatus.Unknown;
+        }
+
+        return DownloadHashManager.GetSidecarStatus(GetSetPiperFolder());
+    }
+
+    private readonly ITtsDownloadService _ttsDownloadService;
+
+    public Piper(ITtsDownloadService ttsDownloadService)
+    {
+        _ttsDownloadService = ttsDownloadService;
+    }
+
+    public override string ToString()
+    {
+        return $"{Name}";
+    }
+
+    public Task<Voice[]> GetVoices(string language)
+    {
+        var piperFolder = GetSetPiperFolder();
+
+        var voiceFileName = Path.Combine(piperFolder, "PiperVoices.json");
+        if (!File.Exists(voiceFileName))
+        {
+            var uri = new Uri("avares://SubtitleEdit/Assets/TextToSpeech/PiperVoices.json");
+            using var stream = AssetLoader.Open(uri);
+            using var fileStream = File.Create(voiceFileName);
+            stream.CopyTo(fileStream);
+        }
+
+        return Task.FromResult(Map(voiceFileName));
+    }
+
+    public bool IsVoiceInstalled(Voice voice)
+    {
+        if (voice.EngineVoice is not PiperVoice piperVoice)
+        {
+            return false;
+        }
+
+        var modelFileName = Path.Combine(GetSetPiperFolder(), piperVoice.ModelShort);
+        if (!File.Exists(modelFileName))
+        {
+            return false;
+        }
+
+        var configFileName = Path.Combine(GetSetPiperFolder(), piperVoice.ConfigShort);
+        if (!File.Exists(configFileName))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    public static string GetPiperExecutableFileName()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return Path.Combine(GetSetPiperFolder(), "piper.exe");
+        }
+
+        var path = Path.Combine(GetSetPiperFolder(), "piper");
+        if (File.Exists(path))
+        {
+            return path;
+        }
+
+        return "piper";
+    }
+
+    public static string GetSetPiperFolder()
+    {
+        if (!Directory.Exists(Se.TextToSpeechFolder))
+        {
+            Directory.CreateDirectory(Se.TextToSpeechFolder);
+        }
+
+        var piperFolder = Path.Combine(Se.TextToSpeechFolder, "Piper");
+        if (!Directory.Exists(piperFolder))
+        {
+            Directory.CreateDirectory(piperFolder);
+        }
+
+        return piperFolder;
+    }
+
+    public Task<TtsLanguage[]> GetLanguages(Voice voice, string? model)
+    {
+        return Task.FromResult(Array.Empty<TtsLanguage>());
+    }
+
+    private static Voice[] Map(string voiceFileName)
+    {
+        if (string.IsNullOrWhiteSpace(voiceFileName))
+        {
+            return [];
+        }
+
+        var result = new List<Voice>();
+        var json = File.ReadAllText(voiceFileName);
+        var parser = new SeJsonParser();
+        var arr = parser.GetRootElements(json);
+
+        foreach (var element in arr)
+        {
+            var elements = parser.GetRootElements(element.Json);
+            var name = elements.FirstOrDefault(p => p.Name == "name");
+            var quality = elements.FirstOrDefault(p => p.Name == "quality");
+            var language = elements.FirstOrDefault(p => p.Name == "language");
+            var files = elements.FirstOrDefault(p => p.Name == "files");
+
+            if (name != null && quality != null && language != null && files != null)
+            {
+                var languageDisplay = parser.GetFirstObject(language.Json, "name_english");
+                var languageFamily = parser.GetFirstObject(language.Json, "family");
+                var languageCode = parser.GetFirstObject(language.Json, "code");
+
+                var filesElements = parser.GetRootElements(files.Json);
+                var model = filesElements.FirstOrDefault(p => p.Name.EndsWith(".onnx"));
+                var config = filesElements.FirstOrDefault(p => p.Name.EndsWith("onnx.json"));
+                if (model != null && config != null)
+                {
+                    var modelUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/" + model.Name;
+                    var configUrl = "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/" + config.Name;
+
+                    var piperVoice = new PiperVoice(name.Json, languageDisplay, quality.Json, modelUrl, configUrl);
+                    result.Add(new Voice(piperVoice));
+                }
+            }
+        }
+
+        // Must run after the official voices are parsed - the "already known" filter
+        // compares against them, so downloaded official models are not re-listed as custom.
+        AddCustomVoices(result);
+
+        return result.ToArray();
+    }
+
+    /// <summary>
+    /// Lists user-added voice models (a <c>.onnx</c> + <c>.onnx.json</c> pair dropped in the
+    /// Piper folder, e.g. via "Import voice") that are not part of the official voice list.
+    /// Model/Config hold bare file names - Speak runs piper with the Piper folder as working
+    /// directory, so bare names resolve the same way as downloaded voices.
+    /// </summary>
+    private static void AddCustomVoices(List<Voice> result)
+    {
+        var knownModelNames = result
+            .Select(v => v.EngineVoice)
+            .OfType<PiperVoice>()
+            .Select(v => v.ModelShort)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var modelFileName in Directory.GetFiles(GetSetPiperFolder(), "*.onnx"))
+        {
+            var modelNameOnly = Path.GetFileName(modelFileName);
+            if (knownModelNames.Contains(modelNameOnly))
+            {
+                continue;
+            }
+
+            var configFileName = modelFileName + ".json";
+            if (!File.Exists(configFileName))
+            {
+                continue;
+            }
+
+            var voiceName = Path.GetFileNameWithoutExtension(modelFileName);
+            var piperVoice = new PiperVoice(voiceName, "Custom", "custom", modelNameOnly, Path.GetFileName(configFileName));
+            result.Add(new Voice(piperVoice));
+        }
+    }
+
+    public async Task<Voice[]> RefreshVoices(string language, CancellationToken cancellationToken)
+    {
+        var ms = new MemoryStream();
+        await  _ttsDownloadService.DownloadPiperVoiceList(ms, null, cancellationToken);
+        // Must match the file GetVoices reads ("PiperVoices.json") - the refresh used to save to
+        // "voices.json", which nothing reads, so newly published upstream voices never appeared.
+        await File.WriteAllBytesAsync(Path.Combine(GetSetPiperFolder(), "PiperVoices.json"), ms.ToArray(), cancellationToken);
+        return await GetVoices(language);
+    }
+
+    public async Task<TtsResult> Speak(
+        string text, 
+        string outputFolder, 
+        Voice voice, 
+        TtsLanguage? language,
+        string? region,
+        string? model,
+        CancellationToken cancellationToken)
+    {
+        if (voice.EngineVoice is not PiperVoice piperVoice)
+        {
+            throw new ArgumentException("Voice is not a PiperVoice");
+        }
+
+        var fileName = Path.Combine(TtsOutputFolder.Resolve(outputFolder, GetSetPiperFolder), Guid.NewGuid() + ".wav");
+        var process = StartPiperProcess(piperVoice, text, fileName);
+        Se.WriteToolsLog($"Piper: {process.StartInfo.FileName} {process.StartInfo.Arguments} (voice={piperVoice}, textLen={text.Length})");
+        var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
+        await process.WaitForExitAsync(cancellationToken);
+        var stderrOutput = await stderrTask;
+
+        if (process.ExitCode != 0)
+        {
+            var msg = $"Piper process exited with code {process.ExitCode} - Parameters: "
+                + $"Voice: {piperVoice}, "
+                + $"Text: {text}, "
+                + $"FileName: {process.StartInfo.FileName}, "
+                + $"Parameters: {process.StartInfo.Arguments}"
+                + (string.IsNullOrWhiteSpace(stderrOutput) ? string.Empty : $", StdErr: {stderrOutput.Trim()}");
+            Se.LogError(msg);
+            Se.WriteToolsLog(msg);
+            return new TtsResult { Text = text, FileName = string.Empty, Error = true };
+        }
+
+        if (!File.Exists(fileName) || new FileInfo(fileName).Length == 0)
+        {
+            var msg = $"Piper exited successfully but produced no audio - Parameters: "
+                + $"Voice: {piperVoice}, "
+                + $"FileName: {process.StartInfo.FileName}, "
+                + $"Parameters: {process.StartInfo.Arguments}"
+                + (string.IsNullOrWhiteSpace(stderrOutput) ? string.Empty : $", StdErr: {stderrOutput.Trim()}");
+            Se.LogError(msg);
+            Se.WriteToolsLog(msg);
+            return new TtsResult { Text = text, FileName = string.Empty, Error = true };
+        }
+
+        return new TtsResult(fileName, text);
+    }
+
+    private Process StartPiperProcess(PiperVoice voice, string inputText, string outputFileName)
+    {
+        var processPiper = new Process
+        {
+            StartInfo =
+            {
+                WorkingDirectory = GetSetPiperFolder(),
+                FileName = GetPiperExecutableFileName(),
+                // -f is quoted: the output file now lives in the caller's run folder (an absolute
+                // path that can contain spaces), not a bare GUID name in the piper folder.
+                Arguments = $"-m \"{voice.ModelShort}\" -c \"{voice.ConfigShort}\" -f \"{outputFileName}\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardInput = true,
+                RedirectStandardError = true,
+            }
+        };
+
+        if (OperatingSystem.IsWindows() || OperatingSystem.IsLinux() || OperatingSystem.IsMacOS() || OperatingSystem.IsIOS())
+        {
+            _ = processPiper.Start();
+        }
+        else
+        {
+            throw new PlatformNotSupportedException("Process.Start() is not supported on this platform.");
+        }
+
+        var streamWriter = new StreamWriter(processPiper.StandardInput.BaseStream, new UTF8Encoding(false));
+        streamWriter.Write(inputText);
+        streamWriter.Flush();
+        streamWriter.Close();
+
+        return processPiper;
+    }
+
+    public Task<string[]> GetRegions()
+    {
+        return Task.FromResult(Array.Empty<string>());
+    }
+
+    public Task<string[]> GetModels()
+    {
+        return Task.FromResult(Array.Empty<string>());
+    }
+
+    /// <summary>
+    /// Imports a custom Piper voice: a <c>.onnx</c> model with its <c>.onnx.json</c> config as
+    /// a sibling file. Both are copied into the Piper folder and the voice shows up in the
+    /// voice list (via <see cref="AddCustomVoices"/>) as "Custom - name".
+    /// </summary>
+    public bool ImportVoice(string fileName)
+    {
+        if (!fileName.EndsWith(".onnx", StringComparison.OrdinalIgnoreCase) || !File.Exists(fileName))
+        {
+            return false;
+        }
+
+        var configFileName = fileName + ".json";
+        if (!File.Exists(configFileName))
+        {
+            return false;
+        }
+
+        try
+        {
+            var piperFolder = GetSetPiperFolder();
+            var targetModel = Path.Combine(piperFolder, Path.GetFileName(fileName));
+            var targetConfig = Path.Combine(piperFolder, Path.GetFileName(configFileName));
+
+            if (!string.Equals(Path.GetFullPath(fileName), Path.GetFullPath(targetModel), StringComparison.OrdinalIgnoreCase))
+            {
+                File.Copy(fileName, targetModel, overwrite: true);
+                File.Copy(configFileName, targetConfig, overwrite: true);
+            }
+
+            return true;
+        }
+        catch (Exception exception)
+        {
+            Se.LogError(exception, "Failed to import Piper voice: " + fileName);
+            return false;
+        }
+    }
+}

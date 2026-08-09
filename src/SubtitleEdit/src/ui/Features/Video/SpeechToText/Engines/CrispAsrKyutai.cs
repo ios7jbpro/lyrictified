@@ -1,0 +1,182 @@
+using Nikse.SubtitleEdit.UiLogic.AudioToText;
+using Nikse.SubtitleEdit.Logic.Config;
+using System;
+using System.Collections.Generic;
+using System.IO;
+
+namespace Nikse.SubtitleEdit.Features.Video.SpeechToText.Engines;
+
+public class CrispAsrKyutai : CrispAsrEngineBase
+{
+    public static string StaticName => "Crisp ASR Kyutai";
+    public override string Name => StaticName;
+    public override string Choice => WhisperChoice.CrispAsrKyutai;
+    public override string Url => "https://github.com/CrispStrobe/CrispASR";
+    public override string BackendName => "kyutai-stt";
+    public override string DefaultLanguage => "en";
+    public override bool IncludeLanguage => true;
+
+    public override List<WhisperLanguage> Languages =>
+        new()
+        {
+            new WhisperLanguage("en", "english"),
+            new WhisperLanguage("fr", "french"),
+        };
+
+    public override List<WhisperModel> Models =>
+       new()
+       {
+            new WhisperModel
+            {
+                Name = "kyutai-stt-1b-q4_k.gguf",
+                Size = "0.67 GB",
+                Urls =
+                [
+                    "https://huggingface.co/cstr/kyutai-stt-1b-GGUF/resolve/main/kyutai-stt-1b-q4_k.gguf"
+                ],
+            },
+            new WhisperModel
+            {
+                Name = "kyutai-stt-1b-q8_0.gguf",
+                Size = "1.17 GB",
+                Urls =
+                [
+                    "https://huggingface.co/cstr/kyutai-stt-1b-GGUF/resolve/main/kyutai-stt-1b-q8_0.gguf"
+                ],
+            },
+            new WhisperModel
+            {
+                Name = "kyutai-stt-1b.gguf",
+                Size = "2.12 GB",
+                Urls =
+                [
+                    "https://huggingface.co/cstr/kyutai-stt-1b-GGUF/resolve/main/kyutai-stt-1b.gguf"
+                ],
+            },
+
+            // 48-layer 2.6b variant with a 3.5 s lookahead, so it trades latency for
+            // accuracy - fine for file transcription. File names carry no "-en" suffix
+            // even though the repo does.
+            //
+            // English only. The Languages list above is engine-wide and is passed through
+            // as a command-line flag, so "fr" applies to the 1b model only - pair the
+            // 2.6b model with "en".
+            new WhisperModel
+            {
+                Name = "kyutai-stt-2.6b-q4_k.gguf",
+                Size = "1.47 GB",
+                Urls =
+                [
+                    "https://huggingface.co/cstr/kyutai-stt-2.6b-en-GGUF/resolve/main/kyutai-stt-2.6b-q4_k.gguf"
+                ],
+            },
+            new WhisperModel
+            {
+                Name = "kyutai-stt-2.6b-q8_0.gguf",
+                Size = "2.70 GB",
+                Urls =
+                [
+                    "https://huggingface.co/cstr/kyutai-stt-2.6b-en-GGUF/resolve/main/kyutai-stt-2.6b-q8_0.gguf"
+                ],
+            },
+            new WhisperModel
+            {
+                Name = "kyutai-stt-2.6b-f16.gguf",
+                Size = "5.01 GB",
+                Urls =
+                [
+                    "https://huggingface.co/cstr/kyutai-stt-2.6b-en-GGUF/resolve/main/kyutai-stt-2.6b-f16.gguf"
+                ],
+            },
+       };
+
+    public override string Extension => string.Empty;
+    public override string UnpackSkipFolder => string.Empty;
+
+    public override bool IsEngineInstalled()
+    {
+        var executableFile = GetExecutable();
+        return File.Exists(executableFile);
+    }
+
+    public override string ToString()
+    {
+        return CrispAsrEngine.GetBackendDisplayName(this);
+    }
+
+    public override string GetAndCreateWhisperFolder()
+    {
+        var folder = Se.CrispAsrFolder;
+        if (!Directory.Exists(folder))
+        {
+            Directory.CreateDirectory(folder);
+        }
+
+        return folder;
+    }
+
+    public override string GetAndCreateWhisperModelFolder(WhisperModel? whisperModel)
+    {
+        var folder = GetAndCreateWhisperFolder();
+        var modelsFolder = Path.Combine(folder, "models");
+        if (!Directory.Exists(modelsFolder))
+        {
+            Directory.CreateDirectory(modelsFolder);
+        }
+
+        return modelsFolder;
+    }
+
+    public override string GetExecutable()
+    {
+        string fullPath = Path.Combine(GetAndCreateWhisperFolder(), GetExecutableFileName());
+        return fullPath;
+    }
+
+    public override bool IsModelInstalled(WhisperModel model)
+    {
+        var modelFile = GetModelForCmdLine(model.Name);
+        if (!File.Exists(modelFile))
+        {
+            return false;
+        }
+
+        return new FileInfo(modelFile).Length > 10_000_000;
+    }
+
+    public override string GetModelForCmdLine(string modelName)
+    {
+        var modelFileName = Path.Combine(GetAndCreateWhisperModelFolder(null), modelName);
+        return modelFileName;
+    }
+
+
+    public override string GetWhisperModelDownloadFileName(WhisperModel whisperModel, string url)
+    {
+        var folder = GetAndCreateWhisperModelFolder(whisperModel);
+        var fileNameOnly = Path.GetFileName(url);
+        var fileName = Path.Combine(folder, fileNameOnly);
+        return fileName;
+    }
+
+    internal static string GetExecutableFileName()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return "crispasr.exe";
+        }
+
+        return "crispasr";
+    }
+
+    public override bool CanBeDownloaded()
+    {
+        return true;
+    }
+
+    public override string CommandLineParameter
+    {
+        get => Se.Settings.Tools.AudioToText.CommandLineParameterCrispAsrKyutai;
+        set => Se.Settings.Tools.AudioToText.CommandLineParameterCrispAsrKyutai = value;
+    }
+}

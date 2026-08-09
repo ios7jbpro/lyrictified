@@ -1,0 +1,6 @@
+
+🔥 FireRed ASR
+
+Type: Encoder-Decoder ASR
+Focus: 🎯 Chinese (Mandarin + dialects) and multilingual speech recognition
+

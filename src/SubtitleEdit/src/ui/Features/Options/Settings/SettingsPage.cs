@@ -1,0 +1,1336 @@
+using Avalonia;
+using Avalonia.Automation;
+using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.Controls.Templates;
+using Avalonia.Data;
+using Avalonia.Data.Converters;
+using Avalonia.Interactivity;
+using Avalonia.Layout;
+using Avalonia.Media;
+using Avalonia.Platform;
+using Avalonia.Threading;
+using CommunityToolkit.Mvvm.Input;
+using Nikse.SubtitleEdit.Features.Help.CheckForUpdates;
+using Nikse.SubtitleEdit.Features.Shared.PickLanguage;
+using Nikse.SubtitleEdit.Logic;
+using Nikse.SubtitleEdit.Logic.Config;
+using Nikse.SubtitleEdit.Logic.ValueConverters;
+using Optris.Icons.Avalonia;
+using System;
+using System.Collections.Generic;
+using Nikse.SubtitleEdit.UiLogic.Common;
+
+namespace Nikse.SubtitleEdit.Features.Options.Settings;
+
+public class SettingsPage : UserControl
+{
+    private readonly TextBox _searchBox;
+    private readonly StackPanel _contentPanel;
+    private readonly SettingsViewModel _vm;
+
+    public SettingsPage(SettingsViewModel vm)
+    {
+        _vm = vm;
+        _vm.Sections = CreateSections();
+
+        _searchBox = new TextBox
+        {
+            PlaceholderText = Se.Language.Options.Settings.SearchSettingsDotDotDot,
+            Margin = new Thickness(10),
+            MaxWidth = 500,
+            MinWidth = 360,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Center,
+            // The placeholder text is not exposed as the UIA Name, so screen readers announce a
+            // bare "edit" without this (#12087).
+            [AutomationProperties.NameProperty] = Se.Language.Options.Settings.SearchSettingsDotDotDot,
+        };
+
+        _contentPanel = new StackPanel
+        {
+            Orientation = Orientation.Vertical,
+            Spacing = 15,
+            Margin = new Thickness(10)
+        };
+
+        var scrollViewer = new ScrollViewer
+        {
+            Content = _contentPanel,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto
+        };
+        _vm.ScrollView = scrollViewer;
+
+        var grid = new Grid
+        {
+            RowDefinitions = new RowDefinitions("Auto,*,Auto"),
+            ColumnDefinitions = new ColumnDefinitions("Auto,*")
+        };
+        grid.Children.Add(_searchBox);
+        Grid.SetRow(_searchBox, 0);
+        Grid.SetColumn(_searchBox, 1);
+        Grid.SetColumnSpan(_searchBox, 2);
+
+        Content = grid;
+
+        // One menu item per section - built from the sections so title, icon and color always
+        // match the section headers in the scroll view (and the Windows-only sections follow).
+        var menu = new StackPanel
+        {
+            Orientation = Orientation.Vertical,
+            Spacing = 10,
+            Margin = new Thickness(10, 10, 40, 10),
+        };
+        foreach (var section in _vm.Sections)
+        {
+            menu.Children.Add(MakeMenuItem(section, vm.ScrollToSectionCommand));
+        }
+
+        grid.Children.Add(menu);
+        Grid.SetRow(menu, 1);
+        Grid.SetColumn(menu, 0);
+
+        grid.Children.Add(scrollViewer);
+        Grid.SetRow(scrollViewer, 1);
+        Grid.SetColumn(scrollViewer, 1);
+
+        var buttonReset = new SplitButton
+        {
+            Content = Se.Language.General.Reset,
+            Command = vm.ResetAllSettingsCommand,
+            Flyout = new MenuFlyout
+            {
+                Items =
+                {
+                    new Avalonia.Controls.MenuItem
+                    {
+                        Header = Se.Language.General.ImportDotDotDot,
+                        Command = vm.ImportSettingsCommand,
+                    },
+                    new Avalonia.Controls.MenuItem
+                    {
+                        Header = Se.Language.General.ExportDotDotDot,
+                        Command = vm.ExportSettingsCommand,
+                    },
+                }
+            }
+        };
+
+        var buttonApply = UiUtil.MakeButton(Se.Language.General.Apply, vm.ApplyCommand);
+        var buttonOk = UiUtil.MakeButtonOk(vm.CommandOkCommand);
+        var buttonCancel = UiUtil.MakeButtonCancel(vm.CommandCancelCommand);
+        var buttonBar = UiUtil.MakeButtonBar(buttonReset, buttonApply, buttonOk, buttonCancel);
+        grid.Children.Add(buttonBar);
+        Grid.SetRow(buttonBar, 2);
+        Grid.SetColumn(buttonBar, 0);
+        Grid.SetColumnSpan(buttonBar, 2);
+
+        UpdateVisibleSections(string.Empty);
+
+        _searchBox.TextChanged += (_, e) => UpdateVisibleSections(_searchBox.Text ?? string.Empty);
+    }
+
+    public void FocusSearchBox()
+    {
+        _searchBox.Focus();
+    }
+
+    private static Button MakeMenuItem(SettingsSection section, IRelayCommand command)
+    {
+        var label = new Label
+        {
+            Content = section.Title,
+            Padding = new Thickness(6, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        // Icon on a colored rounded square, matching the section header in the scroll view.
+        var image = new ContentControl
+        {
+            FontSize = 13,
+            Foreground = Brushes.White,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        Attached.SetIcon(image, section.IconName);
+        // Keep the glyph white on the colored square in the dark theme too (#12717).
+        image.Classes.Add(UiTheme.IconOnAccentClassName);
+        var glyph = new Border
+        {
+            Width = 22,
+            Height = 22,
+            CornerRadius = new CornerRadius(6),
+            Background = section.Brush,
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = image,
+        };
+
+        var stackPanel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Children = { glyph, label }
+        };
+
+        var link = new Button
+        {
+            Content = stackPanel,
+            FontWeight = FontWeight.DemiBold,
+            Margin = new Thickness(0),
+            Padding = new Thickness(10, 5, 10, 5),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Center,
+            Command = command,
+            CommandParameter = section.Title,
+            // The content is an icon + label panel, so the button gets no computed UIA Name and a
+            // screen reader would announce a nameless button (#12087).
+            [AutomationProperties.NameProperty] = section.Title,
+        };
+
+        return link;
+    }
+
+    private void UpdateVisibleSections(string filter)
+    {
+        _contentPanel.Children.Clear();
+
+        foreach (var section in _vm.Sections)
+        {
+            section.Filter(filter);
+            if (section.IsVisible)
+            {
+                _contentPanel.Children.Add(section.Build());
+            }
+        }
+    }
+
+    private List<SettingsSection> CreateSections()
+    {
+        var sections = new List<SettingsSection>();
+
+        sections.Add(new SettingsSection(Se.Language.General.Rules, IconNames.PoliceBadge, "#e0705a",
+        [
+            new SettingsItem(Se.Language.General.Profiles, () => new StackPanel
+            {
+                DataContext = _vm,
+                Orientation = Orientation.Horizontal,
+                Spacing = 10,
+                Children =
+                {
+                    MakeProfileComboBox(),
+                    UiUtil.MakeButtonBrowse(_vm.EditProfilesCommand, accessibleName: Se.Language.General.Profiles),
+                }
+            }),
+
+            new SettingsItem(Se.Language.Options.Settings.SingleLineMaxLength, () => MakeNumericUpDownInt(nameof(_vm.SingleLineMaxLength), _vm.RuleValueChanged)),
+            new SettingsItem(Se.Language.Options.Settings.OptimalCharsPerSec, () => MakeNumericUpDown(nameof(_vm.OptimalCharsPerSec), _vm.RuleValueChanged)),
+            new SettingsItem(Se.Language.Options.Settings.MaxCharsPerSec, () => MakeNumericUpDown(nameof(_vm.MaxCharsPerSec), _vm.RuleValueChanged)),
+            new SettingsItem(Se.Language.Options.Settings.MaxWordsPerMin, () => MakeNumericUpDown(nameof(_vm.MaxWordsPerMin), _vm.RuleValueChanged)),
+            new SettingsItem(Se.Language.Options.Settings.MinDurationMs, () => MakeNumericUpDownInt(nameof(_vm.MinDurationMs), _vm.RuleValueChanged)),
+            new SettingsItem(Se.Language.Options.Settings.MaxDurationMs, () => MakeNumericUpDownInt(nameof(_vm.MaxDurationMs), _vm.RuleValueChanged)),
+            new SettingsItem(Se.Language.Options.Settings.MinGapMs + " " + Se.Language.Options.Settings.MinGapFrames, _vm, nameof(_vm.MinGapLabel), () => new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 5,
+                Children =
+                {
+                    MakeNumericUpDownInt(nameof(_vm.MinGapMs), _vm.RuleValueChanged)
+                        .WithBindIsVisible(_vm, nameof(_vm.IsMsMode)),
+                    MakeNumericUpDownInt(nameof(_vm.MinGapFrames), _vm.RuleValueChanged)
+                        .WithBindIsVisible(_vm, nameof(_vm.UseFrameMode)),
+                    new TextBlock
+                    {
+                        VerticalAlignment = VerticalAlignment.Center,
+                        Opacity = 0.6,
+                        [!TextBlock.TextProperty] = new Binding(nameof(_vm.MinGapFramesAsMs)) { Source = _vm },
+                    }.WithBindIsVisible(_vm, nameof(_vm.UseFrameMode)),
+                }
+            }),
+            new SettingsItem(Se.Language.Options.Settings.MaxLines, () => MakeNumericUpDownInt(nameof(_vm.MaxLines), _vm.RuleValueChanged)),
+            new SettingsItem(Se.Language.Options.Settings.UnbreakSubtitlesShortThan, () => MakeNumericUpDownInt(nameof(_vm.UnbreakLinesShorterThan), _vm.RuleValueChanged)),
+
+            new SettingsItem(Se.Language.Options.Settings.DialogStyle, () => MakeComboBoxDialogStyle()),
+            new SettingsItem(Se.Language.Options.Settings.ContinuationStyle, () => new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 5,
+                Children =
+                {
+                    MakComboBoxContinuationStyleComboBox(),
+                    UiUtil.MakeButtonBrowse(_vm.ShowEditCustomContinuationStyleCommand, accessibleName: Se.Language.Options.Settings.EditContinuationStyleCustom)
+                        .WithBindIsVisible(_vm, nameof(_vm.IsEditCustomContinuationStyleVisible))
+                }
+            }),
+            new SettingsItem(Se.Language.Options.Settings.CpsLineLengthStyle, () => MakeComboBoxCpsLineLengthStyle()),
+        ]));
+
+        sections.Add(new SettingsSection(Se.Language.General.General, IconNames.Cogs, "#8494a4",
+        [
+            MakeNumericSettingInt(Se.Language.Options.Settings.NewEmptyDefaultMs, nameof(_vm.NewEmptyDefaultMs)),
+            MakeNumericSettingInt(Se.Language.Options.Settings.TimeCodeUpDownStepMs, nameof(_vm.TimeCodeUpDownStepMs), 1, 5000),
+            MakeCheckboxSetting(Se.Language.Options.Settings.PromptBeforeDelete, nameof(_vm.PromptBeforeDelete)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.UseFrameMode, nameof(_vm.UseFrameMode)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.TextBoxLimitNewLines, nameof(_vm.TextBoxLimitNewLines)),
+            MakeCheckboxSetting(Se.Language.General.LockTimeCodes, nameof(_vm.LockTimeCodes)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.RememberPositionAndSize, nameof(_vm.RememberPositionAndSize)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.OpenLastFileOnStart, nameof(_vm.OpenLastFileOnStart)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.AutoConvertToUtf8, nameof(_vm.AutoConvertToUtf8)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ForceCrLfOnSave, nameof(_vm.ForceCrLfOnSave)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.AutoTrimWhiteSpace, nameof(_vm.AutoTrimWhiteSpace)),
+            new SettingsItem(Se.Language.Options.Settings.DefaultEncoding, () => new ComboBox
+            {
+                Width = 200,
+                DataContext = _vm,
+                [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(_vm.Encodings)),
+                [!SelectingItemsControl.SelectedItemProperty] =
+                    new Binding(nameof(_vm.DefaultEncoding)) { Mode = BindingMode.TwoWay },
+                ItemTemplate = new FuncDataTemplate<FormatViewModel>((f, _) =>
+                    new TextBlock { Text = f?.Name }, true)
+            }),
+            new SettingsItem(Se.Language.Options.Settings.SubtitleGridEnterKeyAction, () => new ComboBox
+            {
+                MinWidth = 200,
+                DataContext = _vm,
+                [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(_vm.SubtitleEnterKeyActionTypes)),
+                [!SelectingItemsControl.SelectedItemProperty] = new Binding(nameof(_vm.SelectedSubtitleEnterKeyActionType))
+                {
+                    Mode = BindingMode.TwoWay,
+                }
+            }),
+            new SettingsItem(Se.Language.Options.Settings.SubtitleSingleClickAction, () => new ComboBox
+            {
+                MinWidth = 200,
+                DataContext = _vm,
+                [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(_vm.SubtitleSingleClickActionTypes)),
+                [!SelectingItemsControl.SelectedItemProperty] = new Binding(nameof(_vm.SelectedSubtitleSingleClickActionType))
+                {
+                    Mode = BindingMode.TwoWay,
+                }
+            }),
+            new SettingsItem(Se.Language.Options.Settings.SubtitleDoubleClickAction, () => new ComboBox
+            {
+                MinWidth = 200,
+                DataContext = _vm,
+                [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(_vm.SubtitleDoubleClickActionTypes)),
+                [!SelectingItemsControl.SelectedItemProperty] = new Binding(nameof(_vm.SelectedSubtitleDoubleClickActionType))
+                {
+                    Mode = BindingMode.TwoWay,
+                }
+            }),
+            MakeCheckboxSetting(Se.Language.Options.Settings.SubtitleGridCenterSelectedRow, nameof(_vm.SubtitleGridCenterSelectedRow)),
+
+            new SettingsItem(Se.Language.Options.Settings.SaveAsBehavior, () => new ComboBox
+            {
+                MinWidth = 200,
+                DataContext = _vm,
+                [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(_vm.SaveAsBehaviorTypes)),
+                [!SelectingItemsControl.SelectedItemProperty] = new Binding(nameof(_vm.SelectedSaveAsBehaviorType))
+                {
+                    Mode = BindingMode.TwoWay,
+                }
+            }),
+
+            new SettingsItem(Se.Language.Options.Settings.SaveAsAppendLanguageCode, () => new ComboBox
+            {
+                MinWidth = 200,
+                DataContext = _vm,
+                [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(_vm.SaveAsAppendLanguageCode)),
+                [!SelectingItemsControl.SelectedItemProperty] = new Binding(nameof(_vm.SelectedSaveAsAppendLanguageCode))
+                {
+                    Mode = BindingMode.TwoWay,
+                }
+            }),
+
+            new SettingsItem(Se.Language.Options.Settings.DefaultSaveLocation, () => new ComboBox
+            {
+                MinWidth = 200,
+                DataContext = _vm,
+                [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(_vm.DefaultSaveLocationTypes)),
+                [!SelectingItemsControl.SelectedItemProperty] = new Binding(nameof(_vm.SelectedDefaultSaveLocationType))
+                {
+                    Mode = BindingMode.TwoWay,
+                }
+            }),
+
+            new SettingsItem(Se.Language.Options.Settings.DefaultSaveLocationCustomFolder, () => new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 5,
+                [!Control.IsEnabledProperty] = new Binding(nameof(_vm.IsDefaultSaveLocationCustomFolderEnabled)) { Source = _vm },
+                Children =
+                {
+                    UiUtil.MakeTextBox(250, _vm, nameof(_vm.DefaultSaveLocationCustomFolder)),
+                    UiUtil.MakeButtonBrowse(_vm.BrowseDefaultSaveLocationFolderCommand, accessibleName: Se.Language.Options.Settings.DefaultSaveLocationCustomFolder),
+                }
+            }),
+
+            MakeSeparator(),
+            MakeCheckboxSetting(Se.Language.Options.Settings.AutoSave, nameof(_vm.AutoSave)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.AutoBackupOn, nameof(_vm.AutoBackupOn)),
+            MakeNumericSettingInt(Se.Language.Options.Settings.AutoBackupIntervalMinutes, nameof(_vm.AutoBackupIntervalMinutes), 1),
+            MakeNumericSettingInt(Se.Language.Options.Settings.AutoBackupDeleteAfterDays, nameof(_vm.AutoBackupDeleteAfterDays), 1),
+        ]));
+
+        sections.Add(new SettingsSection(Se.Language.General.SubtitleFormats, IconNames.ClosedCaption, "#7fa8f0",
+        [
+            new SettingsItem(Se.Language.Options.Settings.DefaultFormat, () => new ComboBox
+            {
+                Width = 200,
+                DataContext = _vm,
+                [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(_vm.DefaultSubtitleFormats)),
+                [!SelectingItemsControl.SelectedItemProperty] =
+                    new Binding(nameof(_vm.SelectedDefaultSubtitleFormat)) { Mode = BindingMode.TwoWay },
+                ItemTemplate = new FuncDataTemplate<FormatViewModel>((f, _) =>
+                    new TextBlock { Text = f?.Name }, true)
+            }),
+
+            new SettingsItem(Se.Language.Options.Settings.DefaultSaveAsFormat, () => new ComboBox
+            {
+                Width = 200,
+                DataContext = _vm,
+                [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(_vm.SaveSubtitleFormats)),
+                [!SelectingItemsControl.SelectedItemProperty] = new Binding(nameof(_vm.SelectedSaveSubtitleFormat))
+                    { Mode = BindingMode.TwoWay },
+                ItemTemplate = new FuncDataTemplate<FormatViewModel>((f, _) =>
+                    new TextBlock { Text = f?.Name }, true)
+            }),
+
+            new SettingsItem(Se.Language.Options.Settings.FavoriteSubtitleFormats, () => MakeFavoritesGrid(_vm)),
+            new SettingsItem(Se.Language.Options.Settings.FavoriteLanguages, () => MakeLanguageFavoritesGrid(_vm)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.WebVttUseXTimestampMap, nameof(_vm.WebVttUseXTimestampMap)),
+        ]));
+
+        sections.Add(new SettingsSection(Se.Language.General.SyntaxColoring, IconNames.Palette, "#d966a0",
+        [
+            MakeCheckboxSetting(Se.Language.Options.Settings.ColorDurationTooShort, nameof(_vm.ColorDurationTooShort)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ColorDurationTooLong, nameof(_vm.ColorDurationTooLong)),
+            MakeSeparator(),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ColorTextTooLong, nameof(_vm.ColorTextTooLong)),
+
+            new SettingsItem(Se.Language.Options.Settings.ColorTextTooWide, () =>
+                UiUtil.MakeHorizontalPanel(
+                    new CheckBox
+                    {
+                        VerticalAlignment = VerticalAlignment.Center,
+                        [!ToggleButton.IsCheckedProperty] = new Binding(nameof(_vm.ColorTextTooWide)) { Source = _vm, Mode = BindingMode.TwoWay }
+                    },
+                    UiUtil.MakeButtonBrowse(_vm.EditTextTooWideSettingsCommand, accessibleName: Se.Language.Options.Settings.ColorTextTooWide)
+                )),
+
+            MakeCheckboxSetting(Se.Language.Options.Settings.ColorTextTooManyLines, nameof(_vm.ColorTextTooManyLines),
+                labelBindingPath: nameof(_vm.ColorTextTooManyLinesLabel)),
+            MakeSeparator(),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ColorCharactersPerSecond, nameof(_vm.ColorCharactersPerSecond)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ColorWordsPerMinute, nameof(_vm.ColorWordsPerMinute)),
+            MakeSeparator(),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ColorOverlap, nameof(_vm.ColorOverlap)),
+            MakeSeparator(),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ColorGapTooShort, nameof(_vm.ColorGapTooShort)),
+            MakeSeparator(),
+            new SettingsItem(Se.Language.Options.Settings.ErrorBackgroundColor, () => UiUtil.MakeColorPickerButton(_vm, nameof(_vm.ErrorColor))),
+        ]));
+
+        sections.Add(new SettingsSection(Se.Language.General.VideoPlayer, IconNames.PlayBox, "#a78bfa",
+        [
+            new SettingsItem(Se.Language.General.VideoPlayer, () => new StackPanel
+            {
+                Children =
+                {
+                    MakeVideoPlayerComboBox()
+                }
+            }),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ShowStopButton, nameof(_vm.ShowStopButton)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ShowFullscreenButton, nameof(_vm.ShowFullscreenButton)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.FullscreenHideControls, nameof(_vm.FullscreenHideControls)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.AutoOpenVideoFile, nameof(_vm.AutoOpenVideoFile)),
+            new SettingsItem(!_vm.IsLibMpvDownloadVisible, Se.Language.Options.Settings.DownloadMpv, () => new StackPanel
+            {
+                Children =
+                {
+                    new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        Spacing = 10,
+                        Children =
+                        {
+                            UiUtil.MakeButton(Se.Language.General.Download, _vm.DownloadLibMpvCommand),
+                            new TextBlock
+                            {
+                                DataContext = _vm,
+                                [!TextBlock.TextProperty] = new Binding(nameof(_vm.LibMpvStatus)),
+                                Margin = new Thickness(0, 0, 0, 0),
+                                VerticalAlignment = VerticalAlignment.Center,
+                                HorizontalAlignment = HorizontalAlignment.Left,
+                            }
+                        }
+                    },
+                    new TextBlock
+                    {
+                        DataContext = _vm,
+                        [!TextBlock.TextProperty] = new Binding(nameof(_vm.LibMpvPath)),
+                        Margin = new Thickness(10, 0, 0, 0),
+                        VerticalAlignment = VerticalAlignment.Center,
+                        Opacity = 0.5,
+                        FontSize = 10,
+                    }
+                },
+            }),
+            new SettingsItem(Se.Language.Options.Settings.SubtitlePreviewProperties, () => MakeMpvPreviewSettings(_vm)),
+            new SettingsItem(!_vm.IsLibVlcDownloadVisible, Se.Language.Options.Settings.DownloadVlc, () => new StackPanel
+            {
+                Children =
+                {
+                    new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        Spacing = 10,
+                        Children =
+                        {
+                            UiUtil.MakeButton(Se.Language.General.Download, _vm.DownloadLibVlcCommand),
+                            new TextBlock
+                            {
+                                DataContext = _vm,
+                                [!TextBlock.TextProperty] = new Binding(nameof(_vm.LibVlcStatus)),
+                                Margin = new Thickness(0, 0, 0, 0),
+                                VerticalAlignment = VerticalAlignment.Center,
+                                HorizontalAlignment = HorizontalAlignment.Left,
+                            }
+                        }
+                    },
+                },
+            }),
+
+        ]));
+
+        sections.Add(new SettingsSection(Se.Language.General.WaveformSpectrogram, IconNames.Waveform, "#f0b429",
+        [
+            new SettingsItem(Se.Language.Options.Settings.WaveformDrawStyle,
+                () => UiUtil.MakeComboBox(_vm.WaveformDrawStyles, _vm, nameof(_vm.SelectedWaveformDrawStyle))),
+            MakeCheckboxSetting(Se.Language.Options.Settings.WaveformAutoGenerate, nameof(_vm.WaveformAutoGenerate)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.WaveformGenerateSpectrogram, nameof(_vm.WaveformGenerateSpectrogram)),
+            new SettingsItem(Se.Language.Options.Settings.WaveformSpectrogramMode,
+                () => UiUtil.MakeComboBox(_vm.WaveformSpectrogramStyles, _vm, nameof(_vm.SelectedWaveformSpectrogramStyle))),
+            MakeNumericSettingInt(Se.Language.Options.Settings.WaveformSpectrogramCombinedWaveformHeight, nameof(_vm.WaveformSpectrogramCombinedWaveformHeight), 10, 90),
+
+            MakeCheckboxSetting(Se.Language.Options.Settings.WaveformShowToolbar, nameof(_vm.WaveformShowToolbar)),
+            new SettingsItem(Se.Language.Options.Settings.WaveformShowToolbarEditLabel,
+                () => UiUtil.MakeButton(Se.Language.Options.Settings.WaveformShowToolbarEdit, _vm.EditWaveformToolbarPropertiesCommand)),
+
+            new SettingsItem(Se.Language.Options.Settings.WaveformSingleClickAction, () => new ComboBox
+            {
+                MinWidth = 200,
+                DataContext = _vm,
+                [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(_vm.WaveformSingleClickActionTypes)),
+                [!SelectingItemsControl.SelectedItemProperty] = new Binding(nameof(_vm.SelectedWaveformSingleClickActionType))
+                {
+                    Mode = BindingMode.TwoWay,
+                }
+            }),
+
+            new SettingsItem(Se.Language.Options.Settings.WaveformDoubleClickAction, () => new ComboBox
+            {
+                MinWidth = 200,
+                DataContext = _vm,
+                [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(_vm.WaveformDoubleClickActionTypes)),
+                [!SelectingItemsControl.SelectedItemProperty] = new Binding(nameof(_vm.SelectedWaveformDoubleClickActionType))
+                {
+                    Mode = BindingMode.TwoWay,
+                }
+            }),
+
+            new SettingsItem(Se.Language.Options.Settings.WaveformExtractAudioFormat,
+                () => UiUtil.MakeComboBox(_vm.WaveformExtractAudioFormats, _vm, nameof(_vm.SelectedWaveformExtractAudioFormat))),
+            new SettingsItem(Se.Language.Options.Settings.WaveformExtractAudioSampleRate,
+                () => UiUtil.MakeComboBox(_vm.WaveformExtractAudioSampleRates, _vm, nameof(_vm.SelectedWaveformExtractAudioSampleRate))),
+            new SettingsItem(Se.Language.Options.Settings.WaveformExtractAudioBitRate,
+                () => UiUtil.MakeComboBox(_vm.WaveformExtractAudioBitRates, _vm, nameof(_vm.SelectedWaveformExtractAudioBitRate))),
+
+            MakeCheckboxSetting(Se.Language.Options.Settings.WaveformRightClickSelectsSubtitle, nameof(_vm.WaveformRightClickSelectsSubtitle)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.WaveformAllowOverlap, nameof(_vm.WaveformAllowOverlap)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.WaveformSetVideoPositionOnMoveStartEnd, nameof(_vm.WaveformSetVideoPositionOnMoveStartEnd)),
+            new SettingsItem(Se.Language.Options.Settings.WaveformSnapToShotChanges, () =>
+                UiUtil.MakeHorizontalPanel(
+                    new CheckBox
+                    {
+                        VerticalAlignment = VerticalAlignment.Center,
+                        [!ToggleButton.IsCheckedProperty] = new Binding(nameof(_vm.WaveformSnapToShotChanges)) { Source = _vm, Mode = BindingMode.TwoWay }
+                    },
+                    UiUtil.MakeButton(_vm.EditBeautifyTimeCodesProfileCommand, IconNames.Cogs, Se.Language.Tools.BeautifyTimeCodesProfile.Title)
+                )),
+            MakeCheckboxSetting(Se.Language.Options.Settings.WaveformSnapToFrames, nameof(_vm.WaveformSnapToFrames)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.WaveformShotChangesAutoGenerate, nameof(_vm.WaveformShotChangesAutoGenerate)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.WaveformFocusOnMouseOver, nameof(_vm.WaveformFocusOnMouseOver)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.WaveformFocusTextboxAfterInsertNew, nameof(_vm.WaveformFocusTextboxAfterInsertNew)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.WaveformInvertMouseWheel, nameof(_vm.WaveformInvertMouseWheel)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.WaveformMouseWheelSetsVideoPosition, nameof(_vm.WaveformMouseWheelSetsVideoPosition)),
+            new SettingsItem(Se.Language.Options.Settings.WaveformMouseWheelVideoPositionStep,
+                () => UiUtil.MakeComboBox(_vm.WaveformMouseWheelVideoPositionSteps, _vm, nameof(_vm.SelectedWaveformMouseWheelVideoPositionStep))),
+            MakeCheckboxSetting(Se.Language.Options.Settings.WaveformCenterVideoPositionAlsoWhenPaused, nameof(_vm.WaveformCenterVideoPositionAlsoWhenPaused)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.WaveformDrawGridLines, nameof(_vm.WaveformDrawGridLines)),
+            new SettingsItem(Se.Language.Options.Settings.WaveformTextFontSize, () => UiUtil.MakeNumericUpDownInt(
+                10 ,
+                100,
+                12,
+                120,
+                _vm,
+                nameof(_vm.WaveformTextFontSize))),
+            MakeCheckboxSetting(Se.Language.Options.Settings.WaveformTextFontBold, nameof(_vm.WaveformTextFontBold)),
+            new SettingsItem(string.Empty, () => UiUtil.MakeButton(Se.Language.Options.Settings.WaveformColorThemesDotDotDot, _vm.OpenWaveformThemesCommand)),
+            new SettingsItem(Se.Language.Options.Settings.WaveformTextColor, () => UiUtil.MakeColorPickerButton(_vm, nameof(_vm.WaveformTextColor))),
+            new SettingsItem(Se.Language.Options.Settings.WaveformColor, () => UiUtil.MakeColorPickerButton(_vm, nameof(_vm.WaveformColor))),
+            new SettingsItem(Se.Language.Options.Settings.WaveformParagraphBackgroundColor, () => UiUtil.MakeColorPickerButton(_vm, nameof(_vm.WaveformParagraphBackgroundColor))),
+            new SettingsItem(Se.Language.Options.Settings.WaveformBackgroundColor, () => UiUtil.MakeColorPickerButton(_vm, nameof(_vm.WaveformBackgroundColor))),
+            new SettingsItem(Se.Language.Options.Settings.WaveformParagraphSelectedBackgroundColor, () => UiUtil.MakeColorPickerButton(_vm, nameof(_vm.WaveformParagraphSelectedBackgroundColor))),
+            new SettingsItem(Se.Language.Options.Settings.WaveformSelectedColor, () => UiUtil.MakeColorPickerButton(_vm, nameof(_vm.WaveformSelectedColor))),
+            new SettingsItem(Se.Language.Options.Settings.WaveformCursorColor, () => UiUtil.MakeColorPickerButton(_vm, nameof(_vm.WaveformCursorColor))),
+            new SettingsItem(Se.Language.Options.Settings.WaveformShotChangeColor, () => UiUtil.MakeColorPickerButton(_vm, nameof(_vm.WaveformShotChangeColor))),
+            new SettingsItem(Se.Language.Options.Settings.WaveformParagraphLeftColor, () => UiUtil.MakeColorPickerButton(_vm, nameof(_vm.WaveformParagraphLeftColor))),
+            new SettingsItem(Se.Language.Options.Settings.WaveformParagraphRightColor, () => UiUtil.MakeColorPickerButton(_vm, nameof(_vm.WaveformParagraphRightColor))),
+            new SettingsItem(Se.Language.Options.Settings.WaveformFancyHighColor, () => UiUtil.MakeColorPickerButton(_vm, nameof(_vm.WaveformFancyHighColor))),
+            MakeCheckboxSetting(Se.Language.General.OpenAiCompatibleSttAutoTranscribeOnAudioSelection, nameof(_vm.OpenAiCompatibleSttAutoTranscribeOnAudioSelection)),
+            new SettingsItem(Se.Language.Options.Settings.DownloadFfmpeg, () => new StackPanel
+            {
+                Children =
+                {
+                    new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        Spacing = 10,
+                        Children =
+                        {
+                            UiUtil.MakeButton(Se.Language.General.Download, _vm.DownloadFfmpegCommand),
+                            new TextBlock
+                            {
+                                DataContext = _vm,
+                                [!TextBlock.TextProperty] = new Binding(nameof(_vm.FfmpegStatus)),
+                                Margin = new Thickness(0, 0, 0, 0),
+                                VerticalAlignment = VerticalAlignment.Center,
+                                HorizontalAlignment = HorizontalAlignment.Left,
+                            }
+                        }
+                    },
+                    new TextBlock
+                    {
+                        DataContext = _vm,
+                        [!TextBlock.TextProperty] = new Binding(nameof(_vm.FfmpegPath)),
+                        Margin = new Thickness(10, 0, 0, 0),
+                        VerticalAlignment = VerticalAlignment.Center,
+                        Opacity = 0.5,
+                        FontSize = 10,
+                    }
+                }
+            }),
+            new SettingsItem(Se.Language.General.DiskSpace, () => new StackPanel
+            {
+                Children =
+                {
+                    new StackPanel
+                    {
+                        Orientation = Orientation.Vertical,
+                        Children =
+                        {
+                            UiUtil.MakeLabel().WithBindText(_vm, nameof(_vm.WaveformSpaceInfo)),
+                            UiUtil.MakeButton(Se.Language.General.Delete, _vm.EmptyWaveformsAndSpectrogramsCommand).WithLeftAlignment(),
+                        }
+                    },
+                }
+            }),
+        ]));
+
+        sections.Add(new SettingsSection(Se.Language.General.Tools, IconNames.Tools, "#f0885a",
+        [
+            MakeCheckboxSetting(Se.Language.Options.Settings.AllowSingleLetterShortcutsInTextbox, nameof(_vm.AllowSingleLetterShortcutsInTextbox)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.GoToLineNumberSetsVideoPosition, nameof(_vm.GoToLineNumberAlsoSetVideoPosition)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.AdjustAllTimesRememberLineSelectionChoice, nameof(_vm.AdjustAllTimesRememberLineSelectionChoice)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.MergeKeepEndTime, nameof(_vm.MergeKeepEndTime)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.MergeKeepEndTimeOnlyAssa, nameof(_vm.MergeKeepEndTimeOnlyAssa),
+                new Binding(nameof(_vm.MergeKeepEndTime)) { Source = _vm }),
+            MakeCheckboxSetting(Se.Language.Options.Settings.AutoBreakLineEndingEarly, nameof(_vm.AutoBreakLineEndingEarly)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.AutoBreakCommaBreakEarly, nameof(_vm.AutoBreakCommaBreakEarly)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.AutoBreakDashEarly, nameof(_vm.AutoBreakDashEarly)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.AutoBreakUsePixelWidth, nameof(_vm.AutoBreakUsePixelWidth)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.AutoBreakPreferBottomHeavy, nameof(_vm.AutoBreakPreferBottomHeavy),
+                new Binding(nameof(_vm.AutoBreakUsePixelWidth)) { Source = _vm }),
+            new SettingsItem(Se.Language.Options.Settings.AutoBreakPreferBottomPercent, () =>
+            {
+                var nud = MakeNumericUpDownInt(nameof(_vm.AutoBreakPreferBottomPercent), 0, 50);
+                // The engine reads the percent only when both pixel width AND prefer-bottom-heavy
+                // are on (TextSplit), so enable it only when editing it can have an effect.
+                nud[!Control.IsEnabledProperty] = new MultiBinding
+                {
+                    Converter = BoolConverters.And,
+                    Bindings =
+                    {
+                        new Binding(nameof(_vm.AutoBreakUsePixelWidth)) { Source = _vm },
+                        new Binding(nameof(_vm.AutoBreakPreferBottomHeavy)) { Source = _vm },
+                    },
+                };
+                return nud;
+            }),
+            new SettingsItem(Se.Language.Options.Settings.UseDoNotBreakAfterList, () => new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 10,
+                Children =
+                {
+                    new CheckBox
+                    {
+                        VerticalAlignment = VerticalAlignment.Center,
+                        [!ToggleButton.IsCheckedProperty] = new Binding(nameof(_vm.UseNoLineBreakAfter)) { Source = _vm, Mode = BindingMode.TwoWay },
+                    },
+                    UiUtil.MakeButton(Se.Language.General.Edit, _vm.EditDoNotBreakAfterListCommand),
+                }
+            }),
+            new SettingsItem(Se.Language.Options.Settings.SplitOddLinesAction, () => new ComboBox
+            {
+                MinWidth = 200,
+                DataContext = _vm,
+                [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(_vm.SplitOddNumberOfLinesActions)),
+                [!SelectingItemsControl.SelectedItemProperty] = new Binding(nameof(_vm.SelectedSplitOddNumberOfLinesAction))
+                {
+                    Mode = BindingMode.TwoWay,
+                }
+            }),
+            new SettingsItem(Se.Language.Options.Settings.SpellCheckEngine, () => new ComboBox
+            {
+                MinWidth = 200,
+                DataContext = _vm,
+                [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(_vm.SpellCheckEngines)),
+                [!SelectingItemsControl.SelectedItemProperty] = new Binding(nameof(_vm.SelectedSpellCheckEngine))
+                {
+                    Mode = BindingMode.TwoWay,
+                }
+            }),
+            MakeCheckboxSetting(Se.Language.Options.Settings.SpellCheckEnglishTreatInApostropheAsIng, nameof(_vm.SpellCheckEnglishTreatInApostropheAsIng)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.OcrUseWordSplitList, nameof(_vm.OcrUseWordSplitList)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.OcrGuessUnknownWords, nameof(_vm.OcrGuessUnknownWords)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.SpeechToTextSelectedLinesPromptFirstTimeOnly, nameof(_vm.SpeechToTextSelectedLinesPromptFistTimeOnly)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.MultipleReplaceShowDotDotDotButtons, nameof(_vm.MultipleReplaceShowDotDotDotButtons)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.GridFocusTextboxAfterInsertNew, nameof(_vm.GridFocusTextboxAfterInsertNew)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.TextToSpeechPromptMergeContinuationLines, nameof(_vm.TextToSpeechPromptMergeContinuationLines)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.FixCommonErrorsSkipStep1, nameof(_vm.FixCommonErrorsSkipStep1)),
+            new SettingsItem(Se.Language.Options.Settings.MusicSymbol,
+                () => UiUtil.MakeTextBox(120, _vm, nameof(_vm.MusicSymbol))),
+            new SettingsItem(Se.Language.Options.Settings.MusicSymbolsToReplace,
+                () => UiUtil.MakeTextBox(300, _vm, nameof(_vm.MusicSymbolReplace))),
+        ]));
+
+        sections.Add(new SettingsSection(Se.Language.General.Appearance, IconNames.EyeSettings, "#4fc3e8",
+        [
+            new SettingsItem(Se.Language.Options.Settings.Theme, () => UiUtil.MakeComboBox(_vm.Themes, _vm, nameof(_vm.SelectedTheme))),
+            new SettingsItem(Se.Language.Options.Settings.IconTheme, () => UiUtil.MakeComboBox(_vm.IconThemes, _vm, nameof(_vm.SelectedIconTheme))),
+            MakeCheckboxSetting(Se.Language.Options.Settings.MatchIconColorToDarkTheme, nameof(_vm.MatchIconColorToDarkTheme)),
+            new SettingsItem(Se.Language.Options.Settings.UiScale, () => UiUtil.MakeNumericUpDownInt(
+                (int)Math.Round(UiTheme.MinScale * 100.0, MidpointRounding.AwayFromZero) ,
+                (int)Math.Round(UiTheme.MaxScale * 100.0, MidpointRounding.AwayFromZero),
+                100,
+                120,
+                _vm,
+                nameof(_vm.LayoutScale))),
+            new SettingsItem(Se.Language.Options.Settings.DarkThemeForegroundColor, () => new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Children =
+                {
+                    UiUtil.MakeColorPickerButton(_vm, nameof(_vm.DarkModeForegroundColor)),
+                    UiUtil.MakeLabel(Se.Language.General.RequiresRestart).WithMarginLeft(5).WithOpacity(0.6),
+                }
+            }),
+            new SettingsItem(Se.Language.Options.Settings.DarkThemeBackgroundColor, () => new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Children =
+                {
+                    UiUtil.MakeColorPickerButton(_vm, nameof(_vm.DarkModeBackgroundColor)),
+                    UiUtil.MakeLabel(Se.Language.General.RequiresRestart).WithMarginLeft(5).WithOpacity(0.6),
+                }
+            }),
+            MakeCheckboxSetting(Se.Language.Options.Settings.UseFocusedButtonBackgroundColor, nameof(_vm.UseFocusedButtonBackgroundColor)),
+            new SettingsItem(Se.Language.Options.Settings.FocusedButtonBackgroundColor, () => new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Children =
+                {
+                    UiUtil.MakeColorPickerButton(_vm, nameof(_vm.FocusedButtonBackgroundColor)),
+                    UiUtil.MakeLabel(Se.Language.General.RequiresRestart).WithMarginLeft(5).WithOpacity(0.6),
+                }
+            }),
+            new SettingsItem(Se.Language.Options.Settings.UiFont, () => UiUtil.MakeComboBox(_vm.FontNames, _vm, nameof(_vm.SelectedFontName))),
+            new SettingsItem(Se.Language.Options.Settings.SubtitleTextBoxAndGridFontName,
+                () => UiUtil.MakeComboBox(_vm.FontNames, _vm, nameof(_vm.SubtitleTextBoxAndGridFontName))),
+            MakeNumericSetting(Se.Language.Options.Settings.SubtitleGridFontSize, nameof(_vm.SubtitleGridFontSize)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.SubtitleGridTextSingleLine, nameof(_vm.SubtitleGridTextSingleLine)),
+            new SettingsItem(Se.Language.Options.Settings.SubtitleGridTextSingleLineSeparator,
+                () => UiUtil.MakeTextBox(150, _vm, nameof(_vm.SubtitleGridTextSingleLineSeparator))),
+            new SettingsItem(Se.Language.Options.Settings.SubtitleGridTextDisplay, () => UiUtil.MakeComboBox(_vm.SubtitleGridTextDisplayModes, _vm, nameof(_vm.SelectedSubtitleGridTextDisplayMode))),
+            new SettingsItem(Se.Language.Options.Settings.SubtitleGridShowFormatting, () => UiUtil.MakeComboBox(_vm.SubtitleGridFormattings, _vm, nameof(_vm.SubtitleGridFormatting))),
+            MakeCheckboxSetting(Se.Language.Options.Settings.SubtitleGridLiveSpellCheck, nameof(_vm.SubtitleGridLiveSpellCheck)),
+            MakeNumericSetting(Se.Language.Options.Settings.TextBoxFontSize, nameof(_vm.TextBoxFontSize)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.TextBoxFontBold, nameof(_vm.TextBoxFontBold)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.TextBoxColorTags, nameof(_vm.TextBoxColorTags)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.TextBoxLiveSpellCheck, nameof(_vm.TextBoxLiveSpellCheck)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.TextBoxCenterText, nameof(_vm.TextBoxCenterText)),
+
+            MakeCheckboxSetting(Se.Language.Options.Settings.TextBoxButtonShowAutoBreak, nameof(_vm.TextBoxButtonShowAutoBreak)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.TextBoxButtonShowUnbreak, nameof(_vm.TextBoxButtonShowUnbreak)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.TextBoxButtonShowItalic, nameof(_vm.TextBoxButtonShowItalic)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.TextBoxButtonShowColor, nameof(_vm.TextBoxButtonShowColor)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.TextBoxButtonShowRemoveFormatting, nameof(_vm.TextBoxButtonShowRemoveFormatting)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.TextBoxButtonShowAiAssistant, nameof(_vm.TextBoxButtonShowAiAssistant)),
+
+            MakeCheckboxSetting(Se.Language.Options.Settings.ShowUpDownStartTime, nameof(_vm.ShowUpDownStartTime)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ShowUpDownEndTime, nameof(_vm.ShowUpDownEndTime)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ShowUpDownDuration, nameof(_vm.ShowUpDownDuration)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ShowUpDownLabels, nameof(_vm.ShowUpDownLabels)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ShowButtonHints, nameof(_vm.ShowButtonHints)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.GridCompactMode, nameof(_vm.GridCompactMode)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.GridAlternatingRows, nameof(_vm.GridAlternatingRows)),
+            new SettingsItem(Se.Language.Options.Settings.GridAlternatingRowColor, () => UiUtil.MakeColorPickerButton(_vm, nameof(_vm.GridAlternatingRowColor))),
+            new SettingsItem(Se.Language.Options.Settings.GridAlternatingRowColorDark, () => UiUtil.MakeColorPickerButton(_vm, nameof(_vm.GridAlternatingRowColorDark))),
+            new SettingsItem(Se.Language.Options.Settings.ShowGridLines, () => UiUtil.MakeComboBox(_vm.GridLinesVisibilities, _vm, nameof(_vm.SelectedGridLinesVisibility))),
+            new SettingsItem(Se.Language.Options.Settings.BookmarkColor, () => UiUtil.MakeColorPickerButton(_vm, nameof(_vm.BookmarkColor))),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ShowAssaLayer, nameof(_vm.ShowAssaLayer)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ShowHorizontalLineAboveToolbar, nameof(_vm.ShowHorizontalLineAboveToolbar)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ShowPluginsMenu, nameof(_vm.ShowPluginsMenu)),
+        ]));
+
+        sections.Add(new SettingsSection(Se.Language.General.Toolbar, IconNames.DotsHorizontal, "#58c9b4",
+        [
+            MakeCheckboxSetting(Se.Language.Options.Settings.ShowToolbarNew, nameof(_vm.ShowToolbarNew)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ShowToolbarOpen, nameof(_vm.ShowToolbarOpen)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ShowToolbarVideoFileOpen, nameof(_vm.ShowToolbarVideoFileOpen)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ShowToolbarSave, nameof(_vm.ShowToolbarSave)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ShowToolbarSaveAs, nameof(_vm.ShowToolbarSaveAs)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ShowToolbarFind, nameof(_vm.ShowToolbarFind)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ShowToolbarReplace, nameof(_vm.ShowToolbarReplace)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ShowToolbarSpellCheck, nameof(_vm.ShowToolbarSpellCheck)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ShowToolbarFixCommonErrors, nameof(_vm.ShowToolbarFixCommonErrors)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ShowToolbarRemoveTextForHi, nameof(_vm.ShowToolbarRemoveTextForHi)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ShowToolbarVisualSync, nameof(_vm.ShowToolbarVisualSync)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ShowToolbarPointSync, nameof(_vm.ShowToolbarPointSync)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ShowToolbarBeautifyTimeCodes, nameof(_vm.ShowToolbarBeautifyTimeCodes)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ShowToolbarBurnIn, nameof(_vm.ShowToolbarBurnIn)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ShowToolbarAutoTranslate, nameof(_vm.ShowToolbarAutoTranslate)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ShowToolbarSpeechToText, nameof(_vm.ShowToolbarSpeechToText)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ShowToolbarSettings, nameof(_vm.ShowToolbarSettings)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ShowToolbarLayout, nameof(_vm.ShowToolbarLayout)),
+            MakeCheckboxSetting(Se.Language.Options.Shortcuts.SourceView, nameof(_vm.ShowToolbarSourceView)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ShowToolbarHelp, nameof(_vm.ShowToolbarHelp)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ShowToolbarEncoding, nameof(_vm.ShowToolbarEncoding)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ShowToolbarFrameRate, nameof(_vm.ShowToolbarFrameRate)),
+        ]));
+
+        sections.Add(new SettingsSection(Se.Language.Options.Settings.Network, IconNames.Network, "#6bb84e",
+        [
+            new SettingsItem(Se.Language.Options.Settings.ProxyAddress, () => UiUtil.MakeTextBox(250, _vm, nameof(_vm.ProxyAddress))),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ProxyUseSystemCredentials, nameof(_vm.ProxyUseDefaultCredentials)),
+            new SettingsItem(Se.Language.General.UserName, () => MakeProxyCredentialTextBox(nameof(_vm.ProxyUserName))),
+            new SettingsItem(Se.Language.Options.Settings.Password, () => MakeProxyCredentialTextBox(nameof(_vm.ProxyPassword))),
+            new SettingsItem(Se.Language.Options.Settings.ProxyDomain, () => MakeProxyCredentialTextBox(nameof(_vm.ProxyDomain))),
+            new SettingsItem(Se.Language.Options.Settings.ProxyBypassList, () =>
+            {
+                var textBox = UiUtil.MakeTextBox(250, _vm, nameof(_vm.ProxyBypassList));
+                if (Se.Settings.Appearance.ShowHints)
+                {
+                    ToolTip.SetTip(textBox, Se.Language.Options.Settings.ProxyBypassListHint);
+                }
+
+                return textBox;
+            }),
+        ]));
+
+        var updateItems = new List<SettingsItem>();
+        if (!UpdateCheckService.IsStoreManagedInstall)
+        {
+            // Store-managed installs (Flatpak) update through the store, so the startup check is hidden there.
+            updateItems.Add(MakeCheckboxSetting(Se.Language.Options.Settings.CheckForUpdatesOnStartup, nameof(_vm.CheckForUpdatesOnStartup)));
+        }
+
+        updateItems.Add(new SettingsItem(Se.Language.Options.Settings.CheckForUpdatesChannel, () => new ComboBox
+        {
+            MinWidth = 200,
+            DataContext = _vm,
+            [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(_vm.UpdateChannels)),
+            [!SelectingItemsControl.SelectedItemProperty] = new Binding(nameof(_vm.SelectedUpdateChannel))
+            {
+                Mode = BindingMode.TwoWay,
+            }
+        }));
+
+        sections.Add(new SettingsSection(Se.Language.Options.Settings.Updates, IconNames.CloudDownload, "#d0a24e", updateItems));
+
+        if (OperatingSystem.IsWindows())
+        {
+            sections.Add(new SettingsSection(Se.Language.Options.Settings.FileTypeAssociations, IconNames.FileCog, "#b98a5a",
+            [
+                new SettingsItem(string.Empty, () => new ItemsControl
+                {
+                    DataContext = _vm,
+                    [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(_vm.FileTypeAssociations)),
+                    ItemTemplate = new FuncDataTemplate<FileTypeAssociationViewModel>((fileType, _) =>
+                        new StackPanel
+                        {
+                            Orientation = Orientation.Horizontal,
+                            Spacing = 10,
+                            Children =
+                            {
+                                new CheckBox
+                                {
+                                    [!ToggleButton.IsCheckedProperty] = new Binding(nameof(FileTypeAssociationViewModel.IsAssociated))
+                                    {
+                                        Source = fileType, Mode = BindingMode.TwoWay
+                                    },
+                                },
+                                new Image
+                                {
+                                    Source = new Avalonia.Media.Imaging.Bitmap(
+                                        AssetLoader.Open(new Uri(fileType.IconPath))),
+                                    Width = 32,
+                                    Height = 32,
+                                    Margin = new Thickness(2),
+                                },
+                                new TextBlock
+                                {
+                                    Text = fileType.Extension,
+                                    VerticalAlignment = VerticalAlignment.Center,
+                                }
+                            }
+                        }, true)
+                })
+            ]));
+        }
+
+        sections.Add(new SettingsSection(Se.Language.Options.Settings.FilesAndLogs, IconNames.FileMultiple, "#5fa8e0",
+        [
+            new SettingsItem(Se.Language.Options.Settings.ShowErrorLogFile,
+                () => UiUtil.MakeLink(Se.GetErrorLogFilePath(), _vm.ShowErrorLogFileCommand).WithBindEnabed(_vm, nameof(_vm.ExistsErrorLogFile))),
+            new SettingsItem(Se.Language.Options.Settings.ShowToolsLogFile,
+                () => UiUtil.MakeLink(Se.GetToolsLogFilePath(), _vm.ShowToolsLogFileCommand).WithBindEnabed(_vm, nameof(_vm.ExistsToolsLogFile))),
+            new SettingsItem(Se.Language.Options.Settings.WriteToolsLog,
+                () => UiUtil.MakeCheckBox(_vm, nameof(_vm.WriteToolsLog))),
+            new SettingsItem(Se.Language.Options.Settings.ShowSettingsFile,
+                () => UiUtil.MakeLink(Se.GetSettingsFilePath(), _vm.ShowSettingsFileCommand).WithBindEnabed(_vm, nameof(_vm.ExistsSettingsFile))),
+        ]));
+
+
+        return sections;
+    }
+
+    private Grid MakeFavoritesGrid(SettingsViewModel vm)
+    {
+        // Grid with list of favorite formats, with buttons to add/remove/move-up/move-down
+
+        var grid = new Grid
+        {
+            RowDefinitions =
+            {
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+            },
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) },
+            },
+            Margin = new Thickness(0, 5, 0, 0),
+        };
+
+        var listBox = new ListBox
+        {
+            DataContext = vm,
+            Height = 250,
+            Width = 250,
+            [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(vm.FavoriteSubtitleFormats)),
+            [!SelectingItemsControl.SelectedItemProperty] = new Binding(nameof(vm.SelectedFavoriteSubtitleFormat)) { Mode = BindingMode.TwoWay },
+            ItemTemplate = new FuncDataTemplate<string>((f, _) =>
+                new TextBlock { Text = f }, true)
+        };
+
+        var buttonAdd = UiUtil.MakeButton(Se.Language.General.Add, vm.AddFavoriteSubtitleFormatCommand).WithMinWidth(100);
+        var buttonRemove = UiUtil.MakeButton(Se.Language.General.Remove, vm.RemoveFavoriteSubtitleFormatCommand).WithMinWidth(100);
+        var buttonMoveUp = UiUtil.MakeButton(Se.Language.General.MoveUp, vm.MoveUpFavoriteSubtitleFormatCommand).WithMinWidth(100);
+        var buttonMoveDown = UiUtil.MakeButton(Se.Language.General.MoveDown, vm.MoveDownFavoriteSubtitleFormatCommand).WithMinWidth(100);
+
+        var buttonStack = new StackPanel
+        {
+            Orientation = Orientation.Vertical,
+            Spacing = 5,
+            Margin = new Thickness(5, 0, 0, 0),
+            Children = { buttonAdd, buttonRemove, buttonMoveUp, buttonMoveDown }
+        };
+
+        grid.Add(UiUtil.MakeBorderForControlNoPadding(listBox), 0, 0);
+        grid.Add(buttonStack, 0, 1);
+
+        return grid;
+    }
+
+    private Grid MakeLanguageFavoritesGrid(SettingsViewModel vm)
+    {
+        // Grid with list of favorite languages, with buttons to add/remove/move-up/move-down
+
+        var grid = new Grid
+        {
+            RowDefinitions =
+            {
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+            },
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) },
+            },
+            Margin = new Thickness(0, 5, 0, 0),
+        };
+
+        var listBox = new ListBox
+        {
+            DataContext = vm,
+            Height = 250,
+            Width = 250,
+            [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(vm.FavoriteLanguages)),
+            [!SelectingItemsControl.SelectedItemProperty] = new Binding(nameof(vm.SelectedFavoriteLanguage)) { Mode = BindingMode.TwoWay },
+            ItemTemplate = new FuncDataTemplate<PickLanguageDisplay>((l, _) =>
+                new TextBlock { Text = l?.ToString() }, true)
+        };
+
+        var buttonAdd = UiUtil.MakeButton(Se.Language.General.Add, vm.AddFavoriteLanguageCommand).WithMinWidth(100);
+        var buttonRemove = UiUtil.MakeButton(Se.Language.General.Remove, vm.RemoveFavoriteLanguageCommand).WithMinWidth(100);
+        var buttonMoveUp = UiUtil.MakeButton(Se.Language.General.MoveUp, vm.MoveUpFavoriteLanguageCommand).WithMinWidth(100);
+        var buttonMoveDown = UiUtil.MakeButton(Se.Language.General.MoveDown, vm.MoveDownFavoriteLanguageCommand).WithMinWidth(100);
+
+        var buttonStack = new StackPanel
+        {
+            Orientation = Orientation.Vertical,
+            Spacing = 5,
+            Margin = new Thickness(5, 0, 0, 0),
+            Children = { buttonAdd, buttonRemove, buttonMoveUp, buttonMoveDown }
+        };
+
+        grid.Add(UiUtil.MakeBorderForControlNoPadding(listBox), 0, 0);
+        grid.Add(buttonStack, 0, 1);
+
+        return grid;
+    }
+
+    private Control MakeMpvPreviewSettings(SettingsViewModel vm)
+    {
+        var labelFontName = UiUtil.MakeLabel(Se.Language.General.FontName);
+        var comboBoxFontName = UiUtil.MakeComboBox(vm.Fonts, vm, nameof(vm.MpvPreviewFontName)).WithMinWidth(150);
+
+        var labelFontSize = UiUtil.MakeLabel(Se.Language.General.FontSize);
+        var numericUpDownFontSize = UiUtil.MakeNumericUpDownOneDecimal(1, 1000, 130, vm, nameof(vm.MpvPreviewFontSize));
+        numericUpDownFontSize.Increment = 1;
+
+        var checkBoxBold = UiUtil.MakeCheckBox(Se.Language.General.Bold, vm, nameof(vm.MpvPreviewFontBold));
+
+        var labelAlignment = UiUtil.MakeLabel(Se.Language.General.Alignment);
+        var comboBoxAlignment = UiUtil.MakeComboBox(vm.MpvPreviewFontAlignments, vm, nameof(vm.MpvPreviewSelectedFontAlignment));
+
+        var labelMargin = UiUtil.MakeLabel(Se.Language.General.Margin);
+        var numericUpDownMargin = UiUtil.MakeNumericUpDownOneDecimal(1, 1000, 130, vm, nameof(vm.MpvPreviewMargin));
+        numericUpDownMargin.Increment = 1;
+
+        var labelColorPrimary = UiUtil.MakeLabel(Se.Language.Assa.Primary);
+        var colorPickerPrimary = UiUtil.MakeColorPickerButton(vm, nameof(vm.MpvPreviewColorPrimary));
+
+        var labelColorOutline = UiUtil.MakeLabel(Se.Language.General.Outline);
+        var colorPickerOutline = UiUtil.MakeColorPickerButton(vm, nameof(vm.MpvPreviewColorOutline));
+
+        var labelColorShadow = UiUtil.MakeLabel(Se.Language.General.Shadow);
+        var colorPickerShadow = UiUtil.MakeColorPickerButton(vm, nameof(vm.MpvPreviewColorShadow));
+
+        var grid = new Grid
+        {
+            RowDefinitions =
+            {
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+            },
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) },
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) },
+            },
+            Margin = new Thickness(0, 5, 0, 0),
+            ColumnSpacing = 5,
+            RowSpacing = 5,
+        };
+
+        grid.Add(labelFontName, 0);
+        grid.Add(comboBoxFontName, 0, 1);
+
+        grid.Add(labelFontSize, 1);
+        grid.Add(numericUpDownFontSize, 1, 1);
+
+        grid.Add(checkBoxBold, 2, 1);
+
+        grid.Add(labelAlignment, 3);
+        grid.Add(comboBoxAlignment, 3, 1);
+
+        grid.Add(labelMargin, 4);
+        grid.Add(numericUpDownMargin, 4, 1);
+
+        grid.Add(labelColorPrimary, 5);
+        grid.Add(colorPickerPrimary, 5, 1);
+
+        grid.Add(labelColorOutline, 6);
+        grid.Add(colorPickerOutline, 6, 1);
+
+        grid.Add(labelColorShadow, 7);
+        grid.Add(colorPickerShadow, 7, 1);
+
+        grid.Add(MakeBorderView(vm), 8, 0, 1, 2);
+
+        return UiUtil.MakeBorderForControl(grid);
+    }
+
+    private static Border MakeBorderView(SettingsViewModel vm)
+    {
+        var grid = new Grid
+        {
+            RowDefinitions =
+            {
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+            },
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) },
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) },
+            },
+            Width = double.NaN,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            RowSpacing = 5,
+        };
+
+        var label = UiUtil.MakeLabel(Se.Language.General.BorderStyle);
+        grid.Add(label, 1, 0);
+
+        var comboBoxBorderType = UiUtil.MakeComboBox(vm.MpvPreviewBorderTypes, vm, nameof(vm.MpvPreviewSelectedBorderType));
+        grid.Add(comboBoxBorderType, 2, 0, 1, 2);
+
+        var labelOutlineWidth = UiUtil.MakeLabel(Se.Language.General.OutlineWidth);
+        var numericUpDownOutlineWidth = UiUtil.MakeNumericUpDownOneDecimal(0, 100, 130, vm, nameof(vm.MpvPreviewOutlineWidth));
+        numericUpDownOutlineWidth.Increment = 0.5m;
+        grid.Add(labelOutlineWidth, 3, 0);
+        grid.Add(numericUpDownOutlineWidth, 3, 1);
+
+        var labelShadowWidth = UiUtil.MakeLabel(Se.Language.General.ShadowWidth);
+        var numericUpDownShadowWidth = UiUtil.MakeNumericUpDownOneDecimal(0, 100, 130, vm, nameof(vm.MpvPreviewShadowWidth));
+        numericUpDownShadowWidth.Increment = 0.5m;
+        grid.Add(labelShadowWidth, 4, 0);
+        grid.Add(numericUpDownShadowWidth, 4, 1);
+
+        return UiUtil.MakeBorderForControl(grid);
+    }
+
+    private ComboBox MakeVideoPlayerComboBox()
+    {
+        var cb = new ComboBox
+        {
+            Width = 300,
+            Height = 30,
+            [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(_vm.VideoPlayers)),
+            [!SelectingItemsControl.SelectedItemProperty] =
+                new Binding(nameof(_vm.SelectedVideoPlayer)),
+            DataContext = _vm,
+            ItemTemplate = new FuncDataTemplate<object>((item, _) =>
+                new TextBlock
+                {
+                    [!TextBlock.TextProperty] = new Binding(nameof(VideoPlayerItem.Name)),
+                    Width = 250,
+                }, true)
+        };
+
+        cb.SelectionChanged += (s, e) => _vm.VideoPlayerChanged();
+
+        return cb;
+    }
+
+    private ComboBox MakeComboBoxCpsLineLengthStyle()
+    {
+        var comboBoxCpsLineLengthStyle = new ComboBox
+        {
+            Width = 250,
+            DataContext = _vm,
+            [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(_vm.CpsLineLengthStrategies)),
+            [!SelectingItemsControl.SelectedItemProperty] =
+                new Binding(nameof(_vm.CpsLineLengthStrategy)) { Mode = BindingMode.TwoWay },
+            ItemTemplate = new FuncDataTemplate<FormatViewModel>((f, _) =>
+                new TextBlock { Text = f?.Name }, true)
+        };
+        comboBoxCpsLineLengthStyle.SelectionChanged += (s, e) => _vm.RuleValueChanged();
+        return comboBoxCpsLineLengthStyle;
+    }
+
+    private ComboBox MakeComboBoxDialogStyle()
+    {
+        var comboBoxDialogStyle = new ComboBox
+        {
+            Width = 250,
+            DataContext = _vm,
+            [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(_vm.DialogStyles)),
+            [!SelectingItemsControl.SelectedItemProperty] =
+                new Binding(nameof(_vm.DialogStyle)) { Mode = BindingMode.TwoWay },
+            ItemTemplate = new FuncDataTemplate<FormatViewModel>((f, _) =>
+                new TextBlock { Text = f?.Name }, true)
+        };
+        comboBoxDialogStyle.SelectionChanged += (s, e) => _vm.RuleValueChanged();
+        return comboBoxDialogStyle;
+    }
+
+    private ComboBox MakeProfileComboBox()
+    {
+        var comboBoxProfile = new ComboBox
+        {
+            Width = 250,
+            DataContext = _vm,
+            [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(_vm.Profiles)),
+            [!SelectingItemsControl.SelectedItemProperty] = new Binding(nameof(_vm.SelectedProfile)) { Mode = BindingMode.TwoWay }
+        };
+        comboBoxProfile.SelectionChanged += (s, e) => _vm.ProfileChanged();
+        return comboBoxProfile;
+    }
+
+    private ComboBox MakComboBoxContinuationStyleComboBox()
+    {
+        var comboBoxContinuationStyle = new ComboBox
+        {
+            Width = 250,
+            DataContext = _vm,
+            [!ItemsControl.ItemsSourceProperty] = new Binding(nameof(_vm.ContinuationStyles)),
+            [!SelectingItemsControl.SelectedItemProperty] =
+                new Binding(nameof(_vm.ContinuationStyle)) { Mode = BindingMode.TwoWay },
+            ItemTemplate = new FuncDataTemplate<FormatViewModel>((f, _) =>
+                new TextBlock { Text = f?.Name }, true)
+        };
+        comboBoxContinuationStyle.SelectionChanged += (s, e) => _vm.ContinuationStyleChanged();
+
+        return comboBoxContinuationStyle;
+    }
+
+    private static SettingsItem MakeSeparator()
+    {
+        return new SettingsItem(string.Empty, () => new Label());
+    }
+
+    private SettingsItem MakeNumericSetting(string label, string bindingProperty)
+    {
+        return new SettingsItem(label, () => MakeNumericUpDown(bindingProperty));
+    }
+
+    private NumericUpDown MakeNumericUpDown(string bindingProperty)
+    {
+        return new NumericUpDown
+        {
+            Width = 150,
+            [!NumericUpDown.ValueProperty] = new Binding(bindingProperty) { Source = _vm, Mode = BindingMode.TwoWay },
+        };
+    }
+
+    private SettingsItem MakeNumericSettingInt(string label, string bindingProperty, int? minValue = null, int? maxValue = null)
+    {
+        return new SettingsItem(label, () => MakeNumericUpDownInt(bindingProperty, minValue, maxValue));
+    }
+
+    private NumericUpDown MakeNumericUpDownInt(string bindingProperty, int? minValue = null, int? maxValue = null)
+    {
+        var nud = new NumericUpDown
+        {
+            Width = 150,
+            FormatString = "F0",
+            [!NumericUpDown.ValueProperty] = new Binding(bindingProperty) { Source = _vm, Mode = BindingMode.TwoWay },
+        };
+
+        if (minValue.HasValue)
+        {
+            nud.Minimum = minValue.Value;
+        }
+
+        if (maxValue.HasValue)
+        {
+            nud.Maximum = maxValue.Value;
+        }
+
+        return nud;
+    }
+
+    private NumericUpDown MakeNumericUpDownInt(string bindingProperty, Action valueChanged)
+    {
+        var numericUpDown = new NumericUpDown
+        {
+            Width = 150,
+            FormatString = "F0",
+            [!NumericUpDown.ValueProperty] = new Binding(bindingProperty) { Source = _vm, Mode = BindingMode.TwoWay },
+        };
+
+        numericUpDown.ValueChanged += (s, e) => valueChanged.Invoke();
+        return numericUpDown;
+    }
+
+    private TextBox MakeProxyCredentialTextBox(string bindingProperty)
+    {
+        var textBox = UiUtil.MakeTextBox(250, _vm, bindingProperty);
+        textBox[!Control.IsEnabledProperty] = new Binding(nameof(_vm.ProxyUseDefaultCredentials))
+        {
+            Source = _vm,
+            Converter = new InverseBooleanConverter(),
+        };
+
+        return textBox;
+    }
+
+    private NumericUpDown MakeNumericUpDown(string bindingProperty, Action valueChanged)
+    {
+        var numericUpDown = new NumericUpDown
+        {
+            Width = 150,
+            [!NumericUpDown.ValueProperty] = new Binding(bindingProperty) { Source = _vm, Mode = BindingMode.TwoWay },
+        };
+
+        numericUpDown.ValueChanged += (s, e) => valueChanged.Invoke();
+        return numericUpDown;
+    }
+
+    private SettingsItem MakeCheckboxSetting(string label, string bindingProperty, Binding? bindingEnabled = null, string? labelBindingPath = null)
+    {
+        Control Factory()
+        {
+            var cb = new CheckBox
+            {
+                VerticalAlignment = VerticalAlignment.Center,
+                [!ToggleButton.IsCheckedProperty] = new Binding(bindingProperty) { Source = _vm, Mode = BindingMode.TwoWay }
+            };
+
+            if (bindingEnabled != null)
+            {
+                cb[!Control.IsEnabledProperty] = bindingEnabled;
+            }
+
+            return cb;
+        }
+
+        return labelBindingPath != null
+            ? new SettingsItem(label, _vm, labelBindingPath, Factory)
+            : new SettingsItem(label, Factory);
+    }
+
+    protected override void OnLoaded(RoutedEventArgs e)
+    {
+        base.OnLoaded(e);
+
+        Dispatcher.UIThread.Invoke(() =>
+        {
+            _searchBox.Focus(); // hack to make OnKeyDown work
+        });
+    }
+}

@@ -1,0 +1,463 @@
+app-id: dk.nikse.subtitleedit
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.dotnet10
+command: SubtitleEdit
+
+# Make the dotnet10 SDK tools available to every module at build time
+build-options:
+  append-path: /usr/lib/sdk/dotnet10/bin
+  append-ld-library-path: /app/lib:/usr/lib/sdk/dotnet10/lib
+  no-debuginfo: true
+  env:
+    PKG_CONFIG_PATH: /app/lib/pkgconfig:/app/share/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig:/usr/lib/sdk/dotnet10/lib/pkgconfig
+
+finish-args:
+  # Display
+  - --share=ipc
+  - --socket=wayland
+  - --socket=x11
+  # Hardware acceleration
+  - --device=dri
+  # File access (subtitle files are typically in the home directory)
+  - --filesystem=home
+  # Mounted drives and network shares (NAS/SMB is a common place for video files).
+  # Direct access avoids the document portal, whose single-file grants strand files
+  # saved with an auto-appended extension as hidden ".xdp-*" temp files (issue #13308)
+  # and add FUSE overhead to video playback.
+  - --filesystem=/mnt
+  - --filesystem=/media
+  - --filesystem=/run/media
+  - --filesystem=xdg-run/gvfs
+  # Network (optional online services: translation, TTS, speech-to-text, etc.)
+  - --share=network
+  # Audio (video playback via mpv)
+  - --socket=pulseaudio
+  # .NET single-file bundle extraction directory (persistent cache)
+  - --env=DOTNET_BUNDLE_EXTRACT_BASE_DIR=/var/cache/.net
+
+cleanup:
+  - '*.la'
+  - '*.a'
+
+modules:
+  # --- libmpv dependencies ---
+
+  - name: harfbuzz
+    buildsystem: meson
+    config-opts:
+      - -Ddocs=disabled
+      - -Dtests=disabled
+      - -Dintrospection=disabled
+      - -Dutilities=disabled
+      - -Dfreetype=enabled
+      - -Dglib=disabled
+      - -Dgobject=disabled
+      - -Dcairo=disabled
+      - -Dicu=disabled
+      - -Dgraphite2=disabled
+      - -Dc_link_args=-lstdc++
+    cleanup:
+      - /bin
+      - /include
+      - /lib/cmake
+      - /lib/libharfbuzz-subset.so*
+      - /lib/pkgconfig/harfbuzz-subset.pc
+      - /share
+    sources:
+      - type: git
+        url: https://github.com/harfbuzz/harfbuzz.git
+        tag: 8.3.1
+        commit: 985366b8b2a4e7e07413af918612334d6764a287
+
+  - name: libass
+    config-opts:
+      - --disable-static
+      - --enable-asm
+      - --enable-fontconfig
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+    sources:
+      - type: git
+        url: https://github.com/libass/libass.git
+        tag: 0.17.4
+        commit: bbb3c7f1570a4a021e52683f3fbdf74fe492ae84
+
+  - name: uchardet
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_STATIC=0
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+    cleanup:
+      - /bin
+      - /include
+      - /lib/pkgconfig
+      - /share/man
+    sources:
+      - type: archive
+        url: https://www.freedesktop.org/software/uchardet/releases/uchardet-0.0.8.tar.xz
+        sha256: e97a60cfc00a1c147a674b097bb1422abd9fa78a2d9ce3f3fdcc2e78a34ac5f0
+
+  - name: libplacebo
+    buildsystem: meson
+    config-opts:
+      - -Dvulkan=enabled
+      - -Dshaderc=enabled
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+    sources:
+      - type: git
+        url: https://github.com/haasn/libplacebo.git
+        tag: v7.360.1
+        commit: cee9b076f2c63104ccfd497fa79c39a867293ec4
+
+  - name: rubberband
+    buildsystem: meson
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+    sources:
+      - type: git
+        url: https://github.com/breakfastquay/rubberband.git
+        tag: v4.0.0
+        commit: 1d95888bec3ae0a17c0c4af791810d5a63f6bc35
+
+  - name: mujs
+    no-autogen: true
+    # VERSION must be passed explicitly: the Makefile derives it from git describe
+    # (no .git in a tarball) or the directory name (flatpak-builder extracts into
+    # /run/build/mujs), so mujs.pc otherwise gets an invalid version and mpv's
+    # meson rejects the dependency.
+    make-args:
+      - release
+      - VERSION=1.3.8
+    make-install-args:
+      - prefix=/app
+      - install-shared
+      - VERSION=1.3.8
+    cleanup:
+      - /bin
+      - /include
+      - /lib/pkgconfig
+    sources:
+      # Official release tarball from the upstream site - the Codeberg git repo
+      # returns intermittent 504s and the GitHub mirror is stale (stops at 1.3.7).
+      - type: archive
+        url: https://mujs.com/downloads/mujs-1.3.8.tar.gz
+        sha256: 506d34882f2620a2fdeb6db63dbb7a8ffd98f417689d8f3c84f2feac275e39a9
+      - type: file
+        url: https://www.unicode.org/Public/16.0.0/ucd/UnicodeData.txt
+        sha256: ff58e5823bd095166564a006e47d111130813dcf8bf234ef79fa51a870edb48f
+      - type: file
+        url: https://www.unicode.org/Public/16.0.0/ucd/SpecialCasing.txt
+        sha256: 8d5de354eef79f2395a54c9c7dcebbaf3d30fc962d0f85611ea97aa973a0c451
+
+  # --- x264 encoder (needed for burn-in, blank video generation) ---
+
+  - name: x264
+    config-opts:
+      - --disable-cli
+      - --enable-shared
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+    sources:
+      - type: git
+        url: https://code.videolan.org/videolan/x264.git
+        commit: 0480cb05fa188d37ae87e8f4fd8f1aea3711f7ee
+
+  # --- ffmpeg with rubberband + x264 + libass (overrides platform ffmpeg) ---
+
+  - name: ffmpeg
+    config-opts:
+      - --disable-debug
+      - --disable-doc
+      - --disable-static
+      - --enable-shared
+      - --enable-gnutls
+      - --enable-gpl
+      - --enable-version3
+      - --enable-libass
+      - --enable-libdav1d
+      - --enable-libfreetype
+      - --enable-libmp3lame
+      - --enable-libopus
+      - --enable-librubberband
+      - --enable-libtheora
+      - --enable-libv4l2
+      - --enable-libvorbis
+      - --enable-libvpx
+      - --enable-libwebp
+      - --enable-libx264
+      - --enable-libxml2
+      - --enable-vulkan
+      - --enable-encoder=png
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /share/ffmpeg/examples
+    sources:
+      - type: git
+        url: https://github.com/FFmpeg/FFmpeg.git
+        tag: n9.0
+        commit: 5b9252abfe2fda0ccb71ed45cd7a954cc45d2b6f
+
+  - name: libXpresent
+    buildsystem: autotools
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+    sources:
+      - type: git
+        url: https://gitlab.freedesktop.org/xorg/lib/libxpresent.git
+        tag: libXpresent-1.0.2
+        commit: 4d92149372461bf575e8a09b1064a2884c38c3aa
+
+  - name: hwdata
+    buildsystem: autotools
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+    sources:
+      - type: archive
+        url: https://github.com/vcrhonek/hwdata/archive/refs/tags/v0.394.tar.gz
+        sha256: b7c3fd7214a3b7c49d2661db127a712dc11cffd1799f793947aa1cb20aaf3298
+
+  - name: libdisplay-info
+    buildsystem: meson
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+    sources:
+      - type: archive
+        url: https://gitlab.freedesktop.org/emersion/libdisplay-info/-/archive/0.2.0/libdisplay-info-0.2.0.tar.gz
+        sha256: f7331fcaf5527251b84c8fb84238d06cd2f458422ce950c80e86c72927aa8c2b
+
+  # --- libmpv (video player library, no standalone player binary needed) ---
+
+  - name: libmpv
+    buildsystem: meson
+    config-opts:
+      - -Dlibmpv=true
+      - -Dcplayer=false
+      - -Dbuild-date=false
+      - -Dmanpage-build=disabled
+      - -Dalsa=disabled
+      - -Djavascript=enabled
+      - -Dlua=disabled
+      - -Dpulse=enabled
+      - -Duchardet=enabled
+      - -Dvulkan=enabled
+      - -Dwayland=enabled
+      - -Dx11=enabled
+      - -Ddrm=enabled
+      - -Degl=enabled
+      - -Degl-drm=enabled
+      - -Degl-wayland=enabled
+      - -Degl-x11=enabled
+      - -Dgl=enabled
+      - -Dgl-x11=enabled
+      - -Dplain-gl=enabled
+      - -Dvaapi=enabled
+      - -Dvdpau=enabled
+      - -Drubberband=enabled
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /share/applications
+      - /share/bash-completion
+      - /share/doc
+      - /share/icons
+      - /share/man
+      - /share/zsh
+    sources:
+      - type: git
+        url: https://github.com/mpv-player/mpv.git
+        tag: v0.41.0
+        commit: 41f6a645068483470267271e1d09966ca3b9f413
+
+  # --- Tesseract OCR (bundled into the sandbox; see issue #11646) ---
+  #
+  # The sandbox has its own /usr, so a Tesseract installed on the host
+  # (e.g. `apt install tesseract-ocr`) is invisible to the Flatpak. We build
+  # Leptonica + Tesseract into /app/bin/tesseract — the path that
+  # TesseractOcr.GetExecutablePath() already probes — and ship the English
+  # language model so OCR works out of the box.
+
+  - name: leptonica
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_SHARED_LIBS=ON
+      - -DBUILD_PROG=OFF
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /lib/cmake
+    sources:
+      - type: archive
+        url: https://github.com/DanBloomberg/leptonica/releases/download/1.85.0/leptonica-1.85.0.tar.gz
+        sha256: 3745ae3bf271a6801a2292eead83ac926e3a9bc1bf622e9cd4dd0f3786e17205
+
+  - name: tesseract
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_SHARED_LIBS=ON
+      - -DBUILD_TRAINING_TOOLS=OFF
+    cleanup:
+      - /include
+      - /lib/pkgconfig
+      - /lib/cmake
+    sources:
+      - type: archive
+        url: https://github.com/tesseract-ocr/tesseract/archive/refs/tags/5.5.1.tar.gz
+        sha256: a7a3f2a7420cb6a6a94d80c24163e183cf1d2f1bed2df3bbc397c81808a57237
+
+  # English language model, pre-downloaded so OCR works out of the box.
+  # The standard tessdata model is used (not tessdata_fast/best) because SE runs
+  # Tesseract with `--oem 3`, which needs both the legacy and LSTM data.
+  - name: tessdata-eng
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 eng.traineddata /app/share/tessdata/eng.traineddata
+    sources:
+      - type: file
+        url: https://github.com/tesseract-ocr/tessdata/raw/4.1.0/eng.traineddata
+        sha256: daa0c97d651c19fba3b25e81317cd697e9908c8208090c94c3905381c23fc047
+
+  # --- CJK fonts (Noto Sans CJK) ---
+  #
+  # The org.freedesktop.Platform runtime ships no CJK fonts, so Korean/Japanese/Chinese UI text
+  # rendered as boxes in the Flatpak build (reported for Korean). On Linux the app forces Inter as
+  # the default UI font and relies on font fallbacks named "Noto Sans CJK KR/JP/SC/TC" etc.
+  # (see Program.cs) - which need the family to actually be present. The portable build works
+  # because it uses the host's fonts; the sandbox has none. Bundle Noto Sans CJK so CJK renders
+  # in-sandbox regardless of the host. fontconfig picks up /app/share/fonts automatically.
+  - name: noto-cjk-fonts
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 NotoSansCJK-Regular.ttc /app/share/fonts/NotoSansCJK-Regular.ttc
+    sources:
+      - type: file
+        url: https://raw.githubusercontent.com/notofonts/noto-cjk/f8d157532fbfaeda587e826d4cd5b21a49186f7c/Sans/OTC/NotoSansCJK-Regular.ttc
+        sha256: b76b0433203017ca80401b2ee0dd69350349871c4b19d504c34dbdd80541690a
+
+  # --- 7-Zip (7zr) ---
+  #
+  # SE unpacks downloaded engines/models from .7z archives. The portable build
+  # extracts a bundled 7zr into the writable app data folder at first use and
+  # executes it from there - which fails on noexec home/data mounts and only
+  # exists for x86_64. Building 7zr into /app/bin gives a read-only,
+  # always-executable binary that Unpacker prefers over the extracted one,
+  # and enables fast .7z extraction on ARM64 too.
+  - name: sevenzip
+    buildsystem: simple
+    build-commands:
+      - make -C CPP/7zip/Bundles/Alone7z -f makefile.gcc
+      - install -Dm755 CPP/7zip/Bundles/Alone7z/_o/7zr /app/bin/7zr
+    sources:
+      - type: archive
+        url: https://github.com/ip7z/7zip/releases/download/25.01/7z2501-src.tar.xz
+        sha256: ed087f83ee789c1ea5f39c464c55a5c9d4008deb0efe900814f2df262b82c36e
+        strip-components: 0
+
+  # --- OpenBLAS (needed by the downloaded CrispASR engines; see issue #12970) ---
+  #
+  # The CrispASR Linux binaries (x86_64 CPU/Vulkan and arm64) are linked against
+  # libopenblas.so.0 but ship only crispasr, crispasr-quantize and libc2pa_c.so.
+  # org.freedesktop.Platform has no OpenBLAS, and the sandbox hides the host /usr,
+  # so speech-to-text died instantly with
+  #   "crispasr: error while loading shared libraries: libopenblas.so.0"
+  # no matter what the user installed on the host. Building it into /app/lib puts it
+  # on the sandbox library path, which the crispasr child process inherits.
+  #
+  # DYNAMIC_ARCH=1 so one build works on every CPU (the runtime baseline is generic);
+  # USE_OPENMP=1 matches the libgomp the engine already links against. crispasr imports
+  # exactly two symbols from this library - cblas_sgemm and openblas_set_num_threads - so
+  # LAPACK/LAPACKE are switched off: they roughly halve the build time and would otherwise
+  # need a Fortran compiler.
+  - name: openblas
+    buildsystem: simple
+    build-commands:
+      - make DYNAMIC_ARCH=1 USE_OPENMP=1 NUM_THREADS=64 NO_STATIC=1 NO_LAPACK=1 NO_LAPACKE=1 -j $FLATPAK_BUILDER_N_JOBS
+      - make PREFIX=/app NO_STATIC=1 NO_LAPACK=1 NO_LAPACKE=1 install
+    cleanup:
+      - /include
+      - /lib/cmake
+      - /lib/pkgconfig
+    sources:
+      - type: archive
+        url: https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.34/OpenBLAS-0.3.34.tar.gz
+        sha256: cd7e129868320cc2d033afa920e31202dfe0b8066a5b66661900ccc0f197dfed
+
+  # --- SubtitleEdit application ---
+
+  - name: subtitleedit
+    buildsystem: simple
+    # Select the correct RID per host architecture
+    build-options:
+      arch:
+        x86_64:
+          env:
+            RUNTIME: linux-x64
+        aarch64:
+          env:
+            RUNTIME: linux-arm64
+    build-commands:
+      # Build and publish from source using the pre-fetched NuGet packages.
+      # --source points to the directory where flatpak-builder staged the .nupkg
+      # files from nuget-sources.json (dest: nuget-sources by default).
+      - |
+        . /usr/lib/sdk/dotnet10/enable.sh
+        dotnet publish src/ui/UI.csproj \
+          --configuration Release \
+          --runtime "$RUNTIME" \
+          --self-contained true \
+          -p:PublishSingleFile=true \
+          -p:RestoreLockedMode=false \
+          -p:DebugSymbols=false \
+          -p:DebugType=none \
+          --source /run/build/subtitleedit/nuget-sources \
+          -o /app/bin
+
+      # Desktop entry
+      - install -Dm644 installer/flatpak/dk.nikse.subtitleedit.desktop /app/share/applications/dk.nikse.subtitleedit.desktop
+
+      # AppStream metainfo
+      - install -Dm644 installer/flatpak/dk.nikse.subtitleedit.metainfo.xml /app/share/metainfo/dk.nikse.subtitleedit.metainfo.xml
+
+      # Icon (256x256 PNG from the source tree)
+      - install -Dm644 src/ui/Assets/SE.png /app/share/icons/hicolor/256x256/apps/dk.nikse.subtitleedit.png
+
+      # MIT license — distribute the project's terms alongside the app (issue #11278).
+      - install -Dm644 LICENSE /app/share/licenses/dk.nikse.subtitleedit/LICENSE
+
+    sources:
+      # Flathub builds from the public repository, pinned to a release tag + commit,
+      # instead of the local "type: dir" checkout the CI manifest uses. Everything else
+      # in this file is identical to ../dk.nikse.subtitleedit.yaml and already validated
+      # by .github/workflows/build-flatpak.yml.
+      #
+      # x-checker-data lets the Flathub external-data-checker bot open a PR bumping
+      # tag/commit automatically when a new matching stable tag is pushed. That PR only
+      # updates the source pin, not nuget-sources.json below, so it still needs a manual
+      # regeneration pass before merging; see ../flathub/README.md.
+      - type: git
+        url: https://github.com/SubtitleEdit/subtitleedit.git
+        tag: v5.0.0
+        commit: a44ffa7025b59f424aa8a5a7ee250ea85c4c1361
+        x-checker-data:
+          type: git
+          tag-pattern: ^v(\d+\.\d+\.\d+)$
+
+      # NuGet packages pre-fetched for the exact commit pinned above.
+      # Regenerate with ./prepare-flathub-release.sh whenever the pin changes.
+      - nuget-sources.json

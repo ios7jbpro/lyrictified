@@ -1,0 +1,2140 @@
+﻿using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Threading;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using Nikse.SubtitleEdit.Core.Common;
+using Nikse.SubtitleEdit.Features.Video.TextToSpeech.Engines;
+using Nikse.SubtitleEdit.Logic.Media;
+using Nikse.SubtitleEdit.Features.Video.TextToSpeech.Voices;
+using Nikse.SubtitleEdit.Logic;
+using Nikse.SubtitleEdit.Logic.Compression;
+using Nikse.SubtitleEdit.Logic.Config;
+using Nikse.SubtitleEdit.Logic.Download;
+using Nikse.SubtitleEdit.UiLogic;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Runtime.InteropServices;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Timers;
+using static Nikse.SubtitleEdit.Features.Video.SpeechToText.SpeechToTextPostProcessor;
+using Timer = System.Timers.Timer;
+
+namespace Nikse.SubtitleEdit.Features.Video.TextToSpeech.DownloadTts;
+
+public partial class DownloadTtsViewModel : ObservableObject
+{
+    internal static IReadOnlyList<(string SourceFilePattern, string LinkFileName)> PiperLinuxSymbolicLinks { get; } =
+        new[]
+        {
+            ("libpiper_phonemize.so.1.*", "libpiper_phonemize.so.1"),
+            ("libespeak-ng.so.1.*", "libespeak-ng.so.1"),
+        };
+
+    public Window? Window { get; set; }
+    public bool OkPressed { get; private set; }
+
+    [ObservableProperty] private string _titleText;
+    [ObservableProperty] private float _progressValue;
+    [ObservableProperty] private string _progressText;
+    [ObservableProperty] private string _error;
+
+    private Task? _downloadTask;
+    private Task? _downloadTaskVoiceModel;
+    private Task? _downloadTaskVoiceConfig;
+    private Task? _downloadTaskQwen3TtsCpp;
+    private Task? _downloadTaskQwen3TtsCppVoices;
+    private Task? _downloadTaskQwen3TtsModels;
+    private Task? _downloadTaskKokoroTtsCpp;
+    private Task? _downloadTaskKokoroTtsModels;
+    private Task? _downloadTaskChatterboxModels;
+    private Task? _downloadTaskQwen3TtsCrispAsrModels;
+    private Task? _downloadTaskQwen3TtsCrispAsrVoices;
+    private Task? _downloadTaskVibeVoiceCrispAsrModels;
+    private Task? _downloadTaskVibeVoiceCrispAsrVoices;
+    private Task? _downloadTaskIndexTtsCrispAsrModels;
+    private Task? _downloadTaskIndexTtsCrispAsrVoices;
+    private Task? _downloadTaskCosyVoice3CrispAsrModels;
+    private Task? _downloadTaskCosyVoice3CrispAsrVoices;
+    private Task? _downloadTaskF5TtsCrispAsrModels;
+    private Task? _downloadTaskF5TtsCrispAsrVoices;
+    private Task? _downloadTaskVoxCPM2CrispAsrModels;
+    private Task? _downloadTaskVoxCPM2CrispAsrVoices;
+    private Task? _downloadTaskMossTtsCrispAsrModels;
+    private Task? _downloadTaskMossTtsCrispAsrVoices;
+    private Task? _downloadTaskOmniVoiceCrispAsrModels;
+    private Task? _downloadTaskZonosTtsCrispAsrModels;
+    private Task? _downloadTaskZonosTtsCrispAsrVoices;
+    private Task? _downloadTaskOmniVoice;
+    private Task? _downloadTaskOmniVoices;
+    private Task? _downloadTaskOmniVoiceModels;
+    private string _omniVoiceVariant = OmniVoiceDownloadService.WindowsVariantVulkan;
+    private string _qwen3TtsCppVariant = Qwen3TtsCppDownloadService.WindowsVariantVulkan;
+    private readonly Timer _timer = new();
+    private volatile bool _isClosing;
+
+    private readonly ITtsDownloadService _ttsDownloadService;
+    private readonly IQwen3TtsCppDownloadService _qwen3TtsCppDownloadService;
+    private readonly IKokoroTtsCppDownloadService _kokoroTtsCppDownloadService;
+    private readonly IChatterboxTtsCppDownloadService _chatterboxTtsCppDownloadService;
+    private readonly IQwen3TtsCrispAsrDownloadService _qwen3TtsCrispAsrDownloadService;
+    private readonly IVibeVoiceCrispAsrDownloadService _vibeVoiceCrispAsrDownloadService;
+    private readonly IIndexTtsCrispAsrDownloadService _indexTtsCrispAsrDownloadService;
+    private readonly ICosyVoice3CrispAsrDownloadService _cosyVoice3CrispAsrDownloadService;
+    private readonly IF5TtsCrispAsrDownloadService _f5TtsCrispAsrDownloadService;
+    private readonly IVoxCPM2CrispAsrDownloadService _voxCPM2CrispAsrDownloadService;
+    private readonly IMossTtsCrispAsrDownloadService _mossTtsCrispAsrDownloadService;
+    private readonly IOmniVoiceCrispAsrDownloadService _omniVoiceCrispAsrDownloadService;
+    private readonly IZonosTtsCrispAsrDownloadService _zonosTtsCrispAsrDownloadService;
+    private readonly IOmniVoiceDownloadService _omniVoiceDownloadService;
+    private readonly CancellationTokenSource _cancellationTokenSource;
+    private readonly MemoryStream _downloadStream;
+    private readonly MemoryStream _downloadStreamModel;
+    private readonly MemoryStream _downloadStreamConfig;
+    private readonly MemoryStream _downloadStreamQwen3TtsCpp;
+    private readonly MemoryStream _downloadStreamQwen3TtsCppVoices;
+    private readonly MemoryStream _downloadStreamKokoroTtsCpp;
+    private readonly MemoryStream _downloadStreamQwen3TtsCrispAsrVoices;
+    private readonly MemoryStream _downloadStreamVibeVoiceCrispAsrVoices;
+    private readonly MemoryStream _downloadStreamIndexTtsCrispAsrVoices;
+    private readonly MemoryStream _downloadStreamCosyVoice3CrispAsrVoices;
+    private readonly MemoryStream _downloadStreamF5TtsCrispAsrVoices;
+    private readonly MemoryStream _downloadStreamVoxCPM2CrispAsrVoices;
+    private readonly MemoryStream _downloadStreamMossTtsCrispAsrVoices;
+    private readonly MemoryStream _downloadStreamZonosTtsCrispAsrVoices;
+    private readonly MemoryStream _downloadStreamOmniVoice;
+    private readonly MemoryStream _downloadStreamOmniVoices;
+    private readonly IZipUnpacker _zipUnpacker;
+    private readonly Lock _lock = new();
+    private string _modelFileName;
+    private string _configFileName;
+
+    public DownloadTtsViewModel(ITtsDownloadService ttsDownloadService, IZipUnpacker zipUnpacker,
+        IQwen3TtsCppDownloadService qwen3TtsCppDownloadService,
+        IKokoroTtsCppDownloadService kokoroTtsCppDownloadService,
+        IChatterboxTtsCppDownloadService chatterboxTtsCppDownloadService,
+        IQwen3TtsCrispAsrDownloadService qwen3TtsCrispAsrDownloadService,
+        IVibeVoiceCrispAsrDownloadService vibeVoiceCrispAsrDownloadService,
+        IIndexTtsCrispAsrDownloadService indexTtsCrispAsrDownloadService,
+        ICosyVoice3CrispAsrDownloadService cosyVoice3CrispAsrDownloadService,
+        IF5TtsCrispAsrDownloadService f5TtsCrispAsrDownloadService,
+        IVoxCPM2CrispAsrDownloadService voxCPM2CrispAsrDownloadService,
+        IMossTtsCrispAsrDownloadService mossTtsCrispAsrDownloadService,
+        IOmniVoiceCrispAsrDownloadService omniVoiceCrispAsrDownloadService,
+        IZonosTtsCrispAsrDownloadService zonosTtsCrispAsrDownloadService,
+        IOmniVoiceDownloadService omniVoiceDownloadService)
+    {
+        _ttsDownloadService = ttsDownloadService;
+        _qwen3TtsCppDownloadService = qwen3TtsCppDownloadService;
+        _kokoroTtsCppDownloadService = kokoroTtsCppDownloadService;
+        _chatterboxTtsCppDownloadService = chatterboxTtsCppDownloadService;
+        _qwen3TtsCrispAsrDownloadService = qwen3TtsCrispAsrDownloadService;
+        _vibeVoiceCrispAsrDownloadService = vibeVoiceCrispAsrDownloadService;
+        _indexTtsCrispAsrDownloadService = indexTtsCrispAsrDownloadService;
+        _cosyVoice3CrispAsrDownloadService = cosyVoice3CrispAsrDownloadService;
+        _f5TtsCrispAsrDownloadService = f5TtsCrispAsrDownloadService;
+        _voxCPM2CrispAsrDownloadService = voxCPM2CrispAsrDownloadService;
+        _mossTtsCrispAsrDownloadService = mossTtsCrispAsrDownloadService;
+        _omniVoiceCrispAsrDownloadService = omniVoiceCrispAsrDownloadService;
+        _zonosTtsCrispAsrDownloadService = zonosTtsCrispAsrDownloadService;
+        _omniVoiceDownloadService = omniVoiceDownloadService;
+        _zipUnpacker = zipUnpacker;
+
+        _cancellationTokenSource = new CancellationTokenSource();
+
+        _downloadStream = new MemoryStream();
+        _downloadStreamModel = new MemoryStream();
+        _downloadStreamConfig = new MemoryStream();
+        _downloadStreamQwen3TtsCpp = new MemoryStream();
+        _downloadStreamQwen3TtsCppVoices = new MemoryStream();
+        _downloadStreamKokoroTtsCpp = new MemoryStream();
+        _downloadStreamQwen3TtsCrispAsrVoices = new MemoryStream();
+        _downloadStreamVibeVoiceCrispAsrVoices = new MemoryStream();
+        _downloadStreamIndexTtsCrispAsrVoices = new MemoryStream();
+        _downloadStreamCosyVoice3CrispAsrVoices = new MemoryStream();
+        _downloadStreamF5TtsCrispAsrVoices = new MemoryStream();
+        _downloadStreamVoxCPM2CrispAsrVoices = new MemoryStream();
+        _downloadStreamMossTtsCrispAsrVoices = new MemoryStream();
+        _downloadStreamZonosTtsCrispAsrVoices = new MemoryStream();
+        _downloadStreamOmniVoice = new MemoryStream();
+        _downloadStreamOmniVoices = new MemoryStream();
+
+        _modelFileName = string.Empty;
+        _configFileName = string.Empty;
+        TitleText = string.Empty;
+
+        ProgressText = Se.Language.General.StartingDotDotDot;
+        Error = string.Empty;
+
+        _timer.Interval = 500;
+        _timer.Elapsed += OnTimerOnElapsed;
+        _timer.Start();
+    }
+
+    private void OnTimerOnElapsed(object? sender, ElapsedEventArgs args)
+    {
+        if (_isClosing)
+        {
+            return;
+        }
+
+        lock (_lock)
+        {
+            if (!_timer.Enabled)
+            {
+                return;
+            }
+
+            if (_downloadTask is { IsCompletedSuccessfully: true })
+            {
+                _timer.Stop();
+
+                if (_downloadStream.Length == 0)
+                {
+                    ProgressText = Se.Language.General.DownloadFailed;
+                    Error = Se.Language.General.NoDataReceived;
+                    return;
+                }
+
+                var folder = Piper.GetSetPiperFolder();
+
+                try
+                {
+                    _downloadStream.Position = 0;
+                    _zipUnpacker.UnpackZipStream(_downloadStream, folder, "piper", false, new List<string>(), null);
+                    WriteInstalledHashSidecar(folder, _downloadStream, DownloadHashManager.ResolvePiperKey());
+                    _downloadStream.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    ProgressText = string.Format(Se.Language.General.UnpackFailed, ex.Message);
+                    Error = ex.Message;
+                    Se.LogError(ex);
+                    return;
+                }
+
+                var path = Piper.GetPiperExecutableFileName();
+                if (OperatingSystem.IsLinux())
+                {
+                    if (File.Exists(path))
+                    {
+                        LinuxHelper.MakeExecutable(path);
+                        FixSymbolicLink(path);
+                    }
+                }
+                else if (OperatingSystem.IsMacOS())
+                {
+                    if (File.Exists(path))
+                    {
+                        MacHelper.MakeExecutable(path);
+                    }
+                }
+
+                OkPressed = true;
+                Close();
+            }
+            else if (_downloadTask is { IsFaulted: true })
+            {
+                _timer.Stop();
+                var ex = _downloadTask.Exception?.InnerException ?? _downloadTask.Exception;
+                if (ex is OperationCanceledException)
+                {
+                    ProgressText = Se.Language.General.DownloadCanceled;
+                    Close();
+                }
+                else
+                {
+                    ProgressText = Se.Language.General.DownloadFailed;
+                    Error = ex?.Message ?? Se.Language.General.UnknownError;
+                }
+            }
+
+            if (_downloadTaskVoiceModel is { IsCompletedSuccessfully: true } && _downloadTaskVoiceConfig is { IsCompletedSuccessfully: true })
+            {
+                _timer.Stop();
+
+                if (_downloadStreamModel.Length == 0)
+                {
+                    ProgressText = Se.Language.General.DownloadFailed;
+                    Error = Se.Language.General.NoDataReceived;
+                    return;
+                }
+
+                _downloadStreamModel.Position = 0;
+                File.WriteAllBytes(_modelFileName, _downloadStreamModel.ToArray());
+                _downloadStreamModel.Dispose();
+
+                if (_downloadStreamConfig.Length == 0)
+                {
+                    ProgressText = Se.Language.General.DownloadFailed;
+                    Error = Se.Language.General.NoDataReceived;
+                    return;
+                }
+
+                _downloadStreamConfig.Position = 0;
+                File.WriteAllBytes(_configFileName, _downloadStreamConfig.ToArray());
+                _downloadStreamConfig.Dispose();
+                OkPressed = true;
+                Close();
+            }
+            else if (_downloadTaskVoiceModel is { IsFaulted: true })
+            {
+                _timer.Stop();
+                var ex = _downloadTaskVoiceModel.Exception?.InnerException ?? _downloadTaskVoiceModel.Exception;
+                if (ex is OperationCanceledException)
+                {
+                    ProgressText = Se.Language.General.DownloadCanceled;
+                    Close();
+                }
+                else
+                {
+                    ProgressText = Se.Language.General.DownloadFailed;
+                    Error = ex?.Message ?? Se.Language.General.UnknownError;
+                }
+            }
+
+            if (_downloadTaskVoiceConfig is { IsFaulted: true })
+            {
+                _timer.Stop();
+                var ex = _downloadTaskVoiceConfig.Exception?.InnerException ?? _downloadTaskVoiceConfig.Exception;
+                if (ex is OperationCanceledException)
+                {
+                    ProgressText = Se.Language.General.DownloadCanceled;
+                    Close();
+                }
+                else
+                {
+                    ProgressText = Se.Language.General.DownloadFailed;
+                    Error = ex?.Message ?? Se.Language.General.UnknownError;
+                }
+            }
+
+            if (_downloadTaskQwen3TtsCpp is { IsCompletedSuccessfully: true })
+            {
+                _timer.Stop();
+
+                if (_downloadStreamQwen3TtsCpp.Length == 0)
+                {
+                    ProgressText = Se.Language.General.DownloadFailed;
+                    Error = Se.Language.General.NoDataReceived;
+                    return;
+                }
+
+                var folder = Qwen3TtsCpp.GetSetFolder();
+                try
+                {
+                    _downloadStreamQwen3TtsCpp.Position = 0;
+                    _zipUnpacker.UnpackZipStream(_downloadStreamQwen3TtsCpp, folder, string.Empty, false, new List<string>(), null);
+                    WriteInstalledHashSidecar(folder, _downloadStreamQwen3TtsCpp, DownloadHashManager.ResolveQwen3TtsCppKey(_qwen3TtsCppVariant));
+                    _downloadStreamQwen3TtsCpp.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    ProgressText = string.Format(Se.Language.General.UnpackFailed, ex.Message);
+                    Error = ex.Message;
+                    Se.LogError(ex);
+                    return;
+                }
+
+                var exePath = Qwen3TtsCpp.GetExecutableFileName();
+                if (OperatingSystem.IsLinux())
+                {
+                    if (File.Exists(exePath))
+                    {
+                        LinuxHelper.MakeExecutable(exePath);
+                    }
+                }
+                else if (OperatingSystem.IsMacOS())
+                {
+                    if (File.Exists(exePath))
+                    {
+                        MacHelper.MakeExecutable(exePath);
+                    }
+                }
+
+                _downloadTaskQwen3TtsCpp = null;
+
+                // Chain the voices download, unless the user already has voices installed.
+                var voicesFolder = Qwen3TtsCpp.GetSetVoicesFolder();
+                var voicesAlreadyInstalled = Directory.Exists(voicesFolder) &&
+                                             Directory.EnumerateFiles(voicesFolder, "*.wav").Any();
+                if (voicesAlreadyInstalled)
+                {
+                    OkPressed = true;
+                    Close();
+                    return;
+                }
+
+                TitleText = string.Format(Se.Language.General.DownloadingX, "Qwen3 TTS voices");
+                ProgressValue = 0;
+                ProgressText = Se.Language.General.StartingDotDotDot;
+                var voicesProgress = new Progress<float>(number =>
+                {
+                    var percentage = (int)Math.Round(number * 100.0, MidpointRounding.AwayFromZero);
+                    var pctString = percentage.ToString(CultureInfo.InvariantCulture);
+                    ProgressValue = percentage;
+                    ProgressText = string.Format(Se.Language.General.DownloadingXPercent, pctString);
+                });
+                _downloadTaskQwen3TtsCppVoices = _qwen3TtsCppDownloadService.DownloadVoices(
+                    _downloadStreamQwen3TtsCppVoices, voicesProgress, _cancellationTokenSource.Token);
+                if (!_isClosing)
+                {
+                    _timer.Start();
+                }
+            }
+            else if (_downloadTaskQwen3TtsCpp is { IsFaulted: true })
+            {
+                _timer.Stop();
+                var ex = _downloadTaskQwen3TtsCpp.Exception?.InnerException ?? _downloadTaskQwen3TtsCpp.Exception;
+                if (ex is OperationCanceledException)
+                {
+                    ProgressText = Se.Language.General.DownloadCanceled;
+                    Close();
+                }
+                else
+                {
+                    ProgressText = Se.Language.General.DownloadFailed;
+                    Error = ex?.Message ?? Se.Language.General.UnknownError;
+                }
+            }
+
+            if (_downloadTaskQwen3TtsCppVoices is { IsCompletedSuccessfully: true })
+            {
+                _timer.Stop();
+
+                if (_downloadStreamQwen3TtsCppVoices.Length > 0)
+                {
+                    var voicesFolder = Qwen3TtsCpp.GetSetVoicesFolder();
+                    try
+                    {
+                        _downloadStreamQwen3TtsCppVoices.Position = 0;
+                        _zipUnpacker.UnpackZipStream(_downloadStreamQwen3TtsCppVoices, voicesFolder, string.Empty, false, new List<string>(), null);
+                        WriteInstalledHashSidecar(voicesFolder, _downloadStreamQwen3TtsCppVoices, DownloadHashManager.Qwen3TtsCpp.Voices);
+                    }
+                    catch (Exception ex)
+                    {
+                        // Voices are optional; log and continue so the engine is still usable.
+                        Se.LogError(ex);
+                    }
+                    _downloadStreamQwen3TtsCppVoices.Dispose();
+                }
+
+                OkPressed = true;
+                Close();
+            }
+            else if (_downloadTaskQwen3TtsCppVoices is { IsFaulted: true })
+            {
+                _timer.Stop();
+                var ex = _downloadTaskQwen3TtsCppVoices.Exception?.InnerException ?? _downloadTaskQwen3TtsCppVoices.Exception;
+                if (ex is OperationCanceledException)
+                {
+                    ProgressText = Se.Language.General.DownloadCanceled;
+                    Close();
+                    return;
+                }
+
+                // Voices are optional — the engine is already installed. Log and close with success.
+                if (ex != null)
+                {
+                    Se.LogError(ex);
+                }
+                OkPressed = true;
+                Close();
+            }
+
+            if (_downloadTaskQwen3TtsModels is { IsCompletedSuccessfully: true })
+            {
+                _timer.Stop();
+                OkPressed = true;
+                Close();
+            }
+            else if (_downloadTaskQwen3TtsModels is { IsFaulted: true })
+            {
+                _timer.Stop();
+                var ex = _downloadTaskQwen3TtsModels.Exception?.InnerException ?? _downloadTaskQwen3TtsModels.Exception;
+                if (ex is OperationCanceledException)
+                {
+                    ProgressText = Se.Language.General.DownloadCanceled;
+                    Close();
+                }
+                else
+                {
+                    ProgressText = Se.Language.General.DownloadFailed;
+                    Error = ex?.Message ?? Se.Language.General.UnknownError;
+                }
+            }
+
+            if (_downloadTaskKokoroTtsCpp is { IsCompletedSuccessfully: true })
+            {
+                _timer.Stop();
+
+                if (_downloadStreamKokoroTtsCpp.Length == 0)
+                {
+                    ProgressText = Se.Language.General.DownloadFailed;
+                    Error = Se.Language.General.NoDataReceived;
+                    return;
+                }
+
+                var folder = KokoroTtsCpp.GetSetFolder();
+                try
+                {
+                    _downloadStreamKokoroTtsCpp.Position = 0;
+                    _zipUnpacker.UnpackZipStream(_downloadStreamKokoroTtsCpp, folder, string.Empty, false, new List<string>(), null);
+                    WriteInstalledHashSidecar(folder, _downloadStreamKokoroTtsCpp, DownloadHashManager.ResolveKokoroTtsCppKey());
+                    _downloadStreamKokoroTtsCpp.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    ProgressText = string.Format(Se.Language.General.UnpackFailed, ex.Message);
+                    Error = ex.Message;
+                    Se.LogError(ex);
+                    return;
+                }
+
+                var exePath = KokoroTtsCpp.GetExecutableFileName();
+                if (OperatingSystem.IsLinux())
+                {
+                    if (File.Exists(exePath))
+                    {
+                        LinuxHelper.MakeExecutable(exePath);
+                    }
+                }
+                else if (OperatingSystem.IsMacOS())
+                {
+                    if (File.Exists(exePath))
+                    {
+                        MacHelper.MakeExecutable(exePath);
+                    }
+                }
+
+                _downloadTaskKokoroTtsCpp = null;
+                OkPressed = true;
+                Close();
+            }
+            else if (_downloadTaskKokoroTtsCpp is { IsFaulted: true })
+            {
+                _timer.Stop();
+                var ex = _downloadTaskKokoroTtsCpp.Exception?.InnerException ?? _downloadTaskKokoroTtsCpp.Exception;
+                if (ex is OperationCanceledException)
+                {
+                    ProgressText = Se.Language.General.DownloadCanceled;
+                    Close();
+                }
+                else
+                {
+                    ProgressText = Se.Language.General.DownloadFailed;
+                    Error = ex?.Message ?? Se.Language.General.UnknownError;
+                }
+            }
+
+            if (_downloadTaskKokoroTtsModels is { IsCompletedSuccessfully: true })
+            {
+                _timer.Stop();
+                OkPressed = true;
+                Close();
+            }
+            else if (_downloadTaskKokoroTtsModels is { IsFaulted: true })
+            {
+                _timer.Stop();
+                var ex = _downloadTaskKokoroTtsModels.Exception?.InnerException ?? _downloadTaskKokoroTtsModels.Exception;
+                if (ex is OperationCanceledException)
+                {
+                    ProgressText = Se.Language.General.DownloadCanceled;
+                    Close();
+                }
+                else
+                {
+                    ProgressText = Se.Language.General.DownloadFailed;
+                    Error = ex?.Message ?? Se.Language.General.UnknownError;
+                }
+            }
+
+            if (_downloadTaskChatterboxModels is { IsCompletedSuccessfully: true })
+            {
+                _timer.Stop();
+                OkPressed = true;
+                Close();
+            }
+            else if (_downloadTaskChatterboxModels is { IsFaulted: true })
+            {
+                _timer.Stop();
+                var ex = _downloadTaskChatterboxModels.Exception?.InnerException ?? _downloadTaskChatterboxModels.Exception;
+                if (ex is OperationCanceledException)
+                {
+                    ProgressText = Se.Language.General.DownloadCanceled;
+                    Close();
+                }
+                else
+                {
+                    ProgressText = Se.Language.General.DownloadFailed;
+                    Error = ex?.Message ?? Se.Language.General.UnknownError;
+                }
+            }
+
+            if (_downloadTaskQwen3TtsCrispAsrModels is { IsCompletedSuccessfully: true })
+            {
+                _timer.Stop();
+                _downloadTaskQwen3TtsCrispAsrModels = null;
+
+                // Chain the voices download, unless the user already has voices installed.
+                // Qwen3TtsCrispAsr.GetSetVoicesFolder lazily seeds from qwen3-tts.cpp's
+                // voices folder if any exist there, so users who already have them get
+                // skipped automatically.
+                var voicesFolder = Qwen3TtsCrispAsr.GetSetVoicesFolder();
+                var voicesAlreadyInstalled = Directory.Exists(voicesFolder) &&
+                                             Directory.EnumerateFiles(voicesFolder, "*.wav").Any();
+                if (voicesAlreadyInstalled)
+                {
+                    OkPressed = true;
+                    Close();
+                    return;
+                }
+
+                TitleText = string.Format(Se.Language.General.DownloadingX, "Qwen3 TTS (CrispASR) voices");
+                ProgressValue = 0;
+                ProgressText = Se.Language.General.StartingDotDotDot;
+                var voicesProgress = new Progress<float>(number =>
+                {
+                    var percentage = (int)Math.Round(number * 100.0, MidpointRounding.AwayFromZero);
+                    var pctString = percentage.ToString(CultureInfo.InvariantCulture);
+                    ProgressValue = percentage;
+                    ProgressText = string.Format(Se.Language.General.DownloadingXPercent, pctString);
+                });
+                // Same voices.zip as qwen3-tts.cpp (22.05 kHz WAV + .txt sidecars). Reuse
+                // the Qwen3 TTS .cpp download service rather than adding a second copy of the
+                // URL/hash; the WAVs are resampled to 24 kHz after extraction below since the
+                // CrispASR qwen3-tts backend rejects any other rate.
+                _downloadTaskQwen3TtsCrispAsrVoices = _qwen3TtsCppDownloadService.DownloadVoices(
+                    _downloadStreamQwen3TtsCrispAsrVoices, voicesProgress, _cancellationTokenSource.Token);
+                _timer.Start();
+            }
+            else if (_downloadTaskQwen3TtsCrispAsrModels is { IsFaulted: true })
+            {
+                _timer.Stop();
+                var ex = _downloadTaskQwen3TtsCrispAsrModels.Exception?.InnerException ?? _downloadTaskQwen3TtsCrispAsrModels.Exception;
+                if (ex is OperationCanceledException)
+                {
+                    ProgressText = Se.Language.General.DownloadCanceled;
+                    Close();
+                }
+                else
+                {
+                    ProgressText = Se.Language.General.DownloadFailed;
+                    Error = ex?.Message ?? Se.Language.General.UnknownError;
+                }
+            }
+
+            if (_downloadTaskQwen3TtsCrispAsrVoices is { IsCompletedSuccessfully: true })
+            {
+                _timer.Stop();
+
+                if (_downloadStreamQwen3TtsCrispAsrVoices.Length > 0)
+                {
+                    var voicesFolder = Qwen3TtsCrispAsr.GetSetVoicesFolder();
+                    try
+                    {
+                        _downloadStreamQwen3TtsCrispAsrVoices.Position = 0;
+                        _zipUnpacker.UnpackZipStream(_downloadStreamQwen3TtsCrispAsrVoices, voicesFolder, string.Empty, false, new List<string>(), null);
+                        // The pack ships 22.05 kHz WAVs but the qwen3-tts backend strictly
+                        // requires 24 kHz (otherwise it drops the voice prompt and returns
+                        // empty audio), so bring every reference WAV up to 24 kHz mono.
+                        ResampleVoicesTo24kHz(voicesFolder);
+                        // The pack ships attribution-blurb .txt files, not spoken transcriptions.
+                        // Drop those (the Base backend would load them as ref-text → off-voice
+                        // output) and fill real transcripts from the OmniVoice pack where it has
+                        // the same voice. Runs here explicitly since the normalize-once pass in
+                        // GetSetVoicesFolder above fires before this extraction.
+                        Qwen3TtsCrispAsr.NormalizeVoiceTranscripts(voicesFolder);
+                        WriteInstalledHashSidecar(voicesFolder, _downloadStreamQwen3TtsCrispAsrVoices, DownloadHashManager.Qwen3TtsCpp.Voices);
+                    }
+                    catch (Exception ex)
+                    {
+                        // Voices are optional; log and continue so the engine is still usable.
+                        Se.LogError(ex);
+                    }
+                    _downloadStreamQwen3TtsCrispAsrVoices.Dispose();
+                }
+
+                OkPressed = true;
+                Close();
+            }
+            else if (_downloadTaskQwen3TtsCrispAsrVoices is { IsFaulted: true })
+            {
+                _timer.Stop();
+                if (_cancellationTokenSource.IsCancellationRequested)
+                {
+                    ProgressText = Se.Language.General.DownloadCanceled;
+                    Close();
+                    return;
+                }
+
+                // Voices are optional — the models are already installed. Log and close with success.
+                var ex = _downloadTaskQwen3TtsCrispAsrVoices.Exception?.InnerException ?? _downloadTaskQwen3TtsCrispAsrVoices.Exception;
+                if (ex != null)
+                {
+                    Se.LogError(ex);
+                }
+                OkPressed = true;
+                Close();
+            }
+
+            if (_downloadTaskVibeVoiceCrispAsrModels is { IsCompletedSuccessfully: true })
+            {
+                _timer.Stop();
+                _downloadTaskVibeVoiceCrispAsrModels = null;
+
+                // Chain voices download if the engine's folder is still empty after the
+                // lazy seed from qwen3-tts.cpp (user never installed Qwen3, etc.). Same
+                // voices.zip the Qwen3 (CrispASR) flow uses — single source of truth.
+                var voicesFolder = VibeVoiceCrispAsr.GetSetVoicesFolder();
+                var voicesAlreadyInstalled = Directory.Exists(voicesFolder)
+                    && Directory.EnumerateFiles(voicesFolder, "*.wav").Any();
+                if (voicesAlreadyInstalled)
+                {
+                    OkPressed = true;
+                    Close();
+                    return;
+                }
+
+                TitleText = string.Format(Se.Language.General.DownloadingX, "VibeVoice (CrispASR) voices");
+                ProgressValue = 0;
+                ProgressText = Se.Language.General.StartingDotDotDot;
+                var voicesProgress = new Progress<float>(number =>
+                {
+                    var percentage = (int)Math.Round(number * 100.0, MidpointRounding.AwayFromZero);
+                    var pctString = percentage.ToString(CultureInfo.InvariantCulture);
+                    ProgressValue = percentage;
+                    ProgressText = string.Format(Se.Language.General.DownloadingXPercent, pctString);
+                });
+                _downloadTaskVibeVoiceCrispAsrVoices = _qwen3TtsCppDownloadService.DownloadVoices(
+                    _downloadStreamVibeVoiceCrispAsrVoices, voicesProgress, _cancellationTokenSource.Token);
+                _timer.Start();
+            }
+            else if (_downloadTaskVibeVoiceCrispAsrModels is { IsFaulted: true })
+            {
+                _timer.Stop();
+                var ex = _downloadTaskVibeVoiceCrispAsrModels.Exception?.InnerException ?? _downloadTaskVibeVoiceCrispAsrModels.Exception;
+                if (ex is OperationCanceledException)
+                {
+                    ProgressText = Se.Language.General.DownloadCanceled;
+                    Close();
+                }
+                else
+                {
+                    ProgressText = Se.Language.General.DownloadFailed;
+                    Error = ex?.Message ?? Se.Language.General.UnknownError;
+                }
+            }
+
+            if (_downloadTaskVibeVoiceCrispAsrVoices is { IsCompletedSuccessfully: true })
+            {
+                _timer.Stop();
+                if (_downloadStreamVibeVoiceCrispAsrVoices.Length > 0)
+                {
+                    var voicesFolder = VibeVoiceCrispAsr.GetSetVoicesFolder();
+                    try
+                    {
+                        _downloadStreamVibeVoiceCrispAsrVoices.Position = 0;
+                        _zipUnpacker.UnpackZipStream(_downloadStreamVibeVoiceCrispAsrVoices, voicesFolder, string.Empty, false, new List<string>(), null);
+                        // Voice pack ships at 16 kHz; resample to 24 kHz so VibeVoice's
+                        // server doesn't have to upsample on every synth call.
+                        ResampleVoicesTo24kHz(voicesFolder);
+                    }
+                    catch (Exception ex)
+                    {
+                        // Voices are optional — log and continue so the engine is still usable.
+                        Se.LogError(ex);
+                    }
+                    _downloadStreamVibeVoiceCrispAsrVoices.Dispose();
+                }
+                OkPressed = true;
+                Close();
+            }
+            else if (_downloadTaskVibeVoiceCrispAsrVoices is { IsFaulted: true })
+            {
+                _timer.Stop();
+                if (_cancellationTokenSource.IsCancellationRequested)
+                {
+                    ProgressText = Se.Language.General.DownloadCanceled;
+                    Close();
+                    return;
+                }
+                // Voices are optional — log and close with success.
+                var ex = _downloadTaskVibeVoiceCrispAsrVoices.Exception?.InnerException ?? _downloadTaskVibeVoiceCrispAsrVoices.Exception;
+                if (ex != null)
+                {
+                    Se.LogError(ex);
+                }
+                OkPressed = true;
+                Close();
+            }
+
+            if (_downloadTaskIndexTtsCrispAsrModels is { IsCompletedSuccessfully: true })
+            {
+                _timer.Stop();
+                _downloadTaskIndexTtsCrispAsrModels = null;
+
+                var voicesFolder = IndexTtsCrispAsr.GetSetVoicesFolder();
+                var voicesAlreadyInstalled = Directory.Exists(voicesFolder)
+                    && Directory.EnumerateFiles(voicesFolder, "*.wav").Any();
+                if (voicesAlreadyInstalled)
+                {
+                    OkPressed = true;
+                    Close();
+                    return;
+                }
+
+                TitleText = string.Format(Se.Language.General.DownloadingX, "IndexTTS (CrispASR) voices");
+                ProgressValue = 0;
+                ProgressText = Se.Language.General.StartingDotDotDot;
+                var voicesProgress = new Progress<float>(number =>
+                {
+                    var percentage = (int)Math.Round(number * 100.0, MidpointRounding.AwayFromZero);
+                    var pctString = percentage.ToString(CultureInfo.InvariantCulture);
+                    ProgressValue = percentage;
+                    ProgressText = string.Format(Se.Language.General.DownloadingXPercent, pctString);
+                });
+                _downloadTaskIndexTtsCrispAsrVoices = _qwen3TtsCppDownloadService.DownloadVoices(
+                    _downloadStreamIndexTtsCrispAsrVoices, voicesProgress, _cancellationTokenSource.Token);
+                _timer.Start();
+            }
+            else if (_downloadTaskIndexTtsCrispAsrModels is { IsFaulted: true })
+            {
+                _timer.Stop();
+                var ex = _downloadTaskIndexTtsCrispAsrModels.Exception?.InnerException ?? _downloadTaskIndexTtsCrispAsrModels.Exception;
+                if (ex is OperationCanceledException)
+                {
+                    ProgressText = Se.Language.General.DownloadCanceled;
+                    Close();
+                }
+                else
+                {
+                    ProgressText = Se.Language.General.DownloadFailed;
+                    Error = ex?.Message ?? Se.Language.General.UnknownError;
+                }
+            }
+
+            if (_downloadTaskIndexTtsCrispAsrVoices is { IsCompletedSuccessfully: true })
+            {
+                _timer.Stop();
+                if (_downloadStreamIndexTtsCrispAsrVoices.Length > 0)
+                {
+                    var voicesFolder = IndexTtsCrispAsr.GetSetVoicesFolder();
+                    try
+                    {
+                        _downloadStreamIndexTtsCrispAsrVoices.Position = 0;
+                        _zipUnpacker.UnpackZipStream(_downloadStreamIndexTtsCrispAsrVoices, voicesFolder, string.Empty, false, new List<string>(), null);
+                        ResampleVoicesTo24kHz(voicesFolder);
+                    }
+                    catch (Exception ex)
+                    {
+                        Se.LogError(ex);
+                    }
+                    _downloadStreamIndexTtsCrispAsrVoices.Dispose();
+                }
+                OkPressed = true;
+                Close();
+            }
+            else if (_downloadTaskIndexTtsCrispAsrVoices is { IsFaulted: true })
+            {
+                _timer.Stop();
+                if (_cancellationTokenSource.IsCancellationRequested)
+                {
+                    ProgressText = Se.Language.General.DownloadCanceled;
+                    Close();
+                    return;
+                }
+                var ex = _downloadTaskIndexTtsCrispAsrVoices.Exception?.InnerException ?? _downloadTaskIndexTtsCrispAsrVoices.Exception;
+                if (ex != null)
+                {
+                    Se.LogError(ex);
+                }
+                OkPressed = true;
+                Close();
+            }
+
+            if (_downloadTaskZonosTtsCrispAsrModels is { IsCompletedSuccessfully: true })
+            {
+                _timer.Stop();
+                _downloadTaskZonosTtsCrispAsrModels = null;
+
+                var voicesFolder = ZonosTtsCrispAsr.GetSetVoicesFolder();
+                var voicesAlreadyInstalled = Directory.Exists(voicesFolder)
+                    && Directory.EnumerateFiles(voicesFolder, "*.wav").Any();
+                if (voicesAlreadyInstalled)
+                {
+                    OkPressed = true;
+                    Close();
+                    return;
+                }
+
+                TitleText = string.Format(Se.Language.General.DownloadingX, "Zonos TTS (CrispASR) voices");
+                ProgressValue = 0;
+                ProgressText = Se.Language.General.StartingDotDotDot;
+                var voicesProgress = new Progress<float>(number =>
+                {
+                    var percentage = (int)Math.Round(number * 100.0, MidpointRounding.AwayFromZero);
+                    var pctString = percentage.ToString(CultureInfo.InvariantCulture);
+                    ProgressValue = percentage;
+                    ProgressText = string.Format(Se.Language.General.DownloadingXPercent, pctString);
+                });
+                _downloadTaskZonosTtsCrispAsrVoices = _qwen3TtsCppDownloadService.DownloadVoices(
+                    _downloadStreamZonosTtsCrispAsrVoices, voicesProgress, _cancellationTokenSource.Token);
+                _timer.Start();
+            }
+            else if (_downloadTaskZonosTtsCrispAsrModels is { IsFaulted: true })
+            {
+                _timer.Stop();
+                var ex = _downloadTaskZonosTtsCrispAsrModels.Exception?.InnerException ?? _downloadTaskZonosTtsCrispAsrModels.Exception;
+                if (ex is OperationCanceledException)
+                {
+                    ProgressText = Se.Language.General.DownloadCanceled;
+                    Close();
+                }
+                else
+                {
+                    ProgressText = Se.Language.General.DownloadFailed;
+                    Error = ex?.Message ?? Se.Language.General.UnknownError;
+                }
+            }
+
+            if (_downloadTaskZonosTtsCrispAsrVoices is { IsCompletedSuccessfully: true })
+            {
+                _timer.Stop();
+                if (_downloadStreamZonosTtsCrispAsrVoices.Length > 0)
+                {
+                    var voicesFolder = ZonosTtsCrispAsr.GetSetVoicesFolder();
+                    try
+                    {
+                        _downloadStreamZonosTtsCrispAsrVoices.Position = 0;
+                        _zipUnpacker.UnpackZipStream(_downloadStreamZonosTtsCrispAsrVoices, voicesFolder, string.Empty, false, new List<string>(), null);
+                        ResampleVoicesTo24kHz(voicesFolder);
+                    }
+                    catch (Exception ex)
+                    {
+                        Se.LogError(ex);
+                    }
+                    _downloadStreamZonosTtsCrispAsrVoices.Dispose();
+                }
+                OkPressed = true;
+                Close();
+            }
+            else if (_downloadTaskZonosTtsCrispAsrVoices is { IsFaulted: true })
+            {
+                _timer.Stop();
+                if (_cancellationTokenSource.IsCancellationRequested)
+                {
+                    ProgressText = Se.Language.General.DownloadCanceled;
+                    Close();
+                    return;
+                }
+                var ex = _downloadTaskZonosTtsCrispAsrVoices.Exception?.InnerException ?? _downloadTaskZonosTtsCrispAsrVoices.Exception;
+                if (ex != null)
+                {
+                    Se.LogError(ex);
+                }
+                OkPressed = true;
+                Close();
+            }
+
+            // CosyVoice3 supports both baked presets (8 voices in cosyvoice3-voices.gguf, which
+            // CosyVoice3CrispAsrDownloadService stages with the rest of the bundle) AND zero-shot
+            // cloning from user-supplied 16 kHz WAVs. After the model bundle finishes, chain the
+            // qwen3-tts.cpp voice pack ZIP so the user has the shared reference WAVs available
+            // without a second manual download step. Baked presets work regardless of this step.
+            // OmniVoice (CrispASR) is model-only: the backend ships a usable built-in voice,
+            // so there is no voices ZIP to fetch afterwards the way CosyVoice3/VoxCPM2 need.
+            if (_downloadTaskOmniVoiceCrispAsrModels is { IsCompletedSuccessfully: true })
+            {
+                _timer.Stop();
+                _downloadTaskOmniVoiceCrispAsrModels = null;
+                OkPressed = true;
+                Close();
+                return;
+            }
+            else if (_downloadTaskOmniVoiceCrispAsrModels is { IsFaulted: true })
+            {
+                _timer.Stop();
+                var ex = _downloadTaskOmniVoiceCrispAsrModels.Exception?.InnerException ?? _downloadTaskOmniVoiceCrispAsrModels.Exception;
+                if (ex is OperationCanceledException)
+                {
+                    ProgressText = Se.Language.General.DownloadCanceled;
+                    Close();
+                }
+                else
+                {
+                    ProgressText = Se.Language.General.DownloadFailed;
+                    Error = ex?.Message ?? Se.Language.General.UnknownError;
+                }
+            }
+
+            if (_downloadTaskCosyVoice3CrispAsrModels is { IsCompletedSuccessfully: true })
+            {
+                _timer.Stop();
+                _downloadTaskCosyVoice3CrispAsrModels = null;
+
+                var voicesFolder = CosyVoice3CrispAsr.GetSetVoicesFolder();
+                var voicesAlreadyInstalled = Directory.Exists(voicesFolder)
+                    && Directory.EnumerateFiles(voicesFolder, "*.wav").Any();
+                if (voicesAlreadyInstalled)
+                {
+                    OkPressed = true;
+                    Close();
+                    return;
+                }
+
+                TitleText = string.Format(Se.Language.General.DownloadingX, "CosyVoice3 (CrispASR) voices");
+                ProgressValue = 0;
+                ProgressText = Se.Language.General.StartingDotDotDot;
+                var voicesProgress = new Progress<float>(number =>
+                {
+                    var percentage = (int)Math.Round(number * 100.0, MidpointRounding.AwayFromZero);
+                    var pctString = percentage.ToString(CultureInfo.InvariantCulture);
+                    ProgressValue = percentage;
+                    ProgressText = string.Format(Se.Language.General.DownloadingXPercent, pctString);
+                });
+                _downloadTaskCosyVoice3CrispAsrVoices = _qwen3TtsCppDownloadService.DownloadVoices(
+                    _downloadStreamCosyVoice3CrispAsrVoices, voicesProgress, _cancellationTokenSource.Token);
+                _timer.Start();
+            }
+            else if (_downloadTaskCosyVoice3CrispAsrModels is { IsFaulted: true })
+            {
+                _timer.Stop();
+                var ex = _downloadTaskCosyVoice3CrispAsrModels.Exception?.InnerException ?? _downloadTaskCosyVoice3CrispAsrModels.Exception;
+                if (ex is OperationCanceledException)
+                {
+                    ProgressText = Se.Language.General.DownloadCanceled;
+                    Close();
+                }
+                else
+                {
+                    ProgressText = Se.Language.General.DownloadFailed;
+                    Error = ex?.Message ?? Se.Language.General.UnknownError;
+                }
+            }
+
+            if (_downloadTaskCosyVoice3CrispAsrVoices is { IsCompletedSuccessfully: true })
+            {
+                _timer.Stop();
+                if (_downloadStreamCosyVoice3CrispAsrVoices.Length > 0)
+                {
+                    var voicesFolder = CosyVoice3CrispAsr.GetSetVoicesFolder();
+                    try
+                    {
+                        _downloadStreamCosyVoice3CrispAsrVoices.Position = 0;
+                        _zipUnpacker.UnpackZipStream(_downloadStreamCosyVoice3CrispAsrVoices, voicesFolder, string.Empty, false, new List<string>(), null);
+                        ResampleVoicesTo16kHz(voicesFolder);
+                    }
+                    catch (Exception ex)
+                    {
+                        Se.LogError(ex);
+                    }
+                    _downloadStreamCosyVoice3CrispAsrVoices.Dispose();
+                }
+                OkPressed = true;
+                Close();
+            }
+            else if (_downloadTaskCosyVoice3CrispAsrVoices is { IsFaulted: true })
+            {
+                _timer.Stop();
+                if (_cancellationTokenSource.IsCancellationRequested)
+                {
+                    ProgressText = Se.Language.General.DownloadCanceled;
+                    Close();
+                    return;
+                }
+                var ex = _downloadTaskCosyVoice3CrispAsrVoices.Exception?.InnerException ?? _downloadTaskCosyVoice3CrispAsrVoices.Exception;
+                if (ex != null)
+                {
+                    Se.LogError(ex);
+                }
+                OkPressed = true;
+                Close();
+            }
+
+            // F5-TTS mirrors IndexTTS: model first, then a voices ZIP from the shared
+            // qwen3-tts.cpp voice pack (same 24 kHz mono format F5-TTS wants).
+            if (_downloadTaskF5TtsCrispAsrModels is { IsCompletedSuccessfully: true })
+            {
+                _timer.Stop();
+                _downloadTaskF5TtsCrispAsrModels = null;
+
+                var voicesFolder = F5TtsCrispAsr.GetSetVoicesFolder();
+                var voicesAlreadyInstalled = Directory.Exists(voicesFolder)
+                    && Directory.EnumerateFiles(voicesFolder, "*.wav").Any();
+                if (voicesAlreadyInstalled)
+                {
+                    OkPressed = true;
+                    Close();
+                    return;
+                }
+
+                TitleText = string.Format(Se.Language.General.DownloadingX, "F5-TTS (CrispASR) voices");
+                ProgressValue = 0;
+                ProgressText = Se.Language.General.StartingDotDotDot;
+                var voicesProgress = new Progress<float>(number =>
+                {
+                    var percentage = (int)Math.Round(number * 100.0, MidpointRounding.AwayFromZero);
+                    var pctString = percentage.ToString(CultureInfo.InvariantCulture);
+                    ProgressValue = percentage;
+                    ProgressText = string.Format(Se.Language.General.DownloadingXPercent, pctString);
+                });
+                _downloadTaskF5TtsCrispAsrVoices = _qwen3TtsCppDownloadService.DownloadVoices(
+                    _downloadStreamF5TtsCrispAsrVoices, voicesProgress, _cancellationTokenSource.Token);
+                _timer.Start();
+            }
+            else if (_downloadTaskF5TtsCrispAsrModels is { IsFaulted: true })
+            {
+                _timer.Stop();
+                var ex = _downloadTaskF5TtsCrispAsrModels.Exception?.InnerException ?? _downloadTaskF5TtsCrispAsrModels.Exception;
+                if (ex is OperationCanceledException)
+                {
+                    ProgressText = Se.Language.General.DownloadCanceled;
+                    Close();
+                }
+                else
+                {
+                    ProgressText = Se.Language.General.DownloadFailed;
+                    Error = ex?.Message ?? Se.Language.General.UnknownError;
+                }
+            }
+
+            if (_downloadTaskF5TtsCrispAsrVoices is { IsCompletedSuccessfully: true })
+            {
+                _timer.Stop();
+                if (_downloadStreamF5TtsCrispAsrVoices.Length > 0)
+                {
+                    var voicesFolder = F5TtsCrispAsr.GetSetVoicesFolder();
+                    try
+                    {
+                        _downloadStreamF5TtsCrispAsrVoices.Position = 0;
+                        _zipUnpacker.UnpackZipStream(_downloadStreamF5TtsCrispAsrVoices, voicesFolder, string.Empty, false, new List<string>(), null);
+                        ResampleVoicesTo24kHz(voicesFolder);
+                    }
+                    catch (Exception ex)
+                    {
+                        Se.LogError(ex);
+                    }
+                    _downloadStreamF5TtsCrispAsrVoices.Dispose();
+                }
+                OkPressed = true;
+                Close();
+            }
+            else if (_downloadTaskF5TtsCrispAsrVoices is { IsFaulted: true })
+            {
+                _timer.Stop();
+                if (_cancellationTokenSource.IsCancellationRequested)
+                {
+                    ProgressText = Se.Language.General.DownloadCanceled;
+                    Close();
+                    return;
+                }
+                var ex = _downloadTaskF5TtsCrispAsrVoices.Exception?.InnerException ?? _downloadTaskF5TtsCrispAsrVoices.Exception;
+                if (ex != null)
+                {
+                    Se.LogError(ex);
+                }
+                OkPressed = true;
+                Close();
+            }
+
+            // VoxCPM2 mirrors F5-TTS: model first, then a voices ZIP from the shared
+            // qwen3-tts.cpp voice pack (same 24 kHz mono format the cloning backends want).
+            if (_downloadTaskVoxCPM2CrispAsrModels is { IsCompletedSuccessfully: true })
+            {
+                _timer.Stop();
+                _downloadTaskVoxCPM2CrispAsrModels = null;
+
+                var voicesFolder = VoxCPM2CrispAsr.GetSetVoicesFolder();
+                var voicesAlreadyInstalled = Directory.Exists(voicesFolder)
+                    && Directory.EnumerateFiles(voicesFolder, "*.wav").Any();
+                if (voicesAlreadyInstalled)
+                {
+                    OkPressed = true;
+                    Close();
+                    return;
+                }
+
+                TitleText = string.Format(Se.Language.General.DownloadingX, "VoxCPM2 (CrispASR) voices");
+                ProgressValue = 0;
+                ProgressText = Se.Language.General.StartingDotDotDot;
+                var voicesProgress = new Progress<float>(number =>
+                {
+                    var percentage = (int)Math.Round(number * 100.0, MidpointRounding.AwayFromZero);
+                    var pctString = percentage.ToString(CultureInfo.InvariantCulture);
+                    ProgressValue = percentage;
+                    ProgressText = string.Format(Se.Language.General.DownloadingXPercent, pctString);
+                });
+                _downloadTaskVoxCPM2CrispAsrVoices = _qwen3TtsCppDownloadService.DownloadVoices(
+                    _downloadStreamVoxCPM2CrispAsrVoices, voicesProgress, _cancellationTokenSource.Token);
+                _timer.Start();
+            }
+            else if (_downloadTaskVoxCPM2CrispAsrModels is { IsFaulted: true })
+            {
+                _timer.Stop();
+                var ex = _downloadTaskVoxCPM2CrispAsrModels.Exception?.InnerException ?? _downloadTaskVoxCPM2CrispAsrModels.Exception;
+                if (ex is OperationCanceledException)
+                {
+                    ProgressText = Se.Language.General.DownloadCanceled;
+                    Close();
+                }
+                else
+                {
+                    ProgressText = Se.Language.General.DownloadFailed;
+                    Error = ex?.Message ?? Se.Language.General.UnknownError;
+                }
+            }
+
+            if (_downloadTaskVoxCPM2CrispAsrVoices is { IsCompletedSuccessfully: true })
+            {
+                _timer.Stop();
+                if (_downloadStreamVoxCPM2CrispAsrVoices.Length > 0)
+                {
+                    var voicesFolder = VoxCPM2CrispAsr.GetSetVoicesFolder();
+                    try
+                    {
+                        _downloadStreamVoxCPM2CrispAsrVoices.Position = 0;
+                        _zipUnpacker.UnpackZipStream(_downloadStreamVoxCPM2CrispAsrVoices, voicesFolder, string.Empty, false, new List<string>(), null);
+                        ResampleVoicesTo24kHz(voicesFolder);
+                    }
+                    catch (Exception ex)
+                    {
+                        Se.LogError(ex);
+                    }
+                    _downloadStreamVoxCPM2CrispAsrVoices.Dispose();
+                }
+                OkPressed = true;
+                Close();
+            }
+            else if (_downloadTaskVoxCPM2CrispAsrVoices is { IsFaulted: true })
+            {
+                _timer.Stop();
+                if (_cancellationTokenSource.IsCancellationRequested)
+                {
+                    ProgressText = Se.Language.General.DownloadCanceled;
+                    Close();
+                    return;
+                }
+                var ex = _downloadTaskVoxCPM2CrispAsrVoices.Exception?.InnerException ?? _downloadTaskVoxCPM2CrispAsrVoices.Exception;
+                if (ex != null)
+                {
+                    Se.LogError(ex);
+                }
+                OkPressed = true;
+                Close();
+            }
+
+            // MOSS-TTS mirrors VoxCPM2: model first, then a voices ZIP from the shared
+            // qwen3-tts.cpp voice pack (same 24 kHz mono format the cloning backends want).
+            if (_downloadTaskMossTtsCrispAsrModels is { IsCompletedSuccessfully: true })
+            {
+                _timer.Stop();
+                _downloadTaskMossTtsCrispAsrModels = null;
+
+                var voicesFolder = MossTtsCrispAsr.GetSetVoicesFolder();
+                var voicesAlreadyInstalled = Directory.Exists(voicesFolder)
+                    && Directory.EnumerateFiles(voicesFolder, "*.wav").Any();
+                if (voicesAlreadyInstalled)
+                {
+                    OkPressed = true;
+                    Close();
+                    return;
+                }
+
+                TitleText = string.Format(Se.Language.General.DownloadingX, "MOSS-TTS (CrispASR) voices");
+                ProgressValue = 0;
+                ProgressText = Se.Language.General.StartingDotDotDot;
+                var voicesProgress = new Progress<float>(number =>
+                {
+                    var percentage = (int)Math.Round(number * 100.0, MidpointRounding.AwayFromZero);
+                    var pctString = percentage.ToString(CultureInfo.InvariantCulture);
+                    ProgressValue = percentage;
+                    ProgressText = string.Format(Se.Language.General.DownloadingXPercent, pctString);
+                });
+                _downloadTaskMossTtsCrispAsrVoices = _qwen3TtsCppDownloadService.DownloadVoices(
+                    _downloadStreamMossTtsCrispAsrVoices, voicesProgress, _cancellationTokenSource.Token);
+                _timer.Start();
+            }
+            else if (_downloadTaskMossTtsCrispAsrModels is { IsFaulted: true })
+            {
+                _timer.Stop();
+                var ex = _downloadTaskMossTtsCrispAsrModels.Exception?.InnerException ?? _downloadTaskMossTtsCrispAsrModels.Exception;
+                if (ex is OperationCanceledException)
+                {
+                    ProgressText = Se.Language.General.DownloadCanceled;
+                    Close();
+                }
+                else
+                {
+                    ProgressText = Se.Language.General.DownloadFailed;
+                    Error = ex?.Message ?? Se.Language.General.UnknownError;
+                }
+            }
+
+            if (_downloadTaskMossTtsCrispAsrVoices is { IsCompletedSuccessfully: true })
+            {
+                _timer.Stop();
+                if (_downloadStreamMossTtsCrispAsrVoices.Length > 0)
+                {
+                    var voicesFolder = MossTtsCrispAsr.GetSetVoicesFolder();
+                    try
+                    {
+                        _downloadStreamMossTtsCrispAsrVoices.Position = 0;
+                        _zipUnpacker.UnpackZipStream(_downloadStreamMossTtsCrispAsrVoices, voicesFolder, string.Empty, false, new List<string>(), null);
+                        ResampleVoicesTo24kHz(voicesFolder);
+                    }
+                    catch (Exception ex)
+                    {
+                        Se.LogError(ex);
+                    }
+                    _downloadStreamMossTtsCrispAsrVoices.Dispose();
+                }
+                OkPressed = true;
+                Close();
+            }
+            else if (_downloadTaskMossTtsCrispAsrVoices is { IsFaulted: true })
+            {
+                _timer.Stop();
+                if (_cancellationTokenSource.IsCancellationRequested)
+                {
+                    ProgressText = Se.Language.General.DownloadCanceled;
+                    Close();
+                    return;
+                }
+                var ex = _downloadTaskMossTtsCrispAsrVoices.Exception?.InnerException ?? _downloadTaskMossTtsCrispAsrVoices.Exception;
+                if (ex != null)
+                {
+                    Se.LogError(ex);
+                }
+                OkPressed = true;
+                Close();
+            }
+
+            if (_downloadTaskOmniVoice is { IsCompletedSuccessfully: true })
+            {
+                _timer.Stop();
+
+                if (_downloadStreamOmniVoice.Length == 0)
+                {
+                    ProgressText = Se.Language.General.DownloadFailed;
+                    Error = Se.Language.General.NoDataReceived;
+                    return;
+                }
+
+                var folder = OmniVoiceTtsCpp.GetSetFolder();
+                try
+                {
+                    _downloadStreamOmniVoice.Position = 0;
+                    // The macOS and Linux OmniVoice zips wrap the binaries in a top-level
+                    // folder (e.g. "omnivoice-macos-universal-cpu-metal/"), while the Windows
+                    // zips are flat. Flatten on non-Windows so the binaries land directly in
+                    // the OmniVoice folder where GetExecutableFileName() looks for them.
+                    var flatten = !Configuration.IsRunningOnWindows;
+                    _zipUnpacker.UnpackZipStream(_downloadStreamOmniVoice, folder, string.Empty, flatten, new List<string>(), null);
+                    WriteInstalledHashSidecar(folder, _downloadStreamOmniVoice, DownloadHashManager.ResolveOmniVoiceKey(_omniVoiceVariant));
+                    _downloadStreamOmniVoice.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    ProgressText = string.Format(Se.Language.General.UnpackFailed, ex.Message);
+                    Error = ex.Message;
+                    Se.LogError(ex);
+                    return;
+                }
+
+                var exePath = OmniVoiceTtsCpp.GetExecutableFileName();
+                var codecExePath = OmniVoiceTtsCpp.GetCodecExecutableFileName();
+                if (OperatingSystem.IsLinux())
+                {
+                    if (File.Exists(exePath))
+                    {
+                        LinuxHelper.MakeExecutable(exePath);
+                    }
+                    if (File.Exists(codecExePath))
+                    {
+                        LinuxHelper.MakeExecutable(codecExePath);
+                    }
+                }
+                else if (OperatingSystem.IsMacOS())
+                {
+                    if (File.Exists(exePath))
+                    {
+                        MacHelper.MakeExecutable(exePath);
+                    }
+                    if (File.Exists(codecExePath))
+                    {
+                        MacHelper.MakeExecutable(codecExePath);
+                    }
+                }
+
+                _downloadTaskOmniVoice = null;
+
+                // Chain the voices download, unless the user already has voices installed.
+                var voicesFolder = OmniVoiceTtsCpp.GetSetVoicesFolder();
+                var voicesAlreadyInstalled = Directory.Exists(voicesFolder) &&
+                                             Directory.EnumerateFiles(voicesFolder, "*.wav").Any();
+                if (voicesAlreadyInstalled)
+                {
+                    OkPressed = true;
+                    Close();
+                    return;
+                }
+
+                TitleText = string.Format(Se.Language.General.DownloadingX, "OmniVoice TTS voices");
+                ProgressValue = 0;
+                ProgressText = Se.Language.General.StartingDotDotDot;
+                var voicesProgress = new Progress<float>(number =>
+                {
+                    var percentage = (int)Math.Round(number * 100.0, MidpointRounding.AwayFromZero);
+                    var pctString = percentage.ToString(CultureInfo.InvariantCulture);
+                    ProgressValue = percentage;
+                    ProgressText = string.Format(Se.Language.General.DownloadingXPercent, pctString);
+                });
+                _downloadTaskOmniVoices = _omniVoiceDownloadService.DownloadVoices(
+                    _downloadStreamOmniVoices, voicesProgress, _cancellationTokenSource.Token);
+                _timer.Start();
+            }
+            else if (_downloadTaskOmniVoice is { IsFaulted: true })
+            {
+                _timer.Stop();
+                var ex = _downloadTaskOmniVoice.Exception?.InnerException ?? _downloadTaskOmniVoice.Exception;
+                if (ex is OperationCanceledException)
+                {
+                    ProgressText = Se.Language.General.DownloadCanceled;
+                    Close();
+                }
+                else
+                {
+                    ProgressText = Se.Language.General.DownloadFailed;
+                    Error = ex?.Message ?? Se.Language.General.UnknownError;
+                }
+            }
+
+            if (_downloadTaskOmniVoices is { IsCompletedSuccessfully: true })
+            {
+                _timer.Stop();
+
+                if (_downloadStreamOmniVoices.Length > 0)
+                {
+                    var voicesFolder = OmniVoiceTtsCpp.GetSetVoicesFolder();
+                    try
+                    {
+                        _downloadStreamOmniVoices.Position = 0;
+                        _zipUnpacker.UnpackZipStream(_downloadStreamOmniVoices, voicesFolder, string.Empty, false, new List<string>(), null);
+                        WriteInstalledHashSidecar(voicesFolder, _downloadStreamOmniVoices, DownloadHashManager.OmniVoice.Voices);
+                    }
+                    catch (Exception ex)
+                    {
+                        // Voices are optional; log and continue so the engine is still usable.
+                        Se.LogError(ex);
+                    }
+                    _downloadStreamOmniVoices.Dispose();
+                }
+
+                OkPressed = true;
+                Close();
+            }
+            else if (_downloadTaskOmniVoices is { IsFaulted: true })
+            {
+                _timer.Stop();
+                var ex = _downloadTaskOmniVoices.Exception?.InnerException ?? _downloadTaskOmniVoices.Exception;
+                if (ex is OperationCanceledException)
+                {
+                    ProgressText = Se.Language.General.DownloadCanceled;
+                    Close();
+                    return;
+                }
+
+                // Voices are optional — the engine is already installed. Log and close with success.
+                if (ex != null)
+                {
+                    Se.LogError(ex);
+                }
+                OkPressed = true;
+                Close();
+            }
+
+            if (_downloadTaskOmniVoiceModels is { IsCompletedSuccessfully: true })
+            {
+                _timer.Stop();
+                OkPressed = true;
+                Close();
+            }
+            else if (_downloadTaskOmniVoiceModels is { IsFaulted: true })
+            {
+                _timer.Stop();
+                var ex = _downloadTaskOmniVoiceModels.Exception?.InnerException ?? _downloadTaskOmniVoiceModels.Exception;
+                if (ex is OperationCanceledException)
+                {
+                    ProgressText = Se.Language.General.DownloadCanceled;
+                    Close();
+                }
+                else
+                {
+                    ProgressText = Se.Language.General.DownloadFailed;
+                    Error = ex?.Message ?? Se.Language.General.UnknownError;
+                }
+            }
+        }
+    }
+
+    private static void FixSymbolicLink(string path)
+    {
+        var folder = Path.GetDirectoryName(path);
+        if (string.IsNullOrEmpty(folder))
+        {
+            Se.LogError("FixSymbolicLink: Failed to get folder from path: " + path);
+            return;
+        }
+
+        foreach (var link in PiperLinuxSymbolicLinks)
+        {
+            var sourcePath = FindSymbolicLinkSource(folder, link.SourceFilePattern);
+            if (sourcePath == null)
+            {
+                Se.LogError("Source library file not found: " + Path.Combine(folder, link.SourceFilePattern));
+                continue;
+            }
+
+            var linkPath = Path.Combine(folder, link.LinkFileName);
+            CreateSymbolicLink(sourcePath, linkPath);
+        }
+    }
+
+    internal static string? FindSymbolicLinkSource(string folder, string sourceFilePattern)
+    {
+        return Directory
+            .GetFiles(folder, sourceFilePattern)
+            .OrderByDescending(Path.GetFileName, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault();
+    }
+
+    private static void CreateSymbolicLink(string sourcePath, string linkPath)
+    {
+        try
+        {
+            var processStartInfo = CreateSymbolicLinkProcessStartInfo(sourcePath, linkPath);
+            using var process = Process.Start(processStartInfo);
+
+            if (process == null)
+            {
+                Se.LogError("Error creating symlink: Could not start /bin/bash");
+                return;
+            }
+
+            var error = process.StandardError.ReadToEnd();
+            process.WaitForExit();
+
+            if (process.ExitCode != 0)
+            {
+                Se.LogError($"Error creating symlink: {error}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Se.LogError(ex);
+        }
+    }
+
+    internal static ProcessStartInfo CreateSymbolicLinkProcessStartInfo(string sourcePath, string linkPath)
+    {
+        var processStartInfo = new ProcessStartInfo
+        {
+            FileName = "/bin/bash",
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+
+        processStartInfo.ArgumentList.Add("-c");
+        processStartInfo.ArgumentList.Add($"ln -sfn -- {QuoteForBash(sourcePath)} {QuoteForBash(linkPath)}");
+        return processStartInfo;
+    }
+
+    private static string QuoteForBash(string value)
+    {
+        return "'" + value.Replace("'", "'\"'\"'") + "'";
+    }
+
+    // In-place resample of every WAV in <paramref name="folder"/> to 24 kHz mono. The shared
+    // qwen3-tts.cpp voice pack ships at 16 kHz; VibeVoice and IndexTTS clone at 24 kHz so
+    // crispasr would otherwise upsample on every synth (audibly lossy and a bit slower).
+    // Best-effort per file: on ffmpeg failure we leave the original 16 kHz WAV in place
+    // rather than dropping the voice entirely.
+    private static void ResampleVoicesTo24kHz(string folder)
+    {
+        if (!Directory.Exists(folder))
+        {
+            return;
+        }
+
+        foreach (var wav in Directory.GetFiles(folder, "*.wav"))
+        {
+            var temp = wav + ".24k.wav";
+            var consumed = false;
+            try
+            {
+                var ffmpeg = FfmpegGenerator.ConvertToMono24kHzWav(wav, temp);
+                if (!ffmpeg.Start())
+                {
+                    continue;
+                }
+                ffmpeg.WaitForExit();
+                if (File.Exists(temp) && new FileInfo(temp).Length > 0)
+                {
+                    File.Delete(wav);
+                    File.Move(temp, wav);
+                    consumed = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Se.LogError(ex, $"Resample voice to 24 kHz failed for '{wav}'; leaving original in place");
+            }
+            finally
+            {
+                // Cover every non-success exit path: ffmpeg crashed, produced a 0-byte file,
+                // or threw during the rename. Without this an accumulating set of *.24k.wav
+                // temp files would slowly clutter the voices folder and bloat .zip / sync
+                // backups.
+                if (!consumed && File.Exists(temp))
+                {
+                    try { File.Delete(temp); } catch { /* leave it; not worth retrying */ }
+                }
+            }
+        }
+    }
+
+    // Same shape as ResampleVoicesTo24kHz but targets 16 kHz — CosyVoice3's s3tok speech
+    // tokenizer expects 16 kHz mono and resamples internally on every synth call otherwise.
+    // Best-effort per file: on ffmpeg failure we leave the original WAV in place.
+    private static void ResampleVoicesTo16kHz(string folder)
+    {
+        if (!Directory.Exists(folder))
+        {
+            return;
+        }
+
+        foreach (var wav in Directory.GetFiles(folder, "*.wav"))
+        {
+            var temp = wav + ".16k.wav";
+            var consumed = false;
+            try
+            {
+                var ffmpeg = FfmpegGenerator.ConvertToMono16kHzWav(wav, temp);
+                if (!ffmpeg.Start())
+                {
+                    continue;
+                }
+                ffmpeg.WaitForExit();
+                if (File.Exists(temp) && new FileInfo(temp).Length > 0)
+                {
+                    File.Delete(wav);
+                    File.Move(temp, wav);
+                    consumed = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Se.LogError(ex, $"Resample voice to 16 kHz failed for '{wav}'; leaving original in place");
+            }
+            finally
+            {
+                if (!consumed && File.Exists(temp))
+                {
+                    try { File.Delete(temp); } catch { /* leave it; not worth retrying */ }
+                }
+            }
+        }
+    }
+
+    // Records the downloaded archive's hash in a .installed.sha256 sidecar so SE can later tell
+    // whether the install is outdated (see DownloadHashManager.GetStatus). Best-effort - failure
+    // is swallowed because the engine itself is already on disk and usable without the sidecar.
+    private static void WriteInstalledHashSidecar(string folder, Stream archiveStream, string? key)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(key) || archiveStream.Length == 0)
+            {
+                return;
+            }
+
+            archiveStream.Position = 0;
+            var hash = Sha256Util.ComputeSha256(archiveStream);
+
+            var sidecar = Path.Combine(folder, ".installed.sha256");
+            File.WriteAllText(sidecar, key + Environment.NewLine + hash);
+        }
+        catch
+        {
+            // ignore - hash sidecar is best-effort
+        }
+    }
+
+    private void Close()
+    {
+        Dispatcher.UIThread.Invoke(() => { Window?.Close(); });
+    }
+
+    [RelayCommand]
+    public void Cancel()
+    {
+        _cancellationTokenSource.Cancel();
+        Close();
+    }
+
+    public void StartDownloadPiper()
+    {
+        TitleText = string.Format(Se.Language.General.DownloadingX, "Piper");
+
+        var downloadProgress = new Progress<float>(number =>
+        {
+            var percentage = (int)Math.Round(number * 100.0, MidpointRounding.AwayFromZero);
+            var pctString = percentage.ToString(CultureInfo.InvariantCulture);
+            ProgressValue = percentage;
+            ProgressText = string.Format(Se.Language.General.DownloadingXPercent, pctString);
+        });
+
+        _downloadTask =
+            _ttsDownloadService.DownloadPiper(_downloadStream, downloadProgress, _cancellationTokenSource.Token);
+    }
+
+    public void StartDownloadPiperVoice(PiperVoice piperVoice)
+    {
+        TitleText = string.Format(Se.Language.General.DownloadingX, $"voice: {piperVoice.Voice}");
+
+        var folder = Piper.GetSetPiperFolder();
+        _modelFileName = Path.Combine(folder, piperVoice.ModelShort);
+        _configFileName = Path.Combine(folder, piperVoice.ConfigShort);
+
+        var modelUrl = piperVoice.Model;
+        var configUrl = piperVoice.Config;
+
+        var downloadProgress = new Progress<float>(number =>
+        {
+            var percentage = (int)Math.Round(number * 100.0, MidpointRounding.AwayFromZero);
+            var pctString = percentage.ToString(CultureInfo.InvariantCulture);
+            ProgressValue = percentage;
+            ProgressText = string.Format(Se.Language.General.DownloadingXPercent, pctString);
+        });
+        var downloadProgressNull = new Progress<float>(_ => { });
+
+        _downloadTaskVoiceModel = _ttsDownloadService.DownloadPiperVoice(modelUrl, _downloadStreamModel,
+            downloadProgress, _cancellationTokenSource.Token);
+        _downloadTaskVoiceConfig = _ttsDownloadService.DownloadPiperVoice(configUrl, _downloadStreamConfig,
+            downloadProgressNull, _cancellationTokenSource.Token);
+    }
+
+    public void StartDownloadQwen3TtsCpp(string windowsVariant = Qwen3TtsCppDownloadService.WindowsVariantVulkan)
+    {
+        _qwen3TtsCppVariant = windowsVariant;
+
+        TitleText = Configuration.IsRunningOnWindows
+            ? string.Format(Se.Language.General.DownloadingX, $"Qwen3 TTS ({windowsVariant})")
+            : string.Format(Se.Language.General.DownloadingX, "Qwen3 TTS");
+
+        var downloadProgress = new Progress<float>(number =>
+        {
+            var percentage = (int)Math.Round(number * 100.0, MidpointRounding.AwayFromZero);
+            var pctString = percentage.ToString(CultureInfo.InvariantCulture);
+            ProgressValue = percentage;
+            ProgressText = string.Format(Se.Language.General.DownloadingXPercent, pctString);
+        });
+
+        _downloadTaskQwen3TtsCpp =
+            _qwen3TtsCppDownloadService.DownloadEngine(_downloadStreamQwen3TtsCpp, windowsVariant, downloadProgress, _cancellationTokenSource.Token);
+    }
+
+    public void StartDownloadQwen3TtsModels(string? modelKey = null)
+    {
+        var ttsModelFileName = Qwen3TtsCpp.GetModelFileName(Qwen3TtsCpp.ResolveModelKey(modelKey));
+        TitleText = string.Format(Se.Language.General.DownloadingX, $"Qwen3 TTS models ({ttsModelFileName})");
+
+        var downloadProgress = new Progress<float>(number =>
+        {
+            var percentage = (int)Math.Round(number * 100.0, MidpointRounding.AwayFromZero);
+            var pctString = percentage.ToString(CultureInfo.InvariantCulture);
+            ProgressValue = percentage;
+            ProgressText = string.Format(Se.Language.General.DownloadingXPercent, pctString);
+        });
+
+        var titleProgress = new Action<string>(title =>
+        {
+            Dispatcher.UIThread.Post(() => TitleText = title);
+        });
+
+        _downloadTaskQwen3TtsModels =
+            _qwen3TtsCppDownloadService.DownloadModels(Qwen3TtsCpp.GetSetModelsFolder(), ttsModelFileName, downloadProgress, titleProgress, _cancellationTokenSource.Token);
+    }
+
+    public void StartDownloadKokoroTtsCpp()
+    {
+        TitleText = string.Format(Se.Language.General.DownloadingX, "Kokoro TTS");
+
+        var downloadProgress = new Progress<float>(number =>
+        {
+            var percentage = (int)Math.Round(number * 100.0, MidpointRounding.AwayFromZero);
+            var pctString = percentage.ToString(CultureInfo.InvariantCulture);
+            ProgressValue = percentage;
+            ProgressText = string.Format(Se.Language.General.DownloadingXPercent, pctString);
+        });
+
+        _downloadTaskKokoroTtsCpp =
+            _kokoroTtsCppDownloadService.DownloadEngine(_downloadStreamKokoroTtsCpp, downloadProgress, _cancellationTokenSource.Token);
+    }
+
+    public void StartDownloadKokoroTtsModels()
+    {
+        TitleText = string.Format(Se.Language.General.DownloadingX, "Kokoro TTS models (~380 MB)");
+
+        var downloadProgress = new Progress<float>(number =>
+        {
+            var percentage = (int)Math.Round(number * 100.0, MidpointRounding.AwayFromZero);
+            var pctString = percentage.ToString(CultureInfo.InvariantCulture);
+            ProgressValue = percentage;
+            ProgressText = string.Format(Se.Language.General.DownloadingXPercent, pctString);
+        });
+
+        var titleProgress = new Action<string>(title =>
+        {
+            Dispatcher.UIThread.Post(() => TitleText = title);
+        });
+
+        _downloadTaskKokoroTtsModels =
+            _kokoroTtsCppDownloadService.DownloadModels(KokoroTtsCpp.GetSetModelsFolder(), downloadProgress, titleProgress, _cancellationTokenSource.Token);
+    }
+
+    public void StartDownloadChatterboxModels(string? modelKey = null)
+    {
+        var resolved = ChatterboxTtsCppDownloadService.ResolveModelKey(modelKey);
+        var sizeText = resolved == ChatterboxTtsCppDownloadService.ModelKeyTurbo ? "~1 GB" : "~990 MB";
+        TitleText = string.Format(Se.Language.General.DownloadingX, $"Chatterbox TTS {resolved} models ({sizeText})");
+
+        var downloadProgress = new Progress<float>(number =>
+        {
+            var percentage = (int)Math.Round(number * 100.0, MidpointRounding.AwayFromZero);
+            var pctString = percentage.ToString(CultureInfo.InvariantCulture);
+            ProgressValue = percentage;
+            ProgressText = string.Format(Se.Language.General.DownloadingXPercent, pctString);
+        });
+
+        var titleProgress = new Action<string>(title =>
+        {
+            Dispatcher.UIThread.Post(() => TitleText = title);
+        });
+
+        _downloadTaskChatterboxModels =
+            _chatterboxTtsCppDownloadService.DownloadModels(ChatterboxTtsCpp.GetSetModelsFolder(), resolved, downloadProgress, titleProgress, _cancellationTokenSource.Token);
+    }
+
+    public void StartDownloadQwen3TtsCrispAsrModels(string? modelKey = null)
+    {
+        var resolved = Qwen3TtsCrispAsr.ResolveModelKey(modelKey);
+        var talkerFileName = Qwen3TtsCrispAsr.GetTalkerFileName(resolved);
+        TitleText = string.Format(Se.Language.General.DownloadingX, $"Qwen3 TTS (CrispASR) models ({resolved}): {talkerFileName}");
+
+        var downloadProgress = new Progress<float>(number =>
+        {
+            var percentage = (int)Math.Round(number * 100.0, MidpointRounding.AwayFromZero);
+            var pctString = percentage.ToString(CultureInfo.InvariantCulture);
+            ProgressValue = percentage;
+            ProgressText = string.Format(Se.Language.General.DownloadingXPercent, pctString);
+        });
+
+        var titleProgress = new Action<string>(title =>
+        {
+            Dispatcher.UIThread.Post(() => TitleText = title);
+        });
+
+        _downloadTaskQwen3TtsCrispAsrModels =
+            _qwen3TtsCrispAsrDownloadService.DownloadModels(Qwen3TtsCrispAsr.GetSetModelsFolder(), resolved, downloadProgress, titleProgress, _cancellationTokenSource.Token);
+    }
+
+    public void StartDownloadVibeVoiceCrispAsrModels(string? modelKey = null)
+    {
+        var resolved = VibeVoiceCrispAsr.ResolveModelKey(modelKey);
+        var talkerFileName = VibeVoiceCrispAsr.GetTalkerFileName(resolved);
+        TitleText = string.Format(Se.Language.General.DownloadingX, $"VibeVoice (CrispASR) model ({resolved}): {talkerFileName}");
+
+        var downloadProgress = new Progress<float>(number =>
+        {
+            var percentage = (int)Math.Round(number * 100.0, MidpointRounding.AwayFromZero);
+            var pctString = percentage.ToString(CultureInfo.InvariantCulture);
+            ProgressValue = percentage;
+            ProgressText = string.Format(Se.Language.General.DownloadingXPercent, pctString);
+        });
+
+        var titleProgress = new Action<string>(title =>
+        {
+            Dispatcher.UIThread.Post(() => TitleText = title);
+        });
+
+        _downloadTaskVibeVoiceCrispAsrModels =
+            _vibeVoiceCrispAsrDownloadService.DownloadModels(VibeVoiceCrispAsr.GetSetModelsFolder(), resolved, downloadProgress, titleProgress, _cancellationTokenSource.Token);
+    }
+
+    public void StartDownloadIndexTtsCrispAsrModels(string? modelKey = null)
+    {
+        var resolved = IndexTtsCrispAsr.ResolveModelKey(modelKey);
+        var talkerFileName = IndexTtsCrispAsr.GetTalkerFileName(resolved);
+        TitleText = string.Format(Se.Language.General.DownloadingX, $"IndexTTS (CrispASR) models ({resolved}): {talkerFileName}");
+
+        var downloadProgress = new Progress<float>(number =>
+        {
+            var percentage = (int)Math.Round(number * 100.0, MidpointRounding.AwayFromZero);
+            var pctString = percentage.ToString(CultureInfo.InvariantCulture);
+            ProgressValue = percentage;
+            ProgressText = string.Format(Se.Language.General.DownloadingXPercent, pctString);
+        });
+
+        var titleProgress = new Action<string>(title =>
+        {
+            Dispatcher.UIThread.Post(() => TitleText = title);
+        });
+
+        _downloadTaskIndexTtsCrispAsrModels =
+            _indexTtsCrispAsrDownloadService.DownloadModels(IndexTtsCrispAsr.GetSetModelsFolder(), resolved, downloadProgress, titleProgress, _cancellationTokenSource.Token);
+    }
+
+    public void StartDownloadZonosTtsCrispAsrModels()
+    {
+        TitleText = string.Format(Se.Language.General.DownloadingX, $"Zonos TTS (CrispASR) models: {ZonosTtsCrispAsr.TalkerFileName}");
+
+        var downloadProgress = new Progress<float>(number =>
+        {
+            var percentage = (int)Math.Round(number * 100.0, MidpointRounding.AwayFromZero);
+            var pctString = percentage.ToString(CultureInfo.InvariantCulture);
+            ProgressValue = percentage;
+            ProgressText = string.Format(Se.Language.General.DownloadingXPercent, pctString);
+        });
+
+        var titleProgress = new Action<string>(title =>
+        {
+            Dispatcher.UIThread.Post(() => TitleText = title);
+        });
+
+        _downloadTaskZonosTtsCrispAsrModels =
+            _zonosTtsCrispAsrDownloadService.DownloadModels(ZonosTtsCrispAsr.GetSetModelsFolder(), downloadProgress, titleProgress, _cancellationTokenSource.Token);
+    }
+
+    public void StartDownloadCosyVoice3CrispAsrModels(string? modelKey = null)
+    {
+        var resolved = CosyVoice3CrispAsr.ResolveModelKey(modelKey);
+        var llmFileName = CosyVoice3CrispAsr.GetLlmFileName(resolved);
+        TitleText = string.Format(Se.Language.General.DownloadingX, $"CosyVoice3 (CrispASR) model ({resolved}): {llmFileName}");
+
+        var downloadProgress = new Progress<float>(number =>
+        {
+            var percentage = (int)Math.Round(number * 100.0, MidpointRounding.AwayFromZero);
+            var pctString = percentage.ToString(CultureInfo.InvariantCulture);
+            ProgressValue = percentage;
+            ProgressText = string.Format(Se.Language.General.DownloadingXPercent, pctString);
+        });
+
+        var titleProgress = new Action<string>(title =>
+        {
+            Dispatcher.UIThread.Post(() => TitleText = title);
+        });
+
+        _downloadTaskCosyVoice3CrispAsrModels =
+            _cosyVoice3CrispAsrDownloadService.DownloadModels(CosyVoice3CrispAsr.GetSetModelsFolder(), resolved, downloadProgress, titleProgress, _cancellationTokenSource.Token);
+    }
+
+    public void StartDownloadF5TtsCrispAsrModels(string? modelKey = null)
+    {
+        var resolved = F5TtsCrispAsr.ResolveModelKey(modelKey);
+        var talkerFileName = F5TtsCrispAsr.GetTalkerFileName(resolved);
+        TitleText = string.Format(Se.Language.General.DownloadingX, $"F5-TTS (CrispASR) model ({resolved}): {talkerFileName}");
+
+        var downloadProgress = new Progress<float>(number =>
+        {
+            var percentage = (int)Math.Round(number * 100.0, MidpointRounding.AwayFromZero);
+            var pctString = percentage.ToString(CultureInfo.InvariantCulture);
+            ProgressValue = percentage;
+            ProgressText = string.Format(Se.Language.General.DownloadingXPercent, pctString);
+        });
+
+        var titleProgress = new Action<string>(title =>
+        {
+            Dispatcher.UIThread.Post(() => TitleText = title);
+        });
+
+        _downloadTaskF5TtsCrispAsrModels =
+            _f5TtsCrispAsrDownloadService.DownloadModels(F5TtsCrispAsr.GetSetModelsFolder(), resolved, downloadProgress, titleProgress, _cancellationTokenSource.Token);
+    }
+
+    public void StartDownloadVoxCPM2CrispAsrModels(string? modelKey = null)
+    {
+        var resolved = VoxCPM2CrispAsr.ResolveModelKey(modelKey);
+        var modelFileName = VoxCPM2CrispAsr.GetModelFileName(resolved);
+        TitleText = string.Format(Se.Language.General.DownloadingX, $"VoxCPM2 (CrispASR) model ({resolved}): {modelFileName}");
+
+        var downloadProgress = new Progress<float>(number =>
+        {
+            var percentage = (int)Math.Round(number * 100.0, MidpointRounding.AwayFromZero);
+            var pctString = percentage.ToString(CultureInfo.InvariantCulture);
+            ProgressValue = percentage;
+            ProgressText = string.Format(Se.Language.General.DownloadingXPercent, pctString);
+        });
+
+        var titleProgress = new Action<string>(title =>
+        {
+            Dispatcher.UIThread.Post(() => TitleText = title);
+        });
+
+        _downloadTaskVoxCPM2CrispAsrModels =
+            _voxCPM2CrispAsrDownloadService.DownloadModels(VoxCPM2CrispAsr.GetSetModelsFolder(), resolved, downloadProgress, titleProgress, _cancellationTokenSource.Token);
+    }
+
+    public void StartDownloadOmniVoiceCrispAsrModels(string? modelKey = null)
+    {
+        var resolved = OmniVoiceCrispAsr.ResolveModelKey(modelKey);
+        var modelFileName = OmniVoiceCrispAsr.GetModelFileName(resolved);
+        TitleText = string.Format(Se.Language.General.DownloadingX, $"OmniVoice (CrispASR) model ({resolved}): {modelFileName}");
+
+        var downloadProgress = new Progress<float>(number =>
+        {
+            var percentage = (int)Math.Round(number * 100.0, MidpointRounding.AwayFromZero);
+            var pctString = percentage.ToString(CultureInfo.InvariantCulture);
+            ProgressValue = percentage;
+            ProgressText = string.Format(Se.Language.General.DownloadingXPercent, pctString);
+        });
+
+        var titleProgress = new Action<string>(title =>
+        {
+            Dispatcher.UIThread.Post(() => TitleText = title);
+        });
+
+        _downloadTaskOmniVoiceCrispAsrModels =
+            _omniVoiceCrispAsrDownloadService.DownloadModels(OmniVoiceCrispAsr.GetSetModelsFolder(), resolved, downloadProgress, titleProgress, _cancellationTokenSource.Token);
+    }
+
+    public void StartDownloadMossTtsCrispAsrModels(string? modelKey = null)
+    {
+        var resolved = MossTtsCrispAsr.ResolveModelKey(modelKey);
+        var modelFileName = MossTtsCrispAsr.GetModelFileName(resolved);
+        TitleText = string.Format(Se.Language.General.DownloadingX, $"MOSS-TTS (CrispASR) model ({resolved}): {modelFileName}");
+
+        var downloadProgress = new Progress<float>(number =>
+        {
+            var percentage = (int)Math.Round(number * 100.0, MidpointRounding.AwayFromZero);
+            var pctString = percentage.ToString(CultureInfo.InvariantCulture);
+            ProgressValue = percentage;
+            ProgressText = string.Format(Se.Language.General.DownloadingXPercent, pctString);
+        });
+
+        var titleProgress = new Action<string>(title =>
+        {
+            Dispatcher.UIThread.Post(() => TitleText = title);
+        });
+
+        _downloadTaskMossTtsCrispAsrModels =
+            _mossTtsCrispAsrDownloadService.DownloadModels(MossTtsCrispAsr.GetSetModelsFolder(), resolved, downloadProgress, titleProgress, _cancellationTokenSource.Token);
+    }
+
+    public void StartDownloadOmniVoice(string windowsVariant = OmniVoiceDownloadService.WindowsVariantVulkan)
+    {
+        _omniVoiceVariant = windowsVariant;
+
+        string variantLabel;
+        if (Configuration.IsRunningOnWindows)
+        {
+            variantLabel = windowsVariant;
+        }
+        else if (Configuration.IsRunningOnMac)
+        {
+            variantLabel = "macOS universal CPU+Metal";
+        }
+        else if (RuntimeInformation.ProcessArchitecture == Architecture.Arm64)
+        {
+            variantLabel = "Linux ARM64 CPU";
+        }
+        else
+        {
+            variantLabel = "Linux x64 CPU";
+        }
+
+        TitleText = string.Format(Se.Language.General.DownloadingX, $"OmniVoice TTS ({variantLabel})");
+
+        var downloadProgress = new Progress<float>(number =>
+        {
+            var percentage = (int)Math.Round(number * 100.0, MidpointRounding.AwayFromZero);
+            var pctString = percentage.ToString(CultureInfo.InvariantCulture);
+            ProgressValue = percentage;
+            ProgressText = string.Format(Se.Language.General.DownloadingXPercent, pctString);
+        });
+
+        _downloadTaskOmniVoice =
+            _omniVoiceDownloadService.DownloadEngine(_downloadStreamOmniVoice, windowsVariant, downloadProgress, _cancellationTokenSource.Token);
+    }
+
+    public void StartDownloadOmniVoiceModels()
+    {
+        TitleText = string.Format(Se.Language.General.DownloadingX, "OmniVoice TTS models (~1.4 GB)");
+
+        var downloadProgress = new Progress<float>(number =>
+        {
+            var percentage = (int)Math.Round(number * 100.0, MidpointRounding.AwayFromZero);
+            var pctString = percentage.ToString(CultureInfo.InvariantCulture);
+            ProgressValue = percentage;
+            ProgressText = string.Format(Se.Language.General.DownloadingXPercent, pctString);
+        });
+
+        var titleProgress = new Action<string>(title =>
+        {
+            Dispatcher.UIThread.Post(() => TitleText = title);
+        });
+
+        _downloadTaskOmniVoiceModels =
+            _omniVoiceDownloadService.DownloadModels(OmniVoiceTtsCpp.GetSetModelsFolder(), downloadProgress, titleProgress, _cancellationTokenSource.Token);
+    }
+
+    internal void OnKeyDown(KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            Cancel();
+        }
+    }
+
+    // Drain everything we own when the window goes away. The happy-path
+    // handlers above dispose each MemoryStream as soon as it's unpacked, but
+    // cancel or an early throw can leave several streams (each holding the
+    // full multi-GB download in memory) alive. Disposing here is idempotent —
+    // MemoryStream.Dispose can be called twice safely.
+    internal void OnClosing()
+    {
+        try { _cancellationTokenSource.Cancel(); } catch (ObjectDisposedException) { }
+        _isClosing = true;
+        _timer.StopAndDispose(OnTimerOnElapsed);
+
+        DisposeQuietly(_downloadStream);
+        DisposeQuietly(_downloadStreamModel);
+        DisposeQuietly(_downloadStreamConfig);
+        DisposeQuietly(_downloadStreamQwen3TtsCpp);
+        DisposeQuietly(_downloadStreamQwen3TtsCppVoices);
+        DisposeQuietly(_downloadStreamKokoroTtsCpp);
+        DisposeQuietly(_downloadStreamQwen3TtsCrispAsrVoices);
+        DisposeQuietly(_downloadStreamVibeVoiceCrispAsrVoices);
+        DisposeQuietly(_downloadStreamIndexTtsCrispAsrVoices);
+        DisposeQuietly(_downloadStreamCosyVoice3CrispAsrVoices);
+        DisposeQuietly(_downloadStreamF5TtsCrispAsrVoices);
+        DisposeQuietly(_downloadStreamVoxCPM2CrispAsrVoices);
+        DisposeQuietly(_downloadStreamZonosTtsCrispAsrVoices);
+        DisposeQuietly(_downloadStreamOmniVoice);
+        DisposeQuietly(_downloadStreamOmniVoices);
+
+        try { _cancellationTokenSource.Dispose(); } catch (ObjectDisposedException) { }
+    }
+
+    private static void DisposeQuietly(MemoryStream stream)
+    {
+        try { stream.Dispose(); } catch { /* already disposed or never opened */ }
+    }
+}

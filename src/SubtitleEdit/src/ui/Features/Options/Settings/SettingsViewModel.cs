@@ -1,0 +1,2964 @@
+using Avalonia;
+using Avalonia.Animation;
+using Avalonia.Animation.Easings;
+using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Interactivity;
+using Avalonia.Media;
+using Avalonia.Styling;
+using Avalonia.Threading;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using Nikse.SubtitleEdit.Controls.AudioVisualizerControl;
+using Nikse.SubtitleEdit.Core.Common;
+using Nikse.SubtitleEdit.Core.Enums;
+using Nikse.SubtitleEdit.Core.SubtitleFormats;
+using Nikse.SubtitleEdit.Features.Assa;
+using Nikse.SubtitleEdit.Features.Help.CheckForUpdates;
+using Nikse.SubtitleEdit.Features.Main;
+using Nikse.SubtitleEdit.Features.Options.DoNotBreakAfterList;
+using Nikse.SubtitleEdit.Features.Options.Settings.SyntaxColorTooWideSettings;
+using Nikse.SubtitleEdit.Features.Tools.BeautifyTimeCodes.Profile;
+using Nikse.SubtitleEdit.Features.Options.Settings.WaveformThemes;
+using Nikse.SubtitleEdit.Features.Options.Settings.WaveformToolbarItems;
+using Nikse.SubtitleEdit.Features.Shared;
+using Nikse.SubtitleEdit.Features.Shared.PickLanguage;
+using Nikse.SubtitleEdit.Features.Shared.PickSubtitleFormat;
+using Nikse.SubtitleEdit.Features.SpellCheck;
+using Nikse.SubtitleEdit.Features.Video.BurnIn;
+using Nikse.SubtitleEdit.Logic;
+using Nikse.SubtitleEdit.Logic.Config;
+using Nikse.SubtitleEdit.Logic.Media;
+using Nikse.SubtitleEdit.Logic.VideoPlayers.LibMpvDynamic;
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Collections.ObjectModel;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using DownloadFfmpegViewModel = Nikse.SubtitleEdit.Features.Shared.DownloadFfmpegViewModel;
+using DownloadLibMpvViewModel = Nikse.SubtitleEdit.Features.Shared.DownloadLibMpvViewModel;
+using Nikse.SubtitleEdit.UiLogic.Common;
+
+namespace Nikse.SubtitleEdit.Features.Options.Settings;
+
+public partial class SettingsViewModel : ObservableObject
+{
+    [ObservableProperty] private ObservableCollection<string> _profiles;
+    [ObservableProperty] private string _selectedProfile;
+    [ObservableProperty] private int? _singleLineMaxLength;
+    [ObservableProperty] private double? _optimalCharsPerSec;
+    [ObservableProperty] private double? _maxCharsPerSec;
+    [ObservableProperty] private double? _maxWordsPerMin;
+    [ObservableProperty] private int? _minDurationMs;
+    [ObservableProperty] private int? _maxDurationMs;
+    [ObservableProperty] private int? _minGapMs;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(MinGapFramesAsMs))]
+    private int? _minGapFrames;
+
+    public string MinGapFramesAsMs
+    {
+        get
+        {
+            if (!MinGapFrames.HasValue)
+            {
+                return string.Empty;
+            }
+
+            var fps = Configuration.Settings.General.CurrentFrameRate;
+            var ms = SubtitleFormat.FramesToMilliseconds(MinGapFrames.Value, fps);
+            return $"= {ms} ms (at {fps.ToString("0.###", CultureInfo.InvariantCulture)} fps)";
+        }
+    }
+    [ObservableProperty] private int? _maxLines;
+    [ObservableProperty] private string _colorTextTooManyLinesLabel = string.Empty;
+    [ObservableProperty] private int? _unbreakLinesShorterThan;
+    [ObservableProperty] private bool _autoBreakLineEndingEarly;
+    [ObservableProperty] private bool _autoBreakCommaBreakEarly;
+    [ObservableProperty] private bool _autoBreakDashEarly;
+    [ObservableProperty] private bool _autoBreakUsePixelWidth;
+    [ObservableProperty] private bool _autoBreakPreferBottomHeavy;
+    [ObservableProperty] private int _autoBreakPreferBottomPercent;
+    [ObservableProperty] private bool _useNoLineBreakAfter;
+
+    // "Color text if more than N lines" must track the live "Max number of lines"
+    // value instead of a hardcoded "2" (#12028), including while typing (nullable/
+    // out-of-range values fall back to the coloring logic's own default of 2).
+    partial void OnMaxLinesChanged(int? value)
+    {
+        var lineCount = value is > 0 ? value.Value : 2;
+        ColorTextTooManyLinesLabel = string.Format(Se.Language.Options.Settings.ColorTextTooManyLinesX, lineCount);
+    }
+    [ObservableProperty] private ObservableCollection<DialogStyleDisplay> _dialogStyles;
+    [ObservableProperty] private DialogStyleDisplay _dialogStyle;
+    [ObservableProperty] private ObservableCollection<ContinuationStyleDisplay> _continuationStyles;
+    [ObservableProperty] private ContinuationStyleDisplay _continuationStyle;
+    [ObservableProperty] private ObservableCollection<CpsLineLengthStrategyDisplay> _cpsLineLengthStrategies;
+    [ObservableProperty] private CpsLineLengthStrategyDisplay _cpsLineLengthStrategy;
+    [ObservableProperty] private ObservableCollection<string> _fonts;
+    [ObservableProperty] private string _mpvPreviewFontName;
+    [ObservableProperty] private int _mpvPreviewFontSize;
+    [ObservableProperty] private bool _mpvPreviewFontBold;
+    [ObservableProperty] private ObservableCollection<AlignmentItem> __mpvPreviewFontAlignments;
+    [ObservableProperty] private AlignmentItem _mpvPreviewSelectedFontAlignment;
+    [ObservableProperty] private int _mpvPreviewMargin;
+    [ObservableProperty] private Color _mpvPreviewColorPrimary;
+    [ObservableProperty] private Color _mpvPreviewColorOutline;
+    [ObservableProperty] private Color _mpvPreviewColorShadow;
+    [ObservableProperty] private ObservableCollection<BorderStyleItem> _mpvPreviewBorderTypes;
+    [ObservableProperty] private BorderStyleItem _mpvPreviewSelectedBorderType;
+    [ObservableProperty] private decimal _mpvPreviewOutlineWidth;
+    [ObservableProperty] private decimal _mpvPreviewShadowWidth;
+
+    [ObservableProperty] private int? _newEmptyDefaultMs;
+    [ObservableProperty] private int? _timeCodeUpDownStepMs;
+    [ObservableProperty] private bool _promptBeforeDelete;
+    [ObservableProperty] private bool _lockTimeCodes;
+    [ObservableProperty] private bool _rememberPositionAndSize;
+    [ObservableProperty] private bool _openLastFileOnStart;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsMsMode))]
+    [NotifyPropertyChangedFor(nameof(MinGapLabel))]
+    private bool _useFrameMode;
+
+    public bool IsMsMode => !UseFrameMode;
+    public string MinGapLabel => UseFrameMode
+        ? Se.Language.Options.Settings.MinGapFrames
+        : Se.Language.Options.Settings.MinGapMs;
+    [ObservableProperty] private bool _textBoxLimitNewLines;
+    [ObservableProperty] private bool _autoSave;
+    [ObservableProperty] private bool _autoBackupOn;
+    [ObservableProperty] private int? _autoBackupIntervalMinutes;
+    [ObservableProperty] private int? _autoBackupDeleteAfterDays;
+
+    [ObservableProperty] private ObservableCollection<string> _defaultSubtitleFormats;
+    [ObservableProperty] private string _selectedDefaultSubtitleFormat;
+
+    [ObservableProperty] private ObservableCollection<string> _saveSubtitleFormats;
+    [ObservableProperty] private string _selectedSaveSubtitleFormat;
+
+    [ObservableProperty] private ObservableCollection<string> _favoriteSubtitleFormats;
+    [ObservableProperty] private string? _selectedFavoriteSubtitleFormat;
+
+    [ObservableProperty] private bool _webVttUseXTimestampMap;
+
+    [ObservableProperty] private ObservableCollection<PickLanguageDisplay> _favoriteLanguages;
+    [ObservableProperty] private PickLanguageDisplay? _selectedFavoriteLanguage;
+
+    [ObservableProperty] private ObservableCollection<TextEncoding> _encodings;
+    [ObservableProperty] private TextEncoding _defaultEncoding;
+    [ObservableProperty] private bool _autoConvertToUtf8;
+    [ObservableProperty] private bool _forceCrLfOnSave;
+    [ObservableProperty] private bool _autoTrimWhiteSpace;
+
+    [ObservableProperty] private ObservableCollection<string> _subtitleEnterKeyActionTypes;
+    [ObservableProperty] private string _selectedSubtitleEnterKeyActionType;
+
+    [ObservableProperty] private ObservableCollection<string> _subtitleSingleClickActionTypes;
+    [ObservableProperty] private string _selectedSubtitleSingleClickActionType;
+
+    [ObservableProperty] private ObservableCollection<string> _subtitleDoubleClickActionTypes;
+    [ObservableProperty] private string _selectedSubtitleDoubleClickActionType;
+
+    [ObservableProperty] private bool _subtitleGridCenterSelectedRow;
+
+    [ObservableProperty] private ObservableCollection<string> _saveAsBehaviorTypes;
+    [ObservableProperty] private ObservableCollection<string> _defaultSaveLocationTypes;
+    [ObservableProperty] private string _selectedDefaultSaveLocationType;
+    [ObservableProperty] private string _defaultSaveLocationCustomFolder = string.Empty;
+    [ObservableProperty] private bool _isDefaultSaveLocationCustomFolderEnabled;
+    [ObservableProperty] private string _selectedSaveAsBehaviorType;
+
+    [ObservableProperty] private ObservableCollection<string> _saveAsAppendLanguageCode;
+    [ObservableProperty] private string _selectedSaveAsAppendLanguageCode;
+
+    [ObservableProperty] private bool _allowSingleLetterShortcutsInTextbox;
+    [ObservableProperty] private bool _goToLineNumberAlsoSetVideoPosition;
+    [ObservableProperty] private bool _adjustAllTimesRememberLineSelectionChoice;
+    [ObservableProperty] private bool _mergeKeepEndTime;
+    [ObservableProperty] private bool _mergeKeepEndTimeOnlyAssa;
+    [ObservableProperty] private ObservableCollection<string> _splitOddNumberOfLinesActions;
+    [ObservableProperty] private string _selectedSplitOddNumberOfLinesAction;
+    [ObservableProperty] private bool _ocrUseWordSplitList;
+    [ObservableProperty] private bool _ocrGuessUnknownWords;
+    [ObservableProperty] private bool _speechToTextSelectedLinesPromptFistTimeOnly;
+    [ObservableProperty] private bool _multipleReplaceShowDotDotDotButtons;
+    [ObservableProperty] private bool _gridFocusTextboxAfterInsertNew;
+    [ObservableProperty] private bool _textToSpeechPromptMergeContinuationLines;
+    [ObservableProperty] private bool _openAiCompatibleSttAutoTranscribeOnAudioSelection;
+
+    [ObservableProperty] private ObservableCollection<string> _spellCheckEngines;
+    [ObservableProperty] private string _selectedSpellCheckEngine;
+
+    [ObservableProperty] private bool _showUpDownStartTime;
+    [ObservableProperty] private bool _showUpDownEndTime;
+    [ObservableProperty] private bool _showUpDownDuration;
+    [ObservableProperty] private bool _showUpDownLabels;
+
+    [ObservableProperty] private bool _showToolbarNew;
+    [ObservableProperty] private bool _showToolbarOpen;
+    [ObservableProperty] private bool _showToolbarVideoFileOpen;
+    [ObservableProperty] private bool _showToolbarSave;
+    [ObservableProperty] private bool _showToolbarSaveAs;
+    [ObservableProperty] private bool _showToolbarFind;
+    [ObservableProperty] private bool _showToolbarReplace;
+    [ObservableProperty] private bool _showToolbarSpellCheck;
+    [ObservableProperty] private bool _showToolbarFixCommonErrors;
+    [ObservableProperty] private bool _showToolbarRemoveTextForHi;
+    [ObservableProperty] private bool _showToolbarVisualSync;
+    [ObservableProperty] private bool _showToolbarPointSync;
+    [ObservableProperty] private bool _showToolbarBeautifyTimeCodes;
+    [ObservableProperty] private bool _showToolbarBurnIn;
+    [ObservableProperty] private bool _showToolbarAutoTranslate;
+    [ObservableProperty] private bool _showToolbarSpeechToText;
+    [ObservableProperty] private bool _fixCommonErrorsSkipStep1;
+    [ObservableProperty] private bool _showToolbarSettings;
+    [ObservableProperty] private bool _showToolbarLayout;
+    [ObservableProperty] private bool _showToolbarSourceView;
+    [ObservableProperty] private bool _showToolbarHelp;
+    [ObservableProperty] private bool _showToolbarEncoding;
+    [ObservableProperty] private bool _showToolbarFrameRate;
+
+    [ObservableProperty] private bool _showPluginsMenu;
+
+    [ObservableProperty] private bool _textBoxButtonShowAutoBreak;
+    [ObservableProperty] private bool _textBoxButtonShowUnbreak;
+    [ObservableProperty] private bool _textBoxButtonShowItalic;
+    [ObservableProperty] private bool _textBoxButtonShowColor;
+    [ObservableProperty] private bool _textBoxButtonShowRemoveFormatting;
+    [ObservableProperty] private bool _textBoxButtonShowAiAssistant;
+
+    [ObservableProperty] private bool _colorDurationTooShort;
+    [ObservableProperty] private bool _colorDurationTooLong;
+    [ObservableProperty] private bool _colorTextTooLong;
+    [ObservableProperty] private bool _colorTextTooWide;
+    [ObservableProperty] private int _colorTextTooWidePixels;
+    [ObservableProperty] private int _colorTextTooWideFontSize;
+    [ObservableProperty] private string _colorTextTooWideFontName;
+    [ObservableProperty] private bool _colorTextTooManyLines;
+    [ObservableProperty] private bool _colorCharactersPerSecond;
+    [ObservableProperty] private bool _colorWordsPerMinute;
+    [ObservableProperty] private bool _colorOverlap;
+    [ObservableProperty] private bool _colorGapTooShort;
+    [ObservableProperty] private Color _errorColor;
+
+    [ObservableProperty] private ObservableCollection<VideoPlayerItem> _videoPlayers;
+    [ObservableProperty] private VideoPlayerItem _selectedVideoPlayer;
+    [ObservableProperty] private bool _showStopButton;
+    [ObservableProperty] private bool _showFullscreenButton;
+    [ObservableProperty] private bool _fullscreenHideControls;
+    [ObservableProperty] private bool _autoOpenVideoFile;
+
+    [ObservableProperty] private bool _waveformDrawGridLines;
+    [ObservableProperty] private bool _waveformFocusOnMouseOver;
+    [ObservableProperty] private bool _waveformCenterVideoPosition;
+    [ObservableProperty] private bool _waveformCenterVideoPositionAlsoWhenPaused;
+
+    [ObservableProperty] private ObservableCollection<string> _waveformDrawStyles;
+    [ObservableProperty] private string _selectedWaveformDrawStyle;
+
+    [ObservableProperty] private bool _waveformGenerateSpectrogram;
+    [ObservableProperty] private bool _waveformAutoGenerate;
+    [ObservableProperty] private ObservableCollection<string> _waveformSpectrogramStyles;
+    [ObservableProperty] private string _selectedWaveformSpectrogramStyle;
+
+    [ObservableProperty] private int _waveformSpectrogramCombinedWaveformHeight;
+
+    [ObservableProperty] private bool _waveformShowToolbar;
+
+    [ObservableProperty] private bool _waveformFocusTextboxAfterInsertNew;
+    [ObservableProperty] private string _waveformSpaceInfo;
+    [ObservableProperty] private string _libMpvPath;
+    [ObservableProperty] private string _libMpvStatus;
+    [ObservableProperty] private string _libVlcStatus;
+    [ObservableProperty] private bool _isLibMpvDownloadVisible;
+    [ObservableProperty] private bool _isLibVlcDownloadVisible;
+    [ObservableProperty] private string _ffmpegPath;
+    [ObservableProperty] private string _ffmpegStatus;
+    [ObservableProperty] private string _proxyAddress = string.Empty;
+    [ObservableProperty] private string _proxyUserName = string.Empty;
+    [ObservableProperty] private string _proxyPassword = string.Empty;
+    [ObservableProperty] private string _proxyDomain = string.Empty;
+    [ObservableProperty] private bool _proxyUseDefaultCredentials;
+    [ObservableProperty] private string _proxyBypassList = string.Empty;
+    [ObservableProperty] private bool _checkForUpdatesOnStartup;
+    [ObservableProperty] private ObservableCollection<string> _updateChannels;
+    [ObservableProperty] private string _selectedUpdateChannel;
+    private string _loadedUpdateChannel = string.Empty;
+    [ObservableProperty] private int _waveformTextFontSize;
+    [ObservableProperty] private bool _waveformTextFontBold;
+    [ObservableProperty] private Color _waveformTextColor;
+    [ObservableProperty] private Color _waveformColor;
+    [ObservableProperty] private Color _waveformBackgroundColor;
+    [ObservableProperty] private Color _waveformParagraphBackgroundColor;
+    [ObservableProperty] private Color _waveformSelectedColor;
+    [ObservableProperty] private Color _waveformParagraphSelectedBackgroundColor;
+    [ObservableProperty] private Color _waveformCursorColor;
+    [ObservableProperty] private Color _waveformShotChangeColor;
+    [ObservableProperty] private Color _waveformParagraphLeftColor;
+    [ObservableProperty] private Color _waveformParagraphRightColor;
+    [ObservableProperty] private Color _waveformFancyHighColor;
+    [ObservableProperty] private bool _waveformInvertMouseWheel;
+    [ObservableProperty] private bool _waveformMouseWheelSetsVideoPosition;
+    [ObservableProperty] private bool _waveformSnapToShotChanges;
+    [ObservableProperty] private bool _waveformSnapToFrames;
+    [ObservableProperty] private bool _waveformShotChangesAutoGenerate;
+    [ObservableProperty] private bool _waveformAllowOverlap;
+    [ObservableProperty] private bool _waveformSetVideoPositionOnMoveStartEnd;
+
+    [ObservableProperty] private ObservableCollection<string> _waveformSingleClickActionTypes;
+    [ObservableProperty] private string _selectedWaveformSingleClickActionType;
+
+    [ObservableProperty] private ObservableCollection<string> _waveformDoubleClickActionTypes;
+    [ObservableProperty] private string _selectedWaveformDoubleClickActionType;
+
+    [ObservableProperty] private ObservableCollection<string> _waveformMouseWheelVideoPositionSteps;
+    [ObservableProperty] private string _selectedWaveformMouseWheelVideoPositionStep;
+
+    // Selectable wheel step sizes (ms). 0 = one frame.
+    private static readonly int[] MouseWheelStepValuesMs = { 0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000 };
+
+    private static string FormatMouseWheelStep(int ms)
+    {
+        if (ms <= 0)
+        {
+            return Se.Language.Options.Settings.WaveformMouseWheelStepOneFrame;
+        }
+
+        return ms >= 1000
+            ? Se.Language.Options.Settings.WaveformMouseWheelStepOneSecond
+            : string.Format(CultureInfo.InvariantCulture, Se.Language.Options.Settings.WaveformMouseWheelStepMilliseconds, ms);
+    }
+
+    private static int ParseMouseWheelStep(string display)
+    {
+        foreach (var ms in MouseWheelStepValuesMs)
+        {
+            if (FormatMouseWheelStep(ms) == display)
+            {
+                return ms;
+            }
+        }
+
+        return 500;
+    }
+    [ObservableProperty] private ObservableCollection<string> _waveformExtractAudioFormats;
+    [ObservableProperty] private string _selectedWaveformExtractAudioFormat;
+    [ObservableProperty] private ObservableCollection<string> _waveformExtractAudioSampleRates;
+    [ObservableProperty] private string _selectedWaveformExtractAudioSampleRate;
+    [ObservableProperty] private ObservableCollection<string> _waveformExtractAudioBitRates;
+    [ObservableProperty] private string _selectedWaveformExtractAudioBitRate;
+
+    [ObservableProperty] private bool _waveformRightClickSelectsSubtitle;
+    [ObservableProperty] private ObservableCollection<string> _themes;
+    [ObservableProperty] private string _selectedTheme;
+    [ObservableProperty] private ObservableCollection<string> _iconThemes;
+    [ObservableProperty] private string _selectedIconTheme;
+    [ObservableProperty] private bool _matchIconColorToDarkTheme;
+    [ObservableProperty] private int _layoutScale;
+    [ObservableProperty] private ObservableCollection<string> _fontNames;
+    [ObservableProperty] private string _selectedFontName;
+    [ObservableProperty] private double _subtitleGridFontSize;
+    [ObservableProperty] private bool _subtitleGridTextSingleLine;
+    [ObservableProperty] private string _subtitleGridTextSingleLineSeparator = string.Empty;
+    [ObservableProperty] private ObservableCollection<string> _subtitleGridFormattings;
+    [ObservableProperty] private string _subtitleGridFormatting;
+    [ObservableProperty] private string _subtitleTextBoxAndGridFontName;
+    [ObservableProperty] private double _textBoxFontSize;
+    [ObservableProperty] private bool _textBoxFontBold;
+    [ObservableProperty] private bool _textBoxColorTags;
+    [ObservableProperty] private bool _textBoxLiveSpellCheck;
+    [ObservableProperty] private bool _subtitleGridLiveSpellCheck;
+    [ObservableProperty] private bool _textBoxCenterText;
+    [ObservableProperty] private bool _showButtonHints;
+    [ObservableProperty] private bool _gridCompactMode;
+    [ObservableProperty] private bool _gridAlternatingRows;
+    [ObservableProperty] private bool _showAssaLayer;
+    [ObservableProperty] private bool _showHorizontalLineAboveToolbar;
+    [ObservableProperty] private ObservableCollection<GridLinesVisibilityDisplay> _gridLinesVisibilities;
+    [ObservableProperty] private GridLinesVisibilityDisplay _selectedGridLinesVisibility;
+    [ObservableProperty] private ObservableCollection<SubtitleGridTextDisplayModeDisplay> _subtitleGridTextDisplayModes;
+    [ObservableProperty] private SubtitleGridTextDisplayModeDisplay _selectedSubtitleGridTextDisplayMode;
+    [ObservableProperty] private Color _darkModeForegroundColor;
+    [ObservableProperty] private Color _darkModeBackgroundColor;
+    [ObservableProperty] private bool _useFocusedButtonBackgroundColor;
+    [ObservableProperty] private Color _focusedButtonBackgroundColor;
+    [ObservableProperty] private Color _bookmarkColor;
+    [ObservableProperty] private Color _gridAlternatingRowColor;
+    [ObservableProperty] private Color _gridAlternatingRowColorDark;
+    [ObservableProperty] private bool _isEditCustomContinuationStyleVisible;
+    [ObservableProperty] private bool _isMpvChosen;
+
+    [ObservableProperty] private bool _existsErrorLogFile;
+    [ObservableProperty] private bool _spellCheckEnglishTreatInApostropheAsIng;
+    [ObservableProperty] private bool _existsToolsLogFile;
+    [ObservableProperty] private bool _existsSettingsFile;
+    [ObservableProperty] private bool _writeToolsLog;
+    [ObservableProperty] private string _musicSymbol = string.Empty;
+    [ObservableProperty] private string _musicSymbolReplace = string.Empty;
+
+    private CustomContinuationStyle _editCustomContinuationStyle = new();
+
+    public ObservableCollection<FileTypeAssociationViewModel> FileTypeAssociations { get; set; } = new()
+    {
+        new() { Extension = ".ass", IconPath = "avares://SubtitleEdit/Assets/FileTypes/ass.ico" },
+        new() { Extension = ".dfxp", IconPath = "avares://SubtitleEdit/Assets/FileTypes/dfxp.ico" },
+        new() { Extension = ".itt", IconPath = "avares://SubtitleEdit/Assets/FileTypes/itt.ico" },
+        new() { Extension = ".lrc", IconPath = "avares://SubtitleEdit/Assets/FileTypes/lrc.ico" },
+        new() { Extension = ".sbv", IconPath = "avares://SubtitleEdit/Assets/FileTypes/sbv.ico" },
+        new() { Extension = ".smi", IconPath = "avares://SubtitleEdit/Assets/FileTypes/smi.ico" },
+        new() { Extension = ".srt", IconPath = "avares://SubtitleEdit/Assets/FileTypes/srt.ico" },
+        new() { Extension = ".ssa", IconPath = "avares://SubtitleEdit/Assets/FileTypes/ssa.ico" },
+        new() { Extension = ".stl", IconPath = "avares://SubtitleEdit/Assets/FileTypes/stl.ico" },
+        new() { Extension = ".sub", IconPath = "avares://SubtitleEdit/Assets/FileTypes/sub.ico" },
+        new() { Extension = ".sup", IconPath = "avares://SubtitleEdit/Assets/FileTypes/sup.ico" },
+        new() { Extension = ".vtt", IconPath = "avares://SubtitleEdit/Assets/FileTypes/vtt.ico" },
+    };
+
+    public bool OkPressed { get; set; }
+    public Window? Window { get; internal set; }
+    public ScrollViewer ScrollView { get; internal set; }
+    public List<SettingsSection> Sections { get; internal set; }
+
+    private readonly IWindowService _windowService;
+    private readonly IFolderHelper _folderHelper;
+    private MainViewModel? _mainViewModel;
+    private List<ProfileDisplay> _profilesForEdit;
+    private bool _skipRuleValueChanged = false;
+    private List<SeWaveformToolbarItem> _waveformToolbarItems = new List<SeWaveformToolbarItem>();
+
+    public SettingsViewModel(IWindowService windowService, IFolderHelper folderHelper)
+    {
+        _windowService = windowService;
+        _folderHelper = folderHelper;
+
+        Profiles = new ObservableCollection<string>();
+        SelectedProfile = "Default";
+        DialogStyles = new ObservableCollection<DialogStyleDisplay>(DialogStyleDisplay.List());
+        ContinuationStyles = new ObservableCollection<ContinuationStyleDisplay>(ContinuationStyleDisplay.List());
+        CpsLineLengthStrategies = new ObservableCollection<CpsLineLengthStrategyDisplay>(CpsLineLengthStrategyDisplay.List());
+        SubtitleTextBoxAndGridFontName = "Default";
+        DialogStyle = DialogStyles.First();
+        ContinuationStyle = ContinuationStyles.First();
+        CpsLineLengthStrategy = CpsLineLengthStrategies.First();
+        Fonts = new ObservableCollection<string>(FontHelper.GetSystemFonts());
+        MpvPreviewBorderTypes = new ObservableCollection<BorderStyleItem>(BorderStyleItem.List());
+        MpvPreviewFontAlignments = new ObservableCollection<AlignmentItem>(AlignmentItem.Alignments);
+        MpvPreviewSelectedFontAlignment = MpvPreviewFontAlignments[7];
+        LibVlcStatus = string.Empty;
+
+        UpdateChannels =
+        [
+            Se.Language.Options.Settings.CheckForUpdatesChannelStable,
+            Se.Language.Options.Settings.CheckForUpdatesChannelStableAndBeta,
+        ];
+        SelectedUpdateChannel = UpdateChannels[0];
+
+        Themes = [Se.Language.General.System, Se.Language.General.Light, Se.Language.General.Dark, Se.Language.General.Classic, "Pastel"];
+        SelectedTheme = Themes[0];
+
+        var iconFolders = Directory.GetDirectories(Se.ThemesFolder).Select(p => Path.GetFileName(p)).ToList();
+        iconFolders.Insert(0, Se.Language.General.Auto);
+        IconThemes = new ObservableCollection<string>(iconFolders);
+        SelectedIconTheme = IconThemes[0];
+
+        FontNames = new ObservableCollection<string>(FontHelper.GetSystemFonts());
+        FontNames.Insert(0, OperatingSystem.IsMacOS() ? "System Font" : "Default");
+        SelectedFontName = FontNames.First();
+
+        ScrollView = new ScrollViewer();
+        Sections = new List<SettingsSection>();
+
+        VideoPlayers = new ObservableCollection<VideoPlayerItem>(VideoPlayerItem.ListVideoPlayerItem());
+        SelectedVideoPlayer = VideoPlayers[0];
+
+        SubtitleGridFormattings = new ObservableCollection<string>
+        {
+            Se.Language.Options.Settings.SubtitleGridFormattingNone,
+            Se.Language.Options.Settings.SubtitleGridFormattingShowFormatting,
+            Se.Language.Options.Settings.SubtitleGridFormattingShowTags,
+        };
+        SubtitleGridFormatting = SubtitleGridFormattings[0];
+
+        WaveformDrawStyles = new ObservableCollection<string>
+        {
+            Se.Language.General.Classic,
+            Se.Language.Waveform.WaveformDrawStyleFancy,
+        };
+        SelectedWaveformDrawStyle = WaveformDrawStyles[0];
+
+        WaveformSpectrogramStyles = new ObservableCollection<string>
+        {
+            Se.Language.General.Classic,
+            Se.Language.Waveform.SpectrogramClassicViridis,
+            Se.Language.Waveform.SpectrogramClassicPlasma,
+            Se.Language.Waveform.SpectrogramClassicInferno,
+            Se.Language.Waveform.SpectrogramClassicTurbo,
+            Se.Language.Waveform.SpectrogramNeon,
+        };
+        SelectedWaveformSpectrogramStyle = WaveformSpectrogramStyles[0];
+
+        WaveformSingleClickActionTypes =
+        [
+            Se.Language.Waveform.SetVideoPositionAndPauseAndSelectSubtitle,
+            Se.Language.Waveform.SetVideopositionAndPauseAndSelectSubtitleAndCenter,
+            Se.Language.Waveform.SetVideoPositionAndPause,
+            Se.Language.Waveform.SetVideopositionAndPauseAndCenter,
+            Se.Language.Waveform.SetVideoposition,
+        ];
+        SelectedWaveformSingleClickActionType = WaveformSingleClickActionTypes[0];
+
+        WaveformDoubleClickActionTypes =
+        [
+            Se.Language.General.None,
+            Se.Language.General.SelectSubtitle,
+            Se.Language.General.Center,
+            Se.Language.General.Pause,
+            Se.Language.General.Play,
+        ];
+        SelectedWaveformDoubleClickActionType = WaveformDoubleClickActionTypes[0];
+
+        WaveformExtractAudioFormats = new ObservableCollection<string>(
+            ExtractAudioFormatOrder.Select(ExtractAudioFormatToLabel));
+        SelectedWaveformExtractAudioFormat = WaveformExtractAudioFormats[0];
+        WaveformExtractAudioSampleRates = new ObservableCollection<string>
+        {
+            Se.Language.Options.Settings.WaveformExtractAudioSampleRateOriginal,
+            "48000",
+            "44100",
+            "32000",
+            "16000",
+        };
+        SelectedWaveformExtractAudioSampleRate = WaveformExtractAudioSampleRates[0];
+        WaveformExtractAudioBitRates = new ObservableCollection<string> { "96k", "128k", "192k", "256k", "320k" };
+        SelectedWaveformExtractAudioBitRate = "192k";
+
+        WaveformMouseWheelVideoPositionSteps = new ObservableCollection<string>();
+        foreach (var ms in MouseWheelStepValuesMs)
+        {
+            WaveformMouseWheelVideoPositionSteps.Add(FormatMouseWheelStep(ms));
+        }
+        SelectedWaveformMouseWheelVideoPositionStep = FormatMouseWheelStep(500);
+
+        var subtitleFormats = SubtitleFormat.AllSubtitleFormats;
+        var defaultSubtitleFormats = new List<string>();
+        var saveSubtitleFormats = new List<string> { "Auto" };
+        foreach (var format in subtitleFormats)
+        {
+            if (format.Name.StartsWith("Unknown", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            defaultSubtitleFormats.Add(format.FriendlyName);
+            saveSubtitleFormats.Add(format.FriendlyName);
+        }
+
+        DefaultSubtitleFormats = new ObservableCollection<string>(defaultSubtitleFormats);
+        SaveSubtitleFormats = new ObservableCollection<string>(saveSubtitleFormats);
+        FavoriteSubtitleFormats = new ObservableCollection<string>();
+        FavoriteLanguages = new ObservableCollection<PickLanguageDisplay>();
+        SelectedDefaultSubtitleFormat = DefaultSubtitleFormats.First();
+        SelectedSaveSubtitleFormat = SaveSubtitleFormats.First();
+        Encodings = new ObservableCollection<TextEncoding>(EncodingHelper.GetEncodings());
+        DefaultEncoding = Encodings.First();
+
+        SubtitleEnterKeyActionTypes =
+        [
+            Se.Language.Options.Settings.GridGoToSubtitleAndSetVideoPosition,
+            Se.Language.Options.Settings.GridGoToNextLine,
+        ];
+        SelectedSubtitleEnterKeyActionType = SubtitleEnterKeyActionTypes[0];
+
+        SubtitleSingleClickActionTypes =
+        [
+            Se.Language.General.None,
+            Se.Language.Options.Settings.GridGoToSubtitleOnlyWaveformOnly,
+            Se.Language.Options.Settings.GridGoToSubtitleAndPause,
+            Se.Language.Options.Settings.GridGoToSubtitleAndPlay,
+            Se.Language.Options.Settings.GridGoToSubtitleAndSetVideoPosition,
+            Se.Language.Options.Settings.GridGoToSubtitleAndPauseAndFocusTextBox,
+            Se.Language.Options.Settings.GridGoToSubtitleAndPlayAndFocusTextBox
+        ];
+        SelectedSubtitleSingleClickActionType = SubtitleSingleClickActionTypes[0];
+
+        SubtitleDoubleClickActionTypes =
+        [
+            Se.Language.General.None,
+            Se.Language.Options.Settings.GridGoToSubtitleAndPause,
+            Se.Language.Options.Settings.GridGoToSubtitleAndPlay,
+            Se.Language.Options.Settings.GridGoToSubtitleAndSetVideoPosition,
+            Se.Language.Options.Settings.GridGoToSubtitleAndPauseAndFocusTextBox,
+            Se.Language.Options.Settings.GridGoToSubtitleAndPlayAndFocusTextBox,
+            Se.Language.Options.Settings.SubtitleListActionVideoGoToPositionAndPlayCurrentAndPause,
+            Se.Language.Options.Settings.SubtitleListActionVideoGoToPositionMinus1SecAndPause,
+            Se.Language.Options.Settings.SubtitleListActionVideoGoToPositionMinusHalfSecAndPause,
+            Se.Language.Options.Settings.SubtitleListActionVideoGoToPositionMinus1SecAndPlay
+        ];
+        SelectedSubtitleDoubleClickActionType = SubtitleDoubleClickActionTypes[0];
+
+        SaveAsBehaviorTypes =
+        [
+            Se.Language.Options.Settings.SaveAsBehaviorUseSubtitleVideoFilename,
+            Se.Language.Options.Settings.SaveAsBehaviorUseVideoSubtitleFilename,
+            Se.Language.Options.Settings.SaveAsBehaviorUseVideoFileName,
+            Se.Language.Options.Settings.SaveAsBehaviorUseSubtitleFileName,
+            Se.Language.General.Name,
+        ];
+        SelectedSaveAsBehaviorType = SaveAsBehaviorTypes[0];
+
+        DefaultSaveLocationTypes =
+        [
+            Se.Language.Options.Settings.DefaultSaveLocationSourceFileFolder,
+            Se.Language.Options.Settings.DefaultSaveLocationLastUsedFolder,
+            Se.Language.Options.Settings.DefaultSaveLocationVideoFileFolder,
+            Se.Language.Options.Settings.DefaultSaveLocationSubtitleFileFolder,
+            Se.Language.Options.Settings.DefaultSaveLocationCustomFolder,
+        ];
+        SelectedDefaultSaveLocationType = DefaultSaveLocationTypes[0];
+
+        SaveAsAppendLanguageCode =
+        [
+            Se.Language.General.None,
+            Se.Language.Options.Settings.SaveAsAppendLanguageCodeTwoLetter,
+            Se.Language.General.ThreeLetterLanguageCode,
+            Se.Language.General.ThreeLetterLanguageCodeBibliographic,
+            Se.Language.Options.Settings.SaveAsAppendLanguageCodeLanguageName,
+        ];
+        SelectedSaveAsAppendLanguageCode = SaveAsAppendLanguageCode[0];
+
+        SplitOddNumberOfLinesActions =
+        [
+            Se.Language.General.Smart,
+            Se.Language.Options.Settings.SplitOddLineActionWeightTop,
+            Se.Language.Options.Settings.SplitOddLineActionWeightBottom,
+        ];
+        SelectedSplitOddNumberOfLinesAction = SplitOddNumberOfLinesActions[0];
+
+        SpellCheckEngines = [Se.Language.Options.Settings.SpellCheckEngineHunSpelll];
+        if (WordSpellCheck.IsWordInstalled())
+        {
+            SpellCheckEngines.Add(Se.Language.Options.Settings.SpellCheckEngineMsWord);
+        }
+        SelectedSpellCheckEngine = SpellCheckEngines[0];
+
+        WaveformSpaceInfo = string.Empty;
+        IsMpvChosen = true;
+
+        GridLinesVisibilities = new ObservableCollection<GridLinesVisibilityDisplay>(GridLinesVisibilityDisplay.GetAll());
+        SelectedGridLinesVisibility = GridLinesVisibilities[0];
+
+        SubtitleGridTextDisplayModes = new ObservableCollection<SubtitleGridTextDisplayModeDisplay>(SubtitleGridTextDisplayModeDisplay.GetAll());
+        SelectedSubtitleGridTextDisplayMode = SubtitleGridTextDisplayModes[0];
+
+        ErrorColor = Color.FromArgb(50, 255, 0, 0);
+        ColorTextTooWideFontName = "Arial";
+
+        FfmpegStatus = Se.Language.General.NotInstalled;
+        FfmpegPath = string.Empty;
+
+        LibMpvStatus = Se.Language.General.NotInstalled;
+        LibMpvPath = string.Empty;
+        IsLibMpvDownloadVisible = OperatingSystem.IsWindows();
+        IsLibVlcDownloadVisible = OperatingSystem.IsWindows();
+
+        MpvPreviewFontName = FontNames.First();
+        MpvPreviewSelectedBorderType = MpvPreviewBorderTypes.First();
+
+        _profilesForEdit = new List<ProfileDisplay>();
+
+        _editCustomContinuationStyle = new CustomContinuationStyle();
+
+        LoadSettings();
+    }
+
+    private void LoadSettings()
+    {
+        var general = Se.Settings.General;
+        var appearance = Se.Settings.Appearance;
+
+        _profilesForEdit.Clear();
+        foreach (var profile in general.Profiles)
+        {
+            var pd = new ProfileDisplay
+            {
+                Name = profile.Name,
+                SingleLineMaxLength = profile.SubtitleLineMaximumLength,
+                OptimalCharsPerSec = (double)profile.SubtitleOptimalCharactersPerSeconds,
+                MaxCharsPerSec = (double)profile.SubtitleMaximumCharactersPerSeconds,
+                MaxWordsPerMin = (double)profile.SubtitleMaximumWordsPerMinute,
+                MinDurationMs = profile.SubtitleMinimumDisplayMilliseconds,
+                MaxDurationMs = profile.SubtitleMaximumDisplayMilliseconds,
+                MinGapMs = profile.MinimumMillisecondsBetweenLines,
+                MaxLines = profile.MaxNumberOfLines,
+                UnbreakLinesShorterThan = profile.MergeLinesShorterThan,
+                DialogStyle = DialogStyles.FirstOrDefault(p => p.Code == profile.DialogStyle.ToString()) ?? DialogStyles.First(),
+                ContinuationStyle = ContinuationStyles.FirstOrDefault(p => p.Code == profile.ContinuationStyle.ToString()) ?? ContinuationStyles.First(),
+                CpsLineLengthStrategy = CpsLineLengthStrategies.FirstOrDefault(p => p.Code == profile.CpsLineLengthStrategy) ?? CpsLineLengthStrategies.First(),
+                CustomContinuationStyle = new CustomContinuationStyle(profile.CustomContinuationStyle)
+            };
+            _profilesForEdit.Add(pd);
+        }
+
+        Profiles.Clear();
+        foreach (var profile in Se.Settings.General.Profiles)
+        {
+            Profiles.Add(profile.Name);
+        }
+
+        if (Profiles.Count == 0)
+        {
+            Profiles.Add("Default");
+        }
+
+        SelectedProfile = general.CurrentProfile;
+        if (!Profiles.Contains(SelectedProfile))
+        {
+            SelectedProfile = Profiles.First();
+        }
+
+        SingleLineMaxLength = general.SubtitleLineMaximumLength;
+        OptimalCharsPerSec = general.SubtitleOptimalCharactersPerSeconds;
+        MaxCharsPerSec = general.SubtitleMaximumCharactersPerSeconds;
+        MaxWordsPerMin = general.SubtitleMaximumWordsPerMinute;
+        MinDurationMs = general.SubtitleMinimumDisplayMilliseconds;
+        MaxDurationMs = general.SubtitleMaximumDisplayMilliseconds;
+        MinGapMs = general.MinimumBetweenLines.Milliseconds;
+        MinGapFrames = general.MinimumBetweenLines.Frames;
+        MaxLines = general.MaxNumberOfLines;
+        UnbreakLinesShorterThan = general.UnbreakLinesShorterThan;
+        AutoBreakLineEndingEarly = Se.Settings.Tools.AutoBreakLineEndingEarly;
+        AutoBreakCommaBreakEarly = Se.Settings.Tools.AutoBreakCommaBreakEarly;
+        AutoBreakDashEarly = Se.Settings.Tools.AutoBreakDashEarly;
+        AutoBreakUsePixelWidth = Se.Settings.Tools.AutoBreakUsePixelWidth;
+        AutoBreakPreferBottomHeavy = Se.Settings.Tools.AutoBreakPreferBottomHeavy;
+        AutoBreakPreferBottomPercent = (int)Math.Round(Se.Settings.Tools.AutoBreakPreferBottomPercent, MidpointRounding.AwayFromZero);
+        UseNoLineBreakAfter = Se.Settings.Tools.UseNoLineBreakAfter;
+        DialogStyle = DialogStyles.FirstOrDefault(p => p.Code == general.DialogStyle) ?? DialogStyles.First();
+        ContinuationStyle = ContinuationStyles.FirstOrDefault(p => p.Code == general.ContinuationStyle) ?? ContinuationStyles.First();
+        IsEditCustomContinuationStyleVisible = ContinuationStyle?.Code == nameof(Core.Enums.ContinuationStyle.Custom);
+        CpsLineLengthStrategy = CpsLineLengthStrategies.FirstOrDefault(p => p.Code == general.CpsLineLengthStrategy) ?? CpsLineLengthStrategies.First();
+
+        UseFrameMode = general.UseFrameMode;
+        TextBoxLimitNewLines = general.SubtitleTextBoxLimitNewLines;
+        NewEmptyDefaultMs = general.NewEmptyDefaultMs;
+        TimeCodeUpDownStepMs = general.TimeCodeUpDownStepMs;
+        PromptBeforeDelete = general.PromptBeforeDelete;
+        LockTimeCodes = general.LockTimeCodes;
+        RememberPositionAndSize = general.RememberPositionAndSize;
+        OpenLastFileOnStart = Se.Settings.File.OpenLastFileOnStart;
+        AutoSave = general.AutoSave;
+        AutoBackupOn = general.AutoBackupOn;
+        AutoBackupIntervalMinutes = general.AutoBackupIntervalMinutes;
+        AutoBackupDeleteAfterDays = general.AutoBackupDeleteAfterDays;
+        DefaultEncoding = Encodings.FirstOrDefault(e => e.DisplayName == general.DefaultEncoding) ?? Encodings.First();
+        SelectedSubtitleEnterKeyActionType = MapFromSelectedSubtitleEnterKeyAction(Se.Settings.General.SubtitleEnterKeyAction);
+        SelectedSubtitleSingleClickActionType = MapFromSelectedSubtitleSingleClickAction(Se.Settings.General.SubtitleSingleClickAction);
+        SelectedSubtitleDoubleClickActionType = MapFromSelectedSubtitleDoubleClickAction(Se.Settings.General.SubtitleDoubleClickAction);
+        SubtitleGridCenterSelectedRow = Se.Settings.General.SubtitleGridCenterSelectedRow;
+        SelectedSaveAsBehaviorType = MapFromSelectedSaveAsBehavior(Se.Settings.General.SaveAsBehavior);
+        SelectedSaveAsAppendLanguageCode = MapFromSelectedSaveAsAppendLanguageCode(Se.Settings.General.SaveAsAppendLanguageCode);
+        SelectedDefaultSaveLocationType = MapFromDefaultSaveLocation(Se.Settings.General.DefaultSaveLocation);
+        DefaultSaveLocationCustomFolder = Se.Settings.General.DefaultSaveLocationCustomFolder ?? string.Empty;
+        AutoConvertToUtf8 = general.AutoConvertToUtf8;
+        ForceCrLfOnSave = general.ForceCrLfOnSave;
+        AutoTrimWhiteSpace = general.AutoTrimWhiteSpace;
+
+        SelectedDefaultSubtitleFormat = general.DefaultSubtitleFormat;
+        if (!DefaultSubtitleFormats.Contains(SelectedDefaultSubtitleFormat))
+        {
+            SelectedDefaultSubtitleFormat = DefaultSubtitleFormats.FirstOrDefault() ?? string.Empty;
+        }
+
+        SelectedSaveSubtitleFormat = general.DefaultSaveAsFormat;
+        if (!SaveSubtitleFormats.Contains(SelectedSaveSubtitleFormat))
+        {
+            SelectedSaveSubtitleFormat = SaveSubtitleFormats.FirstOrDefault() ?? string.Empty;
+        }
+
+        WebVttUseXTimestampMap = Se.Settings.Formats.WebVttUseXTimestampMap;
+
+        if (!string.IsNullOrEmpty(general.FavoriteSubtitleFormats))
+        {
+            var favoriteFormats = general.FavoriteSubtitleFormats.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+            FavoriteSubtitleFormats.Clear();
+            foreach (var format in favoriteFormats)
+            {
+                if (SaveSubtitleFormats.Contains(format))
+                {
+                    FavoriteSubtitleFormats.Add(format);
+                }
+            }
+        }
+
+        FavoriteLanguages.Clear();
+        foreach (var code in LanguageFavorites.ParseCodes(general.FavoriteLanguages))
+        {
+            var iso = Iso639Dash2LanguageCode.List.FirstOrDefault(l =>
+                string.Equals(l.TwoLetterCode, code, StringComparison.OrdinalIgnoreCase));
+            FavoriteLanguages.Add(new PickLanguageDisplay
+            {
+                Code = code,
+                Name = iso?.EnglishName ?? code,
+            });
+        }
+
+        AllowSingleLetterShortcutsInTextbox = Se.Settings.Tools.AllowSingleLetterShortcutsInTextbox;
+        SpellCheckEnglishTreatInApostropheAsIng = Se.Settings.Tools.SpellCheckEnglishTreatInApostropheAsIng;
+        GoToLineNumberAlsoSetVideoPosition = Se.Settings.Tools.GoToLineNumberAlsoSetVideoPosition;
+        AdjustAllTimesRememberLineSelectionChoice = Se.Settings.Synchronization.AdjustAllTimesRememberLineSelectionChoice;
+        MergeKeepEndTime = Se.Settings.Tools.MergeKeepEndTime;
+        MergeKeepEndTimeOnlyAssa = Se.Settings.Tools.MergeKeepEndTimeOnlyAssa;
+        SelectedSplitOddNumberOfLinesAction = MapFromSplitOddActionToLanguageCode(Se.Settings.Tools.SplitOddLinesAction);
+        SelectedSpellCheckEngine = MapFromSpellCheckEngine(Se.Settings.SpellCheck.SpellCheckProvider);
+        OcrUseWordSplitList = Se.Settings.Ocr.UseWordSplitList;
+        OcrGuessUnknownWords = Se.Settings.Ocr.DoTryToGuessUnknownWords;
+        SpeechToTextSelectedLinesPromptFistTimeOnly = Se.Settings.Tools.SpeechToTextSelectedLinesPromptFirstTimeOnly;
+        MultipleReplaceShowDotDotDotButtons = Se.Settings.Tools.MultipleReplaceShowDotDotDotButtons;
+        GridFocusTextboxAfterInsertNew = Se.Settings.Tools.GridFocusTextboxAfterInsertNew;
+        TextToSpeechPromptMergeContinuationLines = Se.Settings.Tools.TextToSpeechPromptMergeContinuationLines;
+        OpenAiCompatibleSttAutoTranscribeOnAudioSelection = Se.Settings.Tools.OpenAiCompatibleSttAutoTranscribeOnAudioSelection;
+        FixCommonErrorsSkipStep1 = Se.Settings.Tools.FixCommonErrors.SkipStep1;
+        MusicSymbol = Se.Settings.Tools.MusicSymbol;
+        MusicSymbolReplace = Se.Settings.Tools.MusicSymbolReplace;
+
+        SelectedTheme = MapThemeToTranslation(appearance.Theme);
+        SelectedIconTheme = IconThemes.FirstOrDefault(p => p == appearance.IconTheme) ?? IconThemes.First();
+        MatchIconColorToDarkTheme = appearance.MatchIconColorToDarkTheme;
+        LayoutScale = (int)Math.Round(appearance.LayoutScale * 100.0, MidpointRounding.AwayFromZero);
+        if (OperatingSystem.IsMacOS())
+        {
+            SelectedFontName = MapMacOsFontNameForDisplay(appearance.FontName, FontNames);
+        }
+        else
+        {
+            SelectedFontName = FontNames.FirstOrDefault(p => p == appearance.FontName) ?? FontNames.First();
+        }
+        ShowToolbarNew = appearance.ToolbarShowFileNew;
+        ShowToolbarOpen = appearance.ToolbarShowFileOpen;
+        ShowToolbarVideoFileOpen = appearance.ToolbarShowVideoFileOpen;
+        ShowToolbarSave = appearance.ToolbarShowSave;
+        ShowToolbarSaveAs = appearance.ToolbarShowSaveAs;
+        ShowToolbarFind = appearance.ToolbarShowFind;
+        ShowToolbarReplace = appearance.ToolbarShowReplace;
+        ShowToolbarSpellCheck = appearance.ToolbarShowSpellCheck;
+        ShowToolbarFixCommonErrors = appearance.ToolbarShowFixCommonErrors;
+        ShowToolbarRemoveTextForHi = appearance.ToolbarShowRemoveTextForHi;
+        ShowToolbarVisualSync = appearance.ToolbarShowVisualSync;
+        ShowToolbarPointSync = appearance.ToolbarShowPointSync;
+        ShowToolbarBeautifyTimeCodes = appearance.ToolbarShowBeautifyTimeCodes;
+        ShowToolbarBurnIn = appearance.ToolbarShowBurnIn;
+        ShowToolbarAutoTranslate = appearance.ToolbarShowAutoTranslate;
+        ShowToolbarSpeechToText = appearance.ToolbarShowSpeechToText;
+        ShowToolbarSettings = appearance.ToolbarShowSettings;
+        ShowToolbarLayout = appearance.ToolbarShowLayout;
+        ShowToolbarSourceView = appearance.ToolbarShowSourceView;
+        ShowToolbarHelp = appearance.ToolbarShowHelp;
+        ShowToolbarEncoding = appearance.ToolbarShowEncoding;
+        ShowToolbarFrameRate = appearance.ToolbarShowFrameRate;
+        ShowPluginsMenu = appearance.ShowPluginsMenu;
+        SubtitleGridFontSize = appearance.SubtitleGridFontSize;
+        SubtitleGridTextSingleLine = appearance.SubtitleGridTextSingleLine;
+        SubtitleGridTextSingleLineSeparator = appearance.SubtitleGridTextSingleLineSeparator;
+        SubtitleGridFormatting = MapGridFormattingToText(appearance.SubtitleGridFormattingType);
+        SubtitleGridLiveSpellCheck = appearance.SubtitleGridLiveSpellCheck;
+        SubtitleTextBoxAndGridFontName = appearance.SubtitleTextBoxAndGridFontName;
+        TextBoxFontSize = appearance.SubtitleTextBoxFontSize;
+        TextBoxFontBold = appearance.SubtitleTextBoxFontBold;
+        TextBoxColorTags = appearance.SubtitleTextBoxColorTags;
+        TextBoxLiveSpellCheck = appearance.SubtitleTextBoxLiveSpellCheck;
+        TextBoxCenterText = appearance.SubtitleTextBoxCenterText;
+        TextBoxButtonShowAutoBreak = appearance.TextBoxShowButtonAutoBreak;
+        TextBoxButtonShowUnbreak = appearance.TextBoxShowButtonUnbreak;
+        TextBoxButtonShowItalic = appearance.TextBoxShowButtonItalic;
+        TextBoxButtonShowColor = appearance.TextBoxShowButtonColor;
+        TextBoxButtonShowRemoveFormatting = appearance.TextBoxShowButtonRemoveFormatting;
+        TextBoxButtonShowAiAssistant = appearance.TextBoxShowButtonAiAssistant;
+        ShowButtonHints = appearance.ShowHints;
+        GridCompactMode = appearance.GridCompactMode;
+        GridAlternatingRows = appearance.GridAlternatingRows;
+        ShowAssaLayer = appearance.ShowLayer;
+        ShowHorizontalLineAboveToolbar = appearance.ShowHorizontalLineAboveToolbar;
+        SelectedGridLinesVisibility = GridLinesVisibilities.FirstOrDefault(p => p.Type.ToString() == appearance.GridLinesAppearance) ?? GridLinesVisibilities[0];
+        SelectedSubtitleGridTextDisplayMode = SubtitleGridTextDisplayModes.FirstOrDefault(p => p.Mode.ToString() == appearance.SubtitleGridTextDisplay) ?? SubtitleGridTextDisplayModes[0];
+        DarkModeBackgroundColor = appearance.DarkModeBackgroundColor.FromHexToColor();
+        DarkModeForegroundColor = appearance.DarkModeForegroundColor.FromHexToColor();
+        UseFocusedButtonBackgroundColor = appearance.UseFocusedButtonBackgroundColor;
+        FocusedButtonBackgroundColor = appearance.FocusedButtonBackgroundColor.FromHexToColor();
+        BookmarkColor = appearance.BookmarkColor.FromHexToColor();
+        GridAlternatingRowColor = appearance.GridAlternatingRowColor.FromHexToColor();
+        GridAlternatingRowColorDark = appearance.GridAlternatingRowColorDark.FromHexToColor();
+        ShowUpDownStartTime = appearance.ShowUpDownStartTime;
+        ShowUpDownEndTime = appearance.ShowUpDownEndTime;
+        ShowUpDownDuration = appearance.ShowUpDownDuration;
+        ShowUpDownLabels = appearance.ShowUpDownLabels;
+
+        WaveformDrawGridLines = Se.Settings.Waveform.DrawGridLines;
+        WaveformFocusOnMouseOver = Se.Settings.Waveform.FocusOnMouseOver;
+        WaveformCenterVideoPosition = Se.Settings.Waveform.CenterVideoPosition;
+        WaveformCenterVideoPositionAlsoWhenPaused = Se.Settings.Waveform.CenterVideoPositionAlsoWhenPaused;
+        WaveformShowToolbar = Se.Settings.Waveform.ShowToolbar;
+
+        if (Se.Settings.Waveform.WaveformDrawStyle == WaveformDrawStyle.Classic.ToString())
+        {
+            SelectedWaveformDrawStyle = WaveformDrawStyles[0];
+        }
+        else if (Se.Settings.Waveform.WaveformDrawStyle == WaveformDrawStyle.Fancy.ToString())
+        {
+            SelectedWaveformDrawStyle = WaveformDrawStyles[1];
+        }
+        else
+        {
+            SelectedWaveformDrawStyle = WaveformDrawStyles[0];
+        }
+
+        WaveformGenerateSpectrogram = Se.Settings.Waveform.GenerateSpectrogram;
+        WaveformAutoGenerate = Se.Settings.Waveform.WaveformAutoGenerate;
+        if (Se.Settings.Waveform.SpectrogramStyle == SeSpectrogramStyle.Classic.ToString())
+        {
+            SelectedWaveformSpectrogramStyle = WaveformSpectrogramStyles[0];
+        }
+        else if (Se.Settings.Waveform.SpectrogramStyle == SeSpectrogramStyle.ClassicViridis.ToString())
+        {
+            SelectedWaveformSpectrogramStyle = WaveformSpectrogramStyles[1];
+        }
+        else if (Se.Settings.Waveform.SpectrogramStyle == SeSpectrogramStyle.ClassicPlasma.ToString())
+        {
+            SelectedWaveformSpectrogramStyle = WaveformSpectrogramStyles[2];
+        }
+        else if (Se.Settings.Waveform.SpectrogramStyle == SeSpectrogramStyle.ClassicInferno.ToString())
+        {
+            SelectedWaveformSpectrogramStyle = WaveformSpectrogramStyles[3];
+        }
+        else if (Se.Settings.Waveform.SpectrogramStyle == SeSpectrogramStyle.ClassicTurbo.ToString())
+        {
+            SelectedWaveformSpectrogramStyle = WaveformSpectrogramStyles[4];
+        }
+        else if (Se.Settings.Waveform.SpectrogramStyle == SeSpectrogramStyle.Neon.ToString())
+        {
+            SelectedWaveformSpectrogramStyle = WaveformSpectrogramStyles[5];
+        }
+        else
+        {
+            SelectedWaveformSpectrogramStyle = WaveformSpectrogramStyles[0];
+        }
+
+        WaveformSpectrogramCombinedWaveformHeight = Se.Settings.Waveform.SpectrogramCombinedWaveformHeight;
+
+        WaveformShowToolbar = Se.Settings.Waveform.ShowToolbar;
+        _waveformToolbarItems = new List<SeWaveformToolbarItem>();
+        foreach (var item in Se.Settings.Waveform.ToolbarItems)
+        {
+            _waveformToolbarItems.Add(new SeWaveformToolbarItem(item));
+        }
+
+        WaveformFocusTextboxAfterInsertNew = Se.Settings.Waveform.FocusTextBoxAfterInsertNew;
+        WaveformTextFontSize = Se.Settings.Waveform.WaveformTextFontSize;
+        WaveformTextFontBold = Se.Settings.Waveform.WaveformTextFontBold;
+        WaveformTextColor = Se.Settings.Waveform.WaveformTextColor.FromHexToColor();
+        WaveformColor = Se.Settings.Waveform.WaveformColor.FromHexToColor();
+        WaveformBackgroundColor = Se.Settings.Waveform.WaveformBackgroundColor.FromHexToColor();
+        WaveformParagraphBackgroundColor = Se.Settings.Waveform.ParagraphBackground.FromHexToColor();
+        WaveformSelectedColor = Se.Settings.Waveform.WaveformSelectedColor.FromHexToColor();
+        WaveformParagraphSelectedBackgroundColor = Se.Settings.Waveform.ParagraphSelectedBackground.FromHexToColor();
+        WaveformCursorColor = Se.Settings.Waveform.WaveformCursorColor.FromHexToColor();
+        WaveformShotChangeColor = Se.Settings.Waveform.WaveformShotChangeColor.FromHexToColor();
+        WaveformParagraphLeftColor = Se.Settings.Waveform.WaveformParagraphLeftColor.FromHexToColor();
+        WaveformParagraphRightColor = Se.Settings.Waveform.WaveformParagraphRightColor.FromHexToColor();
+        WaveformFancyHighColor = Se.Settings.Waveform.WaveformFancyHighColor.FromHexToColor();
+        WaveformInvertMouseWheel = Se.Settings.Waveform.InvertMouseWheel;
+        WaveformMouseWheelSetsVideoPosition = Se.Settings.Waveform.MouseWheelSetsVideoPosition;
+        var mouseWheelStepDisplay = FormatMouseWheelStep(Se.Settings.Waveform.MouseWheelVideoPositionStepMs);
+        SelectedWaveformMouseWheelVideoPositionStep = WaveformMouseWheelVideoPositionSteps.Contains(mouseWheelStepDisplay)
+            ? mouseWheelStepDisplay
+            : FormatMouseWheelStep(500);
+        WaveformSnapToShotChanges = Se.Settings.Waveform.SnapToShotChanges;
+        WaveformSnapToFrames = Se.Settings.Waveform.SnapToFrames;
+        WaveformShotChangesAutoGenerate = Se.Settings.Waveform.ShotChangesAutoGenerate;
+        WaveformAllowOverlap = Se.Settings.Waveform.AllowOverlap;
+        WaveformSetVideoPositionOnMoveStartEnd = Se.Settings.Waveform.SetVideoPositionOnMoveStartEnd;
+
+        SelectedWaveformSingleClickActionType = MapWaveformSingleClickToTranslation(Se.Settings.Waveform.SingleClickAction);
+        SelectedWaveformDoubleClickActionType = MapWaveformDoubleClickToTranslation(Se.Settings.Waveform.DoubleClickAction);
+
+        SelectedWaveformExtractAudioFormat = ExtractAudioFormatToLabel(Se.Settings.Waveform.ExtractAudioFormat);
+        SelectedWaveformExtractAudioSampleRate = Se.Settings.Waveform.ExtractAudioSampleRate <= 0
+            ? WaveformExtractAudioSampleRates[0]
+            : Se.Settings.Waveform.ExtractAudioSampleRate.ToString(CultureInfo.InvariantCulture);
+        SelectedWaveformExtractAudioBitRate = string.IsNullOrEmpty(Se.Settings.Waveform.ExtractAudioBitRate)
+            ? "192k"
+            : Se.Settings.Waveform.ExtractAudioBitRate;
+
+        WaveformRightClickSelectsSubtitle = Se.Settings.Waveform.RightClickSelectsSubtitle;
+
+        ColorDurationTooLong = general.ColorDurationTooLong;
+        ColorDurationTooShort = general.ColorDurationTooShort;
+        ColorTextTooLong = general.ColorTextTooLong;
+        ColorTextTooWide = general.ColorTextTooWide;
+        ColorTextTooWidePixels = general.ColorTextTooWidePixels;
+        ColorTextTooWideFontName = general.ColorTextTooWideFontName;
+        ColorTextTooWideFontSize = general.ColorTextTooWideFontSize;
+        ColorTextTooManyLines = general.ColorTextTooManyLines;
+        ColorCharactersPerSecond = general.ColorCharactersPerSecond;
+        ColorWordsPerMinute = general.ColorWordsPerMinute;
+        ColorOverlap = general.ColorTimeCodeOverlap;
+        ColorGapTooShort = general.ColorGapTooShort;
+        ErrorColor = general.ErrorColor.FromHexToColor();
+
+        _editCustomContinuationStyle = new CustomContinuationStyle(general.CustomContinuationStyle);
+
+        var video = Se.Settings.Video;
+        var videoPlayer = VideoPlayers.FirstOrDefault(p => p.Code.Equals(video.VideoPlayer, StringComparison.OrdinalIgnoreCase));
+        if (videoPlayer != null)
+        {
+            SelectedVideoPlayer = videoPlayer;
+        }
+
+        ShowStopButton = video.ShowStopButton;
+        ShowFullscreenButton = video.ShowFullscreenButton;
+        FullscreenHideControls = video.FullscreenHideControls;
+        AutoOpenVideoFile = video.AutoOpen;
+
+        MpvPreviewFontName = video.MpvPreviewFontName;
+        MpvPreviewFontSize = video.MpvPreviewFontSize;
+        MpvPreviewFontBold = video.MpvPreviewFontBold;
+        MpvPreviewMargin = video.MpvPreviewMargin;
+        MpvPreviewSelectedFontAlignment = MpvPreviewFontAlignments.FirstOrDefault(p => p.Code == video.MpvPreviewAlignment) ?? MpvPreviewFontAlignments[7];
+        MpvPreviewOutlineWidth = video.MpvPreviewOutlineWidth;
+        MpvPreviewShadowWidth = video.MpvPreviewShadowWidth;
+        MpvPreviewColorPrimary = video.MpvPreviewColorPrimary.FromHexToColor();
+        MpvPreviewColorOutline = video.MpvPreviewColorOutline.FromHexToColor();
+        MpvPreviewColorShadow = video.MpvPreviewColorShadow.FromHexToColor();
+        MpvPreviewSelectedBorderType = MpvPreviewBorderTypes.FirstOrDefault(p => p.Style == (BorderStyleType)video.MpvPreviewBorderType) ?? MpvPreviewBorderTypes.First();
+
+        FfmpegPath = Se.Settings.General.FfmpegPath;
+        LibMpvPath = Se.Settings.General.LibMpvPath;
+        ProxyAddress = Se.Settings.General.ProxyAddress ?? string.Empty;
+        ProxyUserName = Se.Settings.General.ProxyUserName ?? string.Empty;
+        ProxyPassword = Se.Settings.General.ProxyPassword ?? string.Empty;
+        ProxyDomain = Se.Settings.General.ProxyDomain ?? string.Empty;
+        ProxyUseDefaultCredentials = Se.Settings.General.ProxyUseDefaultCredentials;
+        ProxyBypassList = Se.Settings.General.ProxyBypassList ?? string.Empty;
+        CheckForUpdatesOnStartup = Se.Settings.General.CheckForUpdatesOnStartup;
+        SelectedUpdateChannel = UpdateCheckService.IncludePrereleases()
+            ? Se.Language.Options.Settings.CheckForUpdatesChannelStableAndBeta
+            : Se.Language.Options.Settings.CheckForUpdatesChannelStable;
+        _loadedUpdateChannel = SelectedUpdateChannel;
+        SetFfmpegStatus();
+        SetLibMpvStatus();
+        SetLibVlcStatus();
+        LoadFileTypeAssociations();
+
+        ExistsErrorLogFile = File.Exists(Se.GetErrorLogFilePath());
+        ExistsToolsLogFile = File.Exists(Se.GetToolsLogFilePath());
+        ExistsSettingsFile = File.Exists(Se.GetSettingsFilePath());
+
+        WriteToolsLog = Se.Settings.Tools.WriteToolsLog;
+    }
+
+    internal static string MapMacOsFontNameForDisplay(string fontName, IReadOnlyList<string> fontNames)
+    {
+        if (fontName == ".AppleSystemUIFont")
+        {
+            return "System Font";
+        }
+
+        if (fontName == "Default")
+        {
+            return "Helvetica Neue";
+        }
+
+        return fontNames.FirstOrDefault(p => p == fontName) ?? fontNames.First();
+    }
+
+    // Display label <-> stored extension for the waveform "Extract audio" format.
+    // ExtractAudioFormatOrder fixes the dropdown order (and thus the default at index 0);
+    // a Dictionary's enumeration order is not contractually guaranteed.
+    private static readonly string[] ExtractAudioFormatOrder = { "wav", "mp3", "m4a", "flac" };
+
+    private static readonly Dictionary<string, string> ExtractAudioFormatLabels = new()
+    {
+        { "wav", "WAV" },
+        { "mp3", "MP3" },
+        { "m4a", "M4A (AAC)" },
+        { "flac", "FLAC" },
+    };
+
+    private string ExtractAudioFormatToLabel(string format)
+    {
+        return ExtractAudioFormatLabels.TryGetValue(format.Trim().ToLowerInvariant(), out var label)
+            ? label
+            : ExtractAudioFormatLabels["wav"];
+    }
+
+    private string ExtractAudioLabelToFormat(string label)
+    {
+        foreach (var kvp in ExtractAudioFormatLabels)
+        {
+            if (kvp.Value == label)
+            {
+                return kvp.Key;
+            }
+        }
+
+        return "wav";
+    }
+
+    private static readonly Dictionary<string, string> _waveformSingleClickActionToTextMap = BuildWaveformSingleClickActionToTextMap();
+
+    private static Dictionary<string, string> BuildWaveformSingleClickActionToTextMap() => new Dictionary<string, string>
+    {
+        { WaveformSingleClickActionType.SetVideoPositionAndPauseAndSelectSubtitle.ToString(), Se.Language.Waveform.SetVideoPositionAndPauseAndSelectSubtitle },
+        { WaveformSingleClickActionType.SetVideopositionAndPauseAndSelectSubtitleAndCenter.ToString(), Se.Language.Waveform.SetVideopositionAndPauseAndSelectSubtitleAndCenter },
+        { WaveformSingleClickActionType.SetVideoPositionAndPause.ToString(), Se.Language.Waveform.SetVideoPositionAndPause },
+        { WaveformSingleClickActionType.SetVideopositionAndPauseAndCenter.ToString(), Se.Language.Waveform.SetVideopositionAndPauseAndCenter },
+        { WaveformSingleClickActionType.SetVideoposition.ToString(), Se.Language.Waveform.SetVideoposition },
+    };
+
+    private static Dictionary<string, string> WaveformSingleClickTextToActionMap => ReverseTranslationMap(_waveformSingleClickActionToTextMap);
+
+    private string MapWaveformSingleClickToTranslation(string singleClickAction)
+    {
+        if (string.IsNullOrEmpty(singleClickAction))
+        {
+            return Se.Language.Waveform.SetVideoPositionAndPauseAndSelectSubtitle;
+        }
+
+        return _waveformSingleClickActionToTextMap.TryGetValue(singleClickAction, out var text)
+            ? text
+            : Se.Language.Waveform.SetVideoPositionAndPauseAndSelectSubtitle;
+    }
+
+    private static readonly Dictionary<string, string> _waveformDoubleClickActionToTextMap = BuildWaveformDoubleClickActionToTextMap();
+
+    private static Dictionary<string, string> BuildWaveformDoubleClickActionToTextMap() => new Dictionary<string, string>
+    {
+        { WaveformDoubleClickActionType.None.ToString(), Se.Language.General.None },
+        { WaveformDoubleClickActionType.SelectSubtitle.ToString(), Se.Language.General.SelectSubtitle },
+        { WaveformDoubleClickActionType.Center.ToString(), Se.Language.General.Center },
+        { WaveformDoubleClickActionType.Pause.ToString(), Se.Language.General.Pause },
+        { WaveformDoubleClickActionType.Play.ToString(), Se.Language.General.Play },
+    };
+
+    private static Dictionary<string, string> WaveformDoubleClickTextToActionMap => ReverseTranslationMap(_waveformDoubleClickActionToTextMap);
+
+    private string MapWaveformDoubleClickToTranslation(string doubleClickAction)
+    {
+        if (string.IsNullOrEmpty(doubleClickAction))
+        {
+            return Se.Language.General.None;
+        }
+
+        return _waveformDoubleClickActionToTextMap.TryGetValue(doubleClickAction, out var text)
+            ? text
+            : Se.Language.General.None;
+    }
+
+    private string GetTranslationModifierFromSetting(string modifier)
+    {
+        if (modifier == "Control" || modifier == "Ctrl")
+        {
+            return OperatingSystem.IsMacOS() ? Se.Language.Options.Shortcuts.ControlMac : Se.Language.Options.Shortcuts.Control;
+        }
+        else if (modifier == "Shift")
+        {
+            return Se.Language.Options.Shortcuts.Shift;
+        }
+        else if (modifier == "Alt")
+        {
+            return Se.Language.Options.Shortcuts.Alt;
+        }
+        else
+        {
+            return string.Empty;
+        }
+    }
+
+    private static string MapFromSpellCheckEngine(string engine)
+    {
+        if (engine == SeSpellCheck.SpellCheckHunspell)
+        {
+            return Se.Language.Options.Settings.SpellCheckEngineHunSpelll;
+        }
+
+        if (engine == SeSpellCheck.SpellCheckMsWord)
+        {
+            return Se.Language.Options.Settings.SpellCheckEngineMsWord;
+        }
+
+        return Se.Language.Options.Settings.SpellCheckEngineHunSpelll;
+    }
+
+    private static string MapFromSplitOddActionToLanguageCode(string splitAction)
+    {
+        if (splitAction == nameof(SplitOddLinesActionType.WeightTop))
+        {
+            return Se.Language.Options.Settings.SplitOddLineActionWeightTop;
+        }
+
+        if (splitAction == nameof(SplitOddLinesActionType.WeightBottom))
+        {
+            return Se.Language.Options.Settings.SplitOddLineActionWeightBottom;
+        }
+
+        return Se.Language.General.Smart;
+    }
+
+    private static string MapFromSelectedSaveAsBehavior(string saveAsBehavior)
+    {
+        if (saveAsBehavior == nameof(SaveAsBehaviourType.UseSubtitleFileNameThenVideoFileName))
+        {
+            return Se.Language.Options.Settings.SaveAsBehaviorUseSubtitleVideoFilename;
+        }
+
+        if (saveAsBehavior == nameof(SaveAsBehaviourType.UseVideoFileNameThenSubtitleFileName))
+        {
+            return Se.Language.Options.Settings.SaveAsBehaviorUseVideoSubtitleFilename;
+        }
+
+        if (saveAsBehavior == nameof(SaveAsBehaviourType.UseVideoFileName))
+        {
+            return Se.Language.Options.Settings.SaveAsBehaviorUseVideoFileName;
+        }
+
+        if (saveAsBehavior == nameof(SaveAsBehaviourType.UseSubtitleFileName))
+        {
+            return Se.Language.Options.Settings.SaveAsBehaviorUseSubtitleFileName;
+        }
+
+        return Se.Language.General.Default;
+    }
+
+    private static string MapFromDefaultSaveLocation(string defaultSaveLocation)
+    {
+        if (defaultSaveLocation == nameof(DefaultSaveLocationType.LastUsedFolder))
+        {
+            return Se.Language.Options.Settings.DefaultSaveLocationLastUsedFolder;
+        }
+
+        if (defaultSaveLocation == nameof(DefaultSaveLocationType.VideoFileFolder))
+        {
+            return Se.Language.Options.Settings.DefaultSaveLocationVideoFileFolder;
+        }
+
+        if (defaultSaveLocation == nameof(DefaultSaveLocationType.SubtitleFileFolder))
+        {
+            return Se.Language.Options.Settings.DefaultSaveLocationSubtitleFileFolder;
+        }
+
+        if (defaultSaveLocation == nameof(DefaultSaveLocationType.CustomFolder))
+        {
+            return Se.Language.Options.Settings.DefaultSaveLocationCustomFolder;
+        }
+
+        return Se.Language.Options.Settings.DefaultSaveLocationSourceFileFolder;
+    }
+
+    private static string MapToDefaultSaveLocation(string selectedDefaultSaveLocationType)
+    {
+        if (selectedDefaultSaveLocationType == Se.Language.Options.Settings.DefaultSaveLocationLastUsedFolder)
+        {
+            return nameof(DefaultSaveLocationType.LastUsedFolder);
+        }
+
+        if (selectedDefaultSaveLocationType == Se.Language.Options.Settings.DefaultSaveLocationVideoFileFolder)
+        {
+            return nameof(DefaultSaveLocationType.VideoFileFolder);
+        }
+
+        if (selectedDefaultSaveLocationType == Se.Language.Options.Settings.DefaultSaveLocationSubtitleFileFolder)
+        {
+            return nameof(DefaultSaveLocationType.SubtitleFileFolder);
+        }
+
+        if (selectedDefaultSaveLocationType == Se.Language.Options.Settings.DefaultSaveLocationCustomFolder)
+        {
+            return nameof(DefaultSaveLocationType.CustomFolder);
+        }
+
+        return nameof(DefaultSaveLocationType.SourceFileFolder);
+    }
+
+    partial void OnSelectedDefaultSaveLocationTypeChanged(string value)
+    {
+        IsDefaultSaveLocationCustomFolderEnabled = value == Se.Language.Options.Settings.DefaultSaveLocationCustomFolder;
+    }
+
+    [RelayCommand]
+    private async Task BrowseDefaultSaveLocationFolder()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var folder = await _folderHelper.PickFolderAsync(Window, Se.Language.Options.Settings.DefaultSaveLocation);
+        if (!string.IsNullOrEmpty(folder))
+        {
+            DefaultSaveLocationCustomFolder = folder;
+        }
+    }
+
+    private static string MapFromSelectedSaveAsAppendLanguageCode(string languageAppendType)
+    {
+        if (languageAppendType == nameof(SaveAsLanguageAppendType.TwoLetterLanguageCode))
+        {
+            return Se.Language.Options.Settings.SaveAsAppendLanguageCodeTwoLetter;
+        }
+
+        if (languageAppendType == nameof(SaveAsLanguageAppendType.ThreeLEtterLanguageCode))
+        {
+            return Se.Language.General.ThreeLetterLanguageCode;
+        }
+
+        if (languageAppendType == nameof(SaveAsLanguageAppendType.ThreeLetterLanguageCodeBibliographic))
+        {
+            return Se.Language.General.ThreeLetterLanguageCodeBibliographic;
+        }
+
+        if (languageAppendType == nameof(SaveAsLanguageAppendType.FullLanguageName))
+        {
+            return Se.Language.Options.Settings.SaveAsAppendLanguageCodeLanguageName;
+        }
+
+        return Se.Language.General.None;
+    }
+
+    private static string MapThemeFromTranslation(string translation)
+    {
+        if (translation == Se.Language.General.System)
+        {
+            return UiTheme.ThemeNameSystem;
+        }
+        else if (translation == Se.Language.General.Light)
+        {
+            return UiTheme.ThemeNameLight;
+        }
+        else if (translation == Se.Language.General.Dark)
+        {
+            return UiTheme.ThemeNameDark;
+        }
+        else if (translation == Se.Language.General.Classic)
+        {
+            return UiTheme.ThemeNameClassic;
+        }
+        else if (translation == "Pastel")
+        {
+            return UiTheme.ThemeNamePastel;
+        }
+        else
+        {
+            return UiTheme.ThemeNameSystem;
+        }
+    }
+
+    private string MapThemeToTranslation(string theme)
+    {
+        if (theme == UiTheme.ThemeNameSystem)
+        {
+            return Se.Language.General.System;
+        }
+        else if (theme == UiTheme.ThemeNameLight)
+        {
+            return Se.Language.General.Light;
+        }
+        else if (theme == UiTheme.ThemeNameDark)
+        {
+            return Se.Language.General.Dark;
+        }
+        else if (theme == UiTheme.ThemeNameClassic)
+        {
+            return Se.Language.General.Classic;
+        }
+        else if (theme == UiTheme.ThemeNamePastel)
+        {
+            return "Pastel";
+        }
+        else
+        {
+            return Se.Language.General.System;
+        }
+    }
+
+    private static string MapGridFormattingToText(int subtitleGridFormattingType)
+    {
+        if (subtitleGridFormattingType == (int)SubtitleGridFormattingTypes.ShowFormatting)
+        {
+            return Se.Language.Options.Settings.SubtitleGridFormattingShowFormatting;
+        }
+        else if (subtitleGridFormattingType == (int)SubtitleGridFormattingTypes.ShowTags)
+        {
+            return Se.Language.Options.Settings.SubtitleGridFormattingShowTags;
+        }
+        else
+        {
+            return Se.Language.Options.Settings.SubtitleGridFormattingNone;
+        }
+    }
+
+    private static int MapGridFormattingToCode(string translation)
+    {
+        if (translation == Se.Language.Options.Settings.SubtitleGridFormattingShowFormatting)
+        {
+            return (int)SubtitleGridFormattingTypes.ShowFormatting;
+        }
+        else if (translation == Se.Language.Options.Settings.SubtitleGridFormattingShowTags)
+        {
+            return (int)SubtitleGridFormattingTypes.ShowTags;
+        }
+        else
+        {
+            return (int)SubtitleGridFormattingTypes.NoFormatting;
+        }
+    }
+
+    private static readonly Dictionary<string, string> _keyEnterActionToTextMap = BuildKeyEnterActionToTextMap();
+
+    private static Dictionary<string, string> BuildKeyEnterActionToTextMap() => new Dictionary<string, string>
+    {
+        { SubtitleEnterKeyActionType.GoToSubtitleAndSetVideoPosition.ToString(), Se.Language.Options.Settings.GridGoToSubtitleAndSetVideoPosition },
+        { SubtitleEnterKeyActionType.GoToNextLine.ToString(), Se.Language.Options.Settings.GridGoToNextLine },
+    };
+
+    private static Dictionary<string, string> KeyEnterTextToActionMap => ReverseTranslationMap(_keyEnterActionToTextMap);
+
+    private static string MapFromSelectedSubtitleEnterKeyAction(string action)
+    {
+        if (string.IsNullOrEmpty(action))
+        {
+            return Se.Language.General.None;
+        }
+
+        return _keyEnterActionToTextMap.TryGetValue(action, out var text)
+            ? text
+            : Se.Language.General.None; ;
+    }
+
+    public static string MapToSelectedSubtitleEnterKeyAction(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return SubtitleSingleClickActionType.None.ToString();
+        }
+
+        return KeyEnterTextToActionMap.TryGetValue(text, out var action)
+            ? action
+            : SubtitleSingleClickActionType.None.ToString();
+    }
+
+    private static readonly Dictionary<string, string> _singleClickActionToTextMap = BuildSingleClickActionToTextMap();
+
+    private static Dictionary<string, string> BuildSingleClickActionToTextMap() => new Dictionary<string, string>
+    {
+        { SubtitleSingleClickActionType.None.ToString(), Se.Language.General.None },
+        { SubtitleSingleClickActionType.GoToWaveformOnlyNoVideoPosition.ToString(), Se.Language.Options.Settings.GridGoToSubtitleOnlyWaveformOnly },
+        { SubtitleSingleClickActionType.GoToSubtitleAndPause.ToString(), Se.Language.Options.Settings.GridGoToSubtitleAndPause },
+        { SubtitleSingleClickActionType.GoToSubtitleAndPlay.ToString(), Se.Language.Options.Settings.GridGoToSubtitleAndPlay },
+        { SubtitleSingleClickActionType.GoToSubtitleAndSetVideoPosition.ToString(), Se.Language.Options.Settings.GridGoToSubtitleAndSetVideoPosition },
+        { SubtitleSingleClickActionType.GoToSubtitleAndPauseAndFocusTextBox.ToString(), Se.Language.Options.Settings.GridGoToSubtitleAndPauseAndFocusTextBox },
+        { SubtitleSingleClickActionType.GoToSubtitleAndPlayAndFocusTextBox.ToString(), Se.Language.Options.Settings.GridGoToSubtitleAndPlayAndFocusTextBox },
+    };
+
+    private static Dictionary<string, string> SingleClickTextToActionMap => ReverseTranslationMap(_singleClickActionToTextMap);
+
+    private static string MapFromSelectedSubtitleSingleClickAction(string action)
+    {
+        if (string.IsNullOrEmpty(action))
+        {
+            return Se.Language.General.None;
+        }
+
+        return _singleClickActionToTextMap.TryGetValue(action, out var text)
+            ? text
+            : Se.Language.General.None; ;
+    }
+
+    public static string MapToSelectedSubtitleSingleClickAction(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return SubtitleSingleClickActionType.None.ToString();
+        }
+
+        return SingleClickTextToActionMap.TryGetValue(text, out var action)
+            ? action
+            : SubtitleSingleClickActionType.None.ToString();
+    }
+
+    private static readonly Dictionary<string, string> _actionToTextMap = BuildDoubleClickActionToTextMap();
+
+    private static Dictionary<string, string> BuildDoubleClickActionToTextMap() => new Dictionary<string, string>
+    {
+        { SubtitleDoubleClickActionType.None.ToString(), Se.Language.General.None },
+        { SubtitleDoubleClickActionType.GoToSubtitleAndPause.ToString(), Se.Language.Options.Settings.GridGoToSubtitleAndPause },
+        { SubtitleDoubleClickActionType.GoToSubtitleAndPlay.ToString(), Se.Language.Options.Settings.GridGoToSubtitleAndPlay },
+        { SubtitleDoubleClickActionType.GoToSubtitleOnly.ToString(), Se.Language.Options.Settings.GridGoToSubtitleAndSetVideoPosition },
+        { SubtitleDoubleClickActionType.GoToSubtitleAndPauseAndFocusTextBox.ToString(), Se.Language.Options.Settings.GridGoToSubtitleAndPauseAndFocusTextBox },
+        { SubtitleDoubleClickActionType.GoToSubtitleAndPlayAndFocusTextBox.ToString(), Se.Language.Options.Settings.GridGoToSubtitleAndPlayAndFocusTextBox },
+        { SubtitleDoubleClickActionType.GoToSubtitleAndPlayCurrentAndPause.ToString(), Se.Language.Options.Settings.SubtitleListActionVideoGoToPositionAndPlayCurrentAndPause },
+        { SubtitleDoubleClickActionType.GoToSubtitleMinus1SecAndPause.ToString(), Se.Language.Options.Settings.SubtitleListActionVideoGoToPositionMinus1SecAndPause },
+        { SubtitleDoubleClickActionType.GoToSubtitleMinusHalfSecAndPause.ToString(), Se.Language.Options.Settings.SubtitleListActionVideoGoToPositionMinusHalfSecAndPause },
+        { SubtitleDoubleClickActionType.GoToSubtitleMinus1SecAndPlay.ToString(), Se.Language.Options.Settings.SubtitleListActionVideoGoToPositionMinus1SecAndPlay },
+    };
+
+    // Rebuilds the static language-dependent maps in place so callers keep their reference.
+    // Call after Se.Language has been swapped (UI language change).
+    public static void ReloadLanguageMaps()
+    {
+        Refill(_waveformSingleClickActionToTextMap, BuildWaveformSingleClickActionToTextMap());
+        Refill(_waveformDoubleClickActionToTextMap, BuildWaveformDoubleClickActionToTextMap());
+        Refill(_keyEnterActionToTextMap, BuildKeyEnterActionToTextMap());
+        Refill(_singleClickActionToTextMap, BuildSingleClickActionToTextMap());
+        Refill(_actionToTextMap, BuildDoubleClickActionToTextMap());
+    }
+
+    private static void Refill(Dictionary<string, string> target, Dictionary<string, string> source)
+    {
+        target.Clear();
+        foreach (var kv in source)
+        {
+            target[kv.Key] = kv.Value;
+        }
+    }
+
+    // Reverse a code->translated-text map into translated-text->code. A plain
+    // ToDictionary(x => x.Value, ...) throws ArgumentException when a translation gives two
+    // actions the same text (or leaves one empty), which aborts the whole settings save for
+    // that language (#12180). Skip empty translations and keep the first code for a duplicate
+    // so a bad translation can never block saving.
+    private static Dictionary<string, string> ReverseTranslationMap(Dictionary<string, string> codeToText)
+    {
+        var result = new Dictionary<string, string>();
+        foreach (var kv in codeToText)
+        {
+            if (!string.IsNullOrEmpty(kv.Value) && !result.ContainsKey(kv.Value))
+            {
+                result[kv.Value] = kv.Key;
+            }
+        }
+
+        return result;
+    }
+
+    private static Dictionary<string, string> TextToActionMap => ReverseTranslationMap(_actionToTextMap);
+
+    private static string MapFromSelectedSubtitleDoubleClickAction(string action)
+    {
+        if (string.IsNullOrEmpty(action))
+        {
+            return Se.Language.Options.Settings.GridGoToSubtitleAndPause;
+        }
+
+        return _actionToTextMap.TryGetValue(action, out var text)
+            ? text
+            : Se.Language.Options.Settings.GridGoToSubtitleAndPause;
+    }
+
+    public static string MapToSelectedSubtitleDoubleClickAction(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return SubtitleDoubleClickActionType.GoToSubtitleAndPause.ToString();
+        }
+
+        return TextToActionMap.TryGetValue(text, out var action)
+            ? action
+            : SubtitleDoubleClickActionType.GoToSubtitleAndPause.ToString();
+    }
+
+    private void SaveSettings()
+    {
+        var general = Se.Settings.General;
+        var appearance = Se.Settings.Appearance;
+        var video = Se.Settings.Video;
+
+        general.SubtitleLineMaximumLength = SingleLineMaxLength ?? general.SubtitleLineMaximumLength;
+        general.SubtitleOptimalCharactersPerSeconds = OptimalCharsPerSec ?? general.SubtitleOptimalCharactersPerSeconds;
+        general.SubtitleMaximumCharactersPerSeconds = MaxCharsPerSec ?? general.SubtitleMaximumCharactersPerSeconds;
+        general.SubtitleMaximumWordsPerMinute = MaxWordsPerMin ?? general.SubtitleMaximumWordsPerMinute;
+        general.SubtitleMinimumDisplayMilliseconds = MinDurationMs ?? general.SubtitleMinimumDisplayMilliseconds;
+        general.SubtitleMaximumDisplayMilliseconds = MaxDurationMs ?? general.SubtitleMaximumDisplayMilliseconds;
+        general.MinimumBetweenLines.Milliseconds = MinGapMs ?? general.MinimumBetweenLines.Milliseconds;
+        general.MinimumBetweenLines.Frames = MinGapFrames ?? general.MinimumBetweenLines.Frames;
+        general.MaxNumberOfLines = MaxLines ?? general.MaxNumberOfLines;
+        general.UnbreakLinesShorterThan = UnbreakLinesShorterThan ?? general.UnbreakLinesShorterThan;
+        Se.Settings.Tools.AutoBreakLineEndingEarly = AutoBreakLineEndingEarly;
+        Se.Settings.Tools.AutoBreakCommaBreakEarly = AutoBreakCommaBreakEarly;
+        Se.Settings.Tools.AutoBreakDashEarly = AutoBreakDashEarly;
+        Se.Settings.Tools.AutoBreakUsePixelWidth = AutoBreakUsePixelWidth;
+        Se.Settings.Tools.AutoBreakPreferBottomHeavy = AutoBreakPreferBottomHeavy;
+        Se.Settings.Tools.AutoBreakPreferBottomPercent = AutoBreakPreferBottomPercent;
+        Se.Settings.Tools.UseNoLineBreakAfter = UseNoLineBreakAfter;
+        general.DialogStyle = DialogStyle.Code;
+        general.ContinuationStyle = ContinuationStyle.Code;
+        general.CpsLineLengthStrategy = CpsLineLengthStrategy.Code;
+
+        general.UseFrameMode = UseFrameMode;
+        general.SubtitleTextBoxLimitNewLines = TextBoxLimitNewLines;
+        general.NewEmptyDefaultMs = NewEmptyDefaultMs ?? general.NewEmptyDefaultMs;
+        general.TimeCodeUpDownStepMs = TimeCodeUpDownStepMs ?? general.TimeCodeUpDownStepMs;
+        general.PromptBeforeDelete = PromptBeforeDelete;
+        general.LockTimeCodes = LockTimeCodes;
+        general.RememberPositionAndSize = RememberPositionAndSize;
+        Se.Settings.File.OpenLastFileOnStart = OpenLastFileOnStart;
+        general.AutoSave = AutoSave;
+        general.AutoBackupOn = AutoBackupOn;
+        general.AutoBackupIntervalMinutes = AutoBackupIntervalMinutes ?? general.AutoBackupIntervalMinutes;
+        general.AutoBackupDeleteAfterDays = AutoBackupDeleteAfterDays ?? general.AutoBackupDeleteAfterDays;
+        general.DefaultEncoding = DefaultEncoding?.DisplayName ?? Encodings.First().DisplayName;
+        general.SubtitleEnterKeyAction = MapToSelectedSubtitleEnterKeyAction(SelectedSubtitleEnterKeyActionType);
+        general.SubtitleSingleClickAction = MapToSelectedSubtitleSingleClickAction(SelectedSubtitleSingleClickActionType);
+        general.SubtitleDoubleClickAction = MapToSelectedSubtitleDoubleClickAction(SelectedSubtitleDoubleClickActionType);
+        general.SubtitleGridCenterSelectedRow = SubtitleGridCenterSelectedRow;
+        general.SaveAsBehavior = MapToSaveAsBehavior(SelectedSaveAsBehaviorType);
+        general.SaveAsAppendLanguageCode = MapToSaveAsAppendLanguageCode(SelectedSaveAsAppendLanguageCode);
+        general.DefaultSaveLocation = MapToDefaultSaveLocation(SelectedDefaultSaveLocationType);
+        general.DefaultSaveLocationCustomFolder = DefaultSaveLocationCustomFolder;
+        general.AutoConvertToUtf8 = AutoConvertToUtf8;
+        general.ForceCrLfOnSave = ForceCrLfOnSave;
+        general.AutoTrimWhiteSpace = AutoTrimWhiteSpace;
+
+        general.DefaultSubtitleFormat = SelectedDefaultSubtitleFormat;
+        general.DefaultSaveAsFormat = SelectedSaveSubtitleFormat;
+
+        Se.Settings.Formats.WebVttUseXTimestampMap = WebVttUseXTimestampMap;
+
+        var sbFavorites = new StringBuilder();
+        foreach (var format in FavoriteSubtitleFormats)
+        {
+            sbFavorites.Append(format + ";");
+        }
+        general.FavoriteSubtitleFormats = sbFavorites.ToString().TrimEnd(';');
+
+        general.FavoriteLanguages = string.Join(";", FavoriteLanguages.Select(l => l.Code));
+
+        Se.Settings.Tools.AllowSingleLetterShortcutsInTextbox = AllowSingleLetterShortcutsInTextbox;
+        Se.Settings.Tools.SpellCheckEnglishTreatInApostropheAsIng = SpellCheckEnglishTreatInApostropheAsIng;
+        Se.Settings.Tools.GoToLineNumberAlsoSetVideoPosition = GoToLineNumberAlsoSetVideoPosition;
+        Se.Settings.Synchronization.AdjustAllTimesRememberLineSelectionChoice = AdjustAllTimesRememberLineSelectionChoice;
+        Se.Settings.Tools.MergeKeepEndTime = MergeKeepEndTime;
+        Se.Settings.Tools.MergeKeepEndTimeOnlyAssa = MergeKeepEndTimeOnlyAssa;
+        Se.Settings.Tools.SplitOddLinesAction = MapFromSplitOddActionTranslationToCode(SelectedSplitOddNumberOfLinesAction);
+        Se.Settings.SpellCheck.SpellCheckProvider = MapFromUISpellCheckEngineToCode(SelectedSpellCheckEngine);
+        Se.Settings.Ocr.UseWordSplitList = OcrUseWordSplitList;
+        Se.Settings.Ocr.DoTryToGuessUnknownWords = OcrGuessUnknownWords;
+        Se.Settings.Tools.SpeechToTextSelectedLinesPromptFirstTimeOnly = SpeechToTextSelectedLinesPromptFistTimeOnly;
+        Se.Settings.Tools.MultipleReplaceShowDotDotDotButtons = MultipleReplaceShowDotDotDotButtons;
+        Se.Settings.Tools.GridFocusTextboxAfterInsertNew = GridFocusTextboxAfterInsertNew;
+        Se.Settings.Tools.TextToSpeechPromptMergeContinuationLines = TextToSpeechPromptMergeContinuationLines;
+        Se.Settings.Tools.FixCommonErrors.SkipStep1 = FixCommonErrorsSkipStep1;
+        Se.Settings.Tools.WriteToolsLog = WriteToolsLog;
+        Se.Settings.Tools.OpenAiCompatibleSttAutoTranscribeOnAudioSelection = OpenAiCompatibleSttAutoTranscribeOnAudioSelection;
+        Se.Settings.Tools.MusicSymbol = MusicSymbol;
+        Se.Settings.Tools.MusicSymbolReplace = MusicSymbolReplace;
+
+        appearance.Theme = MapThemeFromTranslation(SelectedTheme);
+        appearance.IconTheme = SelectedIconTheme;
+        appearance.MatchIconColorToDarkTheme = MatchIconColorToDarkTheme;
+        appearance.LayoutScale = LayoutScale / 100.0;
+        if (OperatingSystem.IsMacOS())
+        {
+            appearance.FontName = SelectedFontName == "System Font"
+                ? ".AppleSystemUIFont"
+                : SelectedFontName;
+        }
+        else
+        {
+            appearance.FontName = SelectedFontName == "Default"
+                ? new Label().FontFamily.Name
+                : SelectedFontName;
+        }
+        appearance.ToolbarShowFileNew = ShowToolbarNew;
+        appearance.ToolbarShowFileOpen = ShowToolbarOpen;
+        appearance.ToolbarShowVideoFileOpen = ShowToolbarVideoFileOpen;
+        appearance.ToolbarShowSave = ShowToolbarSave;
+        appearance.ToolbarShowSaveAs = ShowToolbarSaveAs;
+        appearance.ToolbarShowFind = ShowToolbarFind;
+        appearance.ToolbarShowReplace = ShowToolbarReplace;
+        appearance.ToolbarShowSpellCheck = ShowToolbarSpellCheck;
+        appearance.ToolbarShowFixCommonErrors = ShowToolbarFixCommonErrors;
+        appearance.ToolbarShowRemoveTextForHi = ShowToolbarRemoveTextForHi;
+        appearance.ToolbarShowVisualSync = ShowToolbarVisualSync;
+        appearance.ToolbarShowPointSync = ShowToolbarPointSync;
+        appearance.ToolbarShowBeautifyTimeCodes = ShowToolbarBeautifyTimeCodes;
+        appearance.ToolbarShowBurnIn = ShowToolbarBurnIn;
+        appearance.ToolbarShowAutoTranslate = ShowToolbarAutoTranslate;
+        appearance.ToolbarShowSpeechToText = ShowToolbarSpeechToText;
+        appearance.ToolbarShowSettings = ShowToolbarSettings;
+        appearance.ToolbarShowLayout = ShowToolbarLayout;
+        appearance.ToolbarShowSourceView = ShowToolbarSourceView;
+        appearance.ToolbarShowHelp = ShowToolbarHelp;
+        appearance.ToolbarShowEncoding = ShowToolbarEncoding;
+        appearance.ToolbarShowFrameRate = ShowToolbarFrameRate;
+        appearance.ShowPluginsMenu = ShowPluginsMenu;
+        appearance.SubtitleGridFontSize = SubtitleGridFontSize;
+        appearance.SubtitleGridTextSingleLine = SubtitleGridTextSingleLine;
+        appearance.SubtitleGridTextSingleLineSeparator = SubtitleGridTextSingleLineSeparator;
+        appearance.SubtitleGridFormattingType = MapGridFormattingToCode(SubtitleGridFormatting);
+        appearance.SubtitleGridLiveSpellCheck = SubtitleGridLiveSpellCheck;
+        appearance.SubtitleTextBoxAndGridFontName = string.IsNullOrEmpty(SubtitleTextBoxAndGridFontName) ? new Label().FontFamily.Name : SubtitleTextBoxAndGridFontName;
+        appearance.SubtitleTextBoxFontSize = TextBoxFontSize;
+        appearance.SubtitleTextBoxFontBold = TextBoxFontBold;
+        appearance.SubtitleTextBoxColorTags = TextBoxColorTags;
+        appearance.SubtitleTextBoxLiveSpellCheck = TextBoxLiveSpellCheck;
+        appearance.SubtitleTextBoxCenterText = TextBoxCenterText;
+        appearance.TextBoxShowButtonAutoBreak = TextBoxButtonShowAutoBreak;
+        appearance.TextBoxShowButtonUnbreak = TextBoxButtonShowUnbreak;
+        appearance.TextBoxShowButtonItalic = TextBoxButtonShowItalic;
+        appearance.TextBoxShowButtonColor = TextBoxButtonShowColor;
+        appearance.TextBoxShowButtonRemoveFormatting = TextBoxButtonShowRemoveFormatting;
+        appearance.TextBoxShowButtonAiAssistant = TextBoxButtonShowAiAssistant;
+        appearance.ShowHints = ShowButtonHints;
+        appearance.DarkModeBackgroundColor = DarkModeBackgroundColor.FromColorToHex();
+        appearance.DarkModeForegroundColor = DarkModeForegroundColor.FromColorToHex();
+        appearance.UseFocusedButtonBackgroundColor = UseFocusedButtonBackgroundColor;
+        appearance.FocusedButtonBackgroundColor = FocusedButtonBackgroundColor.FromColorToHex();
+        appearance.BookmarkColor = BookmarkColor.FromColorToHex();
+        appearance.GridAlternatingRowColor = GridAlternatingRowColor.FromColorToHex();
+        appearance.GridAlternatingRowColorDark = GridAlternatingRowColorDark.FromColorToHex();
+        appearance.ShowUpDownStartTime = ShowUpDownStartTime;
+        appearance.ShowUpDownEndTime = ShowUpDownEndTime;
+        appearance.ShowUpDownDuration = ShowUpDownDuration;
+        appearance.ShowUpDownLabels = ShowUpDownLabels;
+        appearance.GridCompactMode = GridCompactMode;
+        appearance.GridAlternatingRows = GridAlternatingRows;
+        appearance.GridLinesAppearance = SelectedGridLinesVisibility.Type.ToString();
+        appearance.SubtitleGridTextDisplay = SelectedSubtitleGridTextDisplayMode.Mode.ToString();
+        appearance.ShowLayer = ShowAssaLayer;
+        appearance.ShowHorizontalLineAboveToolbar = ShowHorizontalLineAboveToolbar;
+
+        Se.Settings.Waveform.DrawGridLines = WaveformDrawGridLines;
+        Se.Settings.Waveform.FocusOnMouseOver = WaveformFocusOnMouseOver;
+        Se.Settings.Waveform.CenterVideoPosition = WaveformCenterVideoPosition;
+        Se.Settings.Waveform.CenterVideoPositionAlsoWhenPaused = WaveformCenterVideoPositionAlsoWhenPaused;
+        Se.Settings.Waveform.FocusTextBoxAfterInsertNew = WaveformFocusTextboxAfterInsertNew;
+
+        if (SelectedWaveformDrawStyle == Se.Language.General.Classic)
+        {
+            Se.Settings.Waveform.WaveformDrawStyle = WaveformDrawStyle.Classic.ToString();
+        }
+        else if (SelectedWaveformDrawStyle == Se.Language.Waveform.WaveformDrawStyleFancy)
+        {
+            Se.Settings.Waveform.WaveformDrawStyle = WaveformDrawStyle.Fancy.ToString();
+        }
+
+        Se.Settings.Waveform.GenerateSpectrogram = WaveformGenerateSpectrogram;
+        Se.Settings.Waveform.WaveformAutoGenerate = WaveformAutoGenerate;
+        if (SelectedWaveformSpectrogramStyle == Se.Language.General.Classic)
+        {
+            Se.Settings.Waveform.SpectrogramStyle = SeSpectrogramStyle.Classic.ToString();
+        }
+        else if (SelectedWaveformSpectrogramStyle == Se.Language.Waveform.SpectrogramClassicPlasma)
+        {
+            Se.Settings.Waveform.SpectrogramStyle = SeSpectrogramStyle.ClassicPlasma.ToString();
+        }
+        else if (SelectedWaveformSpectrogramStyle == Se.Language.Waveform.SpectrogramClassicViridis)
+        {
+            Se.Settings.Waveform.SpectrogramStyle = SeSpectrogramStyle.ClassicViridis.ToString();
+        }
+        else if (SelectedWaveformSpectrogramStyle == Se.Language.Waveform.SpectrogramClassicInferno)
+        {
+            Se.Settings.Waveform.SpectrogramStyle = SeSpectrogramStyle.ClassicInferno.ToString();
+        }
+        else if (SelectedWaveformSpectrogramStyle == Se.Language.Waveform.SpectrogramClassicTurbo)
+        {
+            Se.Settings.Waveform.SpectrogramStyle = SeSpectrogramStyle.ClassicTurbo.ToString();
+        }
+        else if (SelectedWaveformSpectrogramStyle == Se.Language.Waveform.SpectrogramNeon)
+        {
+            Se.Settings.Waveform.SpectrogramStyle = SeSpectrogramStyle.Neon.ToString();
+        }
+
+        Se.Settings.Waveform.SpectrogramCombinedWaveformHeight = WaveformSpectrogramCombinedWaveformHeight;
+
+        Se.Settings.Waveform.ShowToolbar = WaveformShowToolbar;
+        Se.Settings.Waveform.ToolbarItems = _waveformToolbarItems;
+
+        Se.Settings.Waveform.WaveformTextFontSize = WaveformTextFontSize;
+        Se.Settings.Waveform.WaveformTextFontBold = WaveformTextFontBold;
+        Se.Settings.Waveform.WaveformTextColor = WaveformTextColor.FromColorToHex();
+        Se.Settings.Waveform.WaveformColor = WaveformColor.FromColorToHex();
+        Se.Settings.Waveform.WaveformBackgroundColor = WaveformBackgroundColor.FromColorToHex();
+        Se.Settings.Waveform.ParagraphBackground = WaveformParagraphBackgroundColor.FromColorToHex();
+        Se.Settings.Waveform.ParagraphSelectedBackground = WaveformParagraphSelectedBackgroundColor.FromColorToHex();
+        Se.Settings.Waveform.WaveformSelectedColor = WaveformSelectedColor.FromColorToHex();
+        Se.Settings.Waveform.WaveformCursorColor = WaveformCursorColor.FromColorToHex();
+        Se.Settings.Waveform.WaveformShotChangeColor = WaveformShotChangeColor.FromColorToHex();
+        Se.Settings.Waveform.WaveformParagraphLeftColor = WaveformParagraphLeftColor.FromColorToHex();
+        Se.Settings.Waveform.WaveformParagraphRightColor = WaveformParagraphRightColor.FromColorToHex();
+        Se.Settings.Waveform.WaveformFancyHighColor = WaveformFancyHighColor.FromColorToHex();
+        Se.Settings.Waveform.InvertMouseWheel = WaveformInvertMouseWheel;
+        Se.Settings.Waveform.MouseWheelSetsVideoPosition = WaveformMouseWheelSetsVideoPosition;
+        Se.Settings.Waveform.MouseWheelVideoPositionStepMs = ParseMouseWheelStep(SelectedWaveformMouseWheelVideoPositionStep);
+        Se.Settings.Waveform.SnapToShotChanges = WaveformSnapToShotChanges;
+        Se.Settings.Waveform.SnapToFrames = WaveformSnapToFrames;
+        Se.Settings.Waveform.ShotChangesAutoGenerate = WaveformShotChangesAutoGenerate;
+        Se.Settings.Waveform.AllowOverlap = WaveformAllowOverlap;
+        Se.Settings.Waveform.SetVideoPositionOnMoveStartEnd = WaveformSetVideoPositionOnMoveStartEnd;
+
+        Se.Settings.Waveform.SingleClickAction = MapWaveformSingleClickFromTranslation(SelectedWaveformSingleClickActionType);
+        Se.Settings.Waveform.DoubleClickAction = MapWaveformDoubleClickFromTranslation(SelectedWaveformDoubleClickActionType);
+
+        Se.Settings.Waveform.ExtractAudioFormat = ExtractAudioLabelToFormat(SelectedWaveformExtractAudioFormat);
+        Se.Settings.Waveform.ExtractAudioSampleRate =
+            int.TryParse(SelectedWaveformExtractAudioSampleRate, NumberStyles.Integer, CultureInfo.InvariantCulture, out var extractRate)
+                ? extractRate
+                : 0; // "Original" (non-numeric) keeps the source sample rate
+        Se.Settings.Waveform.ExtractAudioBitRate = SelectedWaveformExtractAudioBitRate;
+
+        Se.Settings.Waveform.RightClickSelectsSubtitle = WaveformRightClickSelectsSubtitle;
+
+        general.ColorDurationTooLong = ColorDurationTooLong;
+        general.ColorDurationTooShort = ColorDurationTooShort;
+        general.ColorTextTooLong = ColorTextTooLong;
+        general.ColorTextTooWide = ColorTextTooWide;
+        general.ColorTextTooWidePixels = ColorTextTooWidePixels;
+        general.ColorTextTooWideFontName = ColorTextTooWideFontName;
+        general.ColorTextTooWideFontSize = ColorTextTooWideFontSize;
+        general.ColorTextTooManyLines = ColorTextTooManyLines;
+        general.ColorCharactersPerSecond = ColorCharactersPerSecond;
+        general.ColorWordsPerMinute = ColorWordsPerMinute;
+        general.ColorTimeCodeOverlap = ColorOverlap;
+        general.ColorGapTooShort = ColorGapTooShort;
+        general.ErrorColor = ErrorColor.FromColorToHex();
+
+        general.CustomContinuationStyle = new CustomContinuationStyle(_editCustomContinuationStyle);
+
+        video.VideoPlayer = SelectedVideoPlayer.Code;
+        video.ShowStopButton = ShowStopButton;
+        video.ShowFullscreenButton = ShowFullscreenButton;
+        video.FullscreenHideControls = FullscreenHideControls;
+        video.AutoOpen = AutoOpenVideoFile;
+
+        video.MpvPreviewFontName = MpvPreviewFontName;
+        video.MpvPreviewFontSize = MpvPreviewFontSize;
+        video.MpvPreviewFontBold = MpvPreviewFontBold;
+        video.MpvPreviewMargin = MpvPreviewMargin;
+        video.MpvPreviewOutlineWidth = MpvPreviewOutlineWidth;
+        video.MpvPreviewAlignment = MpvPreviewSelectedFontAlignment.Code;
+        video.MpvPreviewShadowWidth = MpvPreviewShadowWidth;
+        video.MpvPreviewColorPrimary = MpvPreviewColorPrimary.FromColorToHex();
+        video.MpvPreviewColorOutline = MpvPreviewColorOutline.FromColorToHex();
+        video.MpvPreviewColorShadow = MpvPreviewColorShadow.FromColorToHex();
+        video.MpvPreviewBorderType = (int)(MpvPreviewSelectedBorderType?.Style ?? BorderStyleType.Outline);
+
+        general.FfmpegPath = FfmpegPath;
+        general.LibMpvPath = LibMpvPath;
+        general.ProxyAddress = ProxyAddress;
+        general.ProxyUserName = ProxyUserName;
+        general.ProxyPassword = ProxyPassword;
+        general.ProxyDomain = ProxyDomain;
+        general.ProxyUseDefaultCredentials = ProxyUseDefaultCredentials;
+        general.ProxyBypassList = ProxyBypassList;
+        general.CheckForUpdatesOnStartup = CheckForUpdatesOnStartup;
+        if (SelectedUpdateChannel != _loadedUpdateChannel)
+        {
+            // Only an actual change is stored, so an untouched dropdown keeps the
+            // "auto" default (beta users follow betas, stable users stable only).
+            general.CheckForUpdatesChannel = SelectedUpdateChannel == Se.Language.Options.Settings.CheckForUpdatesChannelStableAndBeta
+                ? UpdateCheckService.ChannelBeta
+                : UpdateCheckService.ChannelStable;
+        }
+
+        general.CurrentProfile = SelectedProfile;
+        general.Profiles.Clear();
+        foreach (var profile in _profilesForEdit)
+        {
+            var p = new RulesProfile
+            {
+                Name = profile.Name,
+                SubtitleLineMaximumLength = profile.SingleLineMaxLength ?? general.SubtitleLineMaximumLength,
+                SubtitleOptimalCharactersPerSeconds = (decimal?)profile.OptimalCharsPerSec ?? (decimal)general.SubtitleOptimalCharactersPerSeconds,
+                SubtitleMaximumCharactersPerSeconds = (decimal?)profile.MaxCharsPerSec ?? (decimal)general.SubtitleMaximumCharactersPerSeconds,
+                SubtitleMaximumWordsPerMinute = (decimal?)profile.MaxWordsPerMin ?? (decimal)general.SubtitleMaximumWordsPerMinute,
+                SubtitleMinimumDisplayMilliseconds = profile.MinDurationMs ?? general.SubtitleMinimumDisplayMilliseconds,
+                SubtitleMaximumDisplayMilliseconds = profile.MaxDurationMs ?? general.SubtitleMaximumDisplayMilliseconds,
+                MinimumMillisecondsBetweenLines = profile.MinGapMs ?? general.MinimumBetweenLines.Milliseconds,
+                MaxNumberOfLines = profile.MaxLines ?? general.MaxNumberOfLines,
+                MergeLinesShorterThan = profile.UnbreakLinesShorterThan ?? general.UnbreakLinesShorterThan,
+                DialogStyle = Enum.Parse<DialogType>(profile.DialogStyle.Code),
+                ContinuationStyle = Enum.TryParse<ContinuationStyle>(profile.ContinuationStyle.Code, out var cs) ? cs : Core.Enums.ContinuationStyle.None,
+                CpsLineLengthStrategy = profile.CpsLineLengthStrategy.Code,
+                CustomContinuationStyle = new CustomContinuationStyle(profile.CustomContinuationStyle)
+            };
+            general.Profiles.Add(p);
+        }
+
+        Se.SaveSettings();
+    }
+
+    private string MapFromUISpellCheckEngineToCode(string spellCheckEngine)
+    {
+        if (spellCheckEngine == Se.Language.Options.Settings.SpellCheckEngineHunSpelll)
+        {
+            return SeSpellCheck.SpellCheckHunspell;
+        }
+
+        if (spellCheckEngine == Se.Language.Options.Settings.SpellCheckEngineMsWord)
+        {
+            return SeSpellCheck.SpellCheckMsWord;
+        }
+
+        return SeSpellCheck.SpellCheckHunspell;
+    }
+
+    private static string MapWaveformSingleClickFromTranslation(string selectedWaveformSingleClickActionType)
+    {
+        if (string.IsNullOrEmpty(selectedWaveformSingleClickActionType))
+        {
+            return WaveformSingleClickActionType.SetVideoPositionAndPauseAndSelectSubtitle.ToString();
+        }
+
+        return WaveformSingleClickTextToActionMap.TryGetValue(selectedWaveformSingleClickActionType, out var action)
+            ? action
+            : WaveformSingleClickActionType.SetVideoPositionAndPauseAndSelectSubtitle.ToString();
+    }
+
+    private static string MapWaveformDoubleClickFromTranslation(string selectedWaveformDoubleClickActionType)
+    {
+        if (string.IsNullOrEmpty(selectedWaveformDoubleClickActionType))
+        {
+            return WaveformDoubleClickActionType.None.ToString();
+        }
+
+        return WaveformDoubleClickTextToActionMap.TryGetValue(selectedWaveformDoubleClickActionType, out var action)
+            ? action
+            : WaveformDoubleClickActionType.None.ToString();
+    }
+
+    private string MapFromSplitOddActionTranslationToCode(string translation)
+    {
+        if (translation == Se.Language.Options.Settings.SplitOddLineActionWeightTop)
+        {
+            return nameof(SplitOddLinesActionType.WeightTop);
+        }
+
+        if (translation == Se.Language.Options.Settings.SplitOddLineActionWeightBottom)
+        {
+            return nameof(SplitOddLinesActionType.WeightBottom);
+        }
+
+        return nameof(SplitOddLinesActionType.Smart);
+    }
+
+    private static string MapToSaveAsBehavior(string selectedSaveAsBehaviorType)
+    {
+        if (selectedSaveAsBehaviorType == Se.Language.Options.Settings.SaveAsBehaviorUseSubtitleVideoFilename)
+        {
+            return nameof(SaveAsBehaviourType.UseSubtitleFileNameThenVideoFileName);
+        }
+
+        if (selectedSaveAsBehaviorType == Se.Language.Options.Settings.SaveAsBehaviorUseVideoSubtitleFilename)
+        {
+            return nameof(SaveAsBehaviourType.UseVideoFileNameThenSubtitleFileName);
+        }
+
+        if (selectedSaveAsBehaviorType == Se.Language.Options.Settings.SaveAsBehaviorUseVideoFileName)
+        {
+            return nameof(SaveAsBehaviourType.UseVideoFileName);
+        }
+
+        if (selectedSaveAsBehaviorType == Se.Language.Options.Settings.SaveAsBehaviorUseSubtitleFileName)
+        {
+            return nameof(SaveAsBehaviourType.UseSubtitleFileName);
+        }
+
+        return nameof(SaveAsBehaviourType.New);
+    }
+
+    private static string MapToSaveAsAppendLanguageCode(string selectedSaveAsAppendLanguageCode)
+    {
+        if (selectedSaveAsAppendLanguageCode == Se.Language.Options.Settings.SaveAsAppendLanguageCodeTwoLetter)
+        {
+            return nameof(SaveAsLanguageAppendType.TwoLetterLanguageCode);
+        }
+
+        if (selectedSaveAsAppendLanguageCode == Se.Language.General.ThreeLetterLanguageCode)
+        {
+            return nameof(SaveAsLanguageAppendType.ThreeLEtterLanguageCode);
+        }
+
+        if (selectedSaveAsAppendLanguageCode == Se.Language.General.ThreeLetterLanguageCodeBibliographic)
+        {
+            return nameof(SaveAsLanguageAppendType.ThreeLetterLanguageCodeBibliographic);
+        }
+
+        if (selectedSaveAsAppendLanguageCode == Se.Language.Options.Settings.SaveAsAppendLanguageCodeLanguageName)
+        {
+            return nameof(SaveAsLanguageAppendType.FullLanguageName);
+        }
+
+        return nameof(SaveAsLanguageAppendType.None);
+    }
+
+    private void SetFfmpegStatus()
+    {
+        if (!string.IsNullOrEmpty(FfmpegPath) && File.Exists(FfmpegPath))
+        {
+            FfmpegStatus = Se.Language.General.Installed;
+        }
+        else if (File.Exists(DownloadFfmpegViewModel.GetFfmpegFileName()))
+        {
+            FfmpegStatus = Se.Language.General.Installed;
+        }
+        else
+        {
+            if (FfmpegHelper.IsFfmpegInstalled())
+            {
+                FfmpegStatus = string.Empty;
+            }
+            else
+            {
+                FfmpegStatus = Se.Language.General.NotInstalled;
+            }
+        }
+    }
+
+    private void SetLibMpvStatus()
+    {
+        if (!string.IsNullOrEmpty(LibMpvPath) && File.Exists(LibMpvPath))
+        {
+            LibMpvStatus = Se.Language.General.Installed;
+            return;
+        }
+
+        // Stale or empty path - fall back to checking known local locations
+        var localCandidates = new[]
+        {
+            DownloadLibMpvViewModel.GetLibMpvFileName(),
+            Path.Combine(AppContext.BaseDirectory, "libmpv-2.dll"),
+        };
+        foreach (var candidate in localCandidates)
+        {
+            if (File.Exists(candidate))
+            {
+                LibMpvPath = candidate;
+                LibMpvStatus = Se.Language.General.Installed;
+                return;
+            }
+        }
+
+        LibMpvStatus = Se.Language.General.NotInstalled;
+    }
+
+    private void SetLibVlcStatus()
+    {
+        _ = Task.Run(() =>
+        {
+            var canLoad = new LibVlcDynamicPlayer().CanLoad();
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (canLoad)
+                {
+                    LibVlcStatus = Se.Language.General.Installed;
+                }
+                else
+                {
+                    LibVlcStatus = Se.Language.General.NotInstalled;
+                }
+            });
+        });
+    }
+
+    public async void ScrollElementIntoView(ScrollViewer scrollViewer, Control target)
+    {
+        await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            await Task.Yield(); // Ensures target has been laid out
+
+            // Fade out
+            //await FadeToAsync(ScrollView, 0, TimeSpan.FromMilliseconds(100));
+            await RunFadeAnimation(ScrollView, from: 1, to: 0, TimeSpan.FromMilliseconds(100));
+
+
+            await Task.Yield(); // Ensures target has been laid out
+            scrollViewer.ScrollToHome();
+            await Task.Yield(); // Ensures target has been laid out
+
+            var targetPosition = target.TranslatePoint(new Point(0, 0), scrollViewer);
+            if (targetPosition.HasValue)
+            {
+                scrollViewer.Offset = new Vector(scrollViewer.Offset.X, targetPosition.Value.Y);
+            }
+
+            await Task.Yield(); // Ensures target has been laid out
+            await RunFadeAnimation(ScrollView, from: 0, to: 1, TimeSpan.FromMilliseconds(200));
+        }, DispatcherPriority.Background);
+    }
+
+    private static Task RunFadeAnimation(Control control, double from, double to, TimeSpan duration)
+    {
+        var animation = new Animation
+        {
+            Duration = duration,
+            Easing = new CubicEaseOut(),
+            FillMode = FillMode.Forward,
+            Children =
+            {
+                new KeyFrame
+                {
+                    Cue = new Cue(0),
+                    Setters = { new Setter(Visual.OpacityProperty, from) }
+                },
+                new KeyFrame
+                {
+                    Cue = new Cue(1),
+                    Setters = { new Setter(Visual.OpacityProperty, to) }
+                }
+            }
+        };
+
+        return animation.RunAsync(control);
+    }
+
+    [RelayCommand]
+    private async Task EditTextTooWideSettings()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var viewModel = await _windowService.ShowDialogAsync<SyntaxColorTooWideSettingsWindow, SyntaxColorTooWideSettingsViewModel>(Window, vm =>
+        {
+            vm.Initialize(ColorTextTooWidePixels, ColorTextTooWideFontName, ColorTextTooWideFontSize);
+        });
+
+        if (viewModel.OkPressed)
+        {
+            ColorTextTooWidePixels = viewModel.MaxWidthPixels;
+            ColorTextTooWideFontName = viewModel.SelectedFont;
+            ColorTextTooWideFontSize = viewModel.FontSize;
+        }
+    }
+
+    [RelayCommand]
+    private async Task EditDoNotBreakAfterList()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        await _windowService.ShowDialogAsync<DoNotBreakAfterListWindow, DoNotBreakAfterListViewModel>(Window);
+    }
+
+    [RelayCommand]
+    private async Task AddFavoriteSubtitleFormat()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var viewModel = await _windowService.ShowDialogAsync<PickSubtitleFormatWindow, PickSubtitleFormatViewModel>(Window, vm => { vm.Initialize(null, new Subtitle()); });
+
+        if (viewModel.OkPressed)
+        {
+            var selectedFormat = viewModel.GetSelectedFormat();
+            if (selectedFormat != null)
+            {
+                FavoriteSubtitleFormats.Add(selectedFormat.FriendlyName);
+            }
+        }
+    }
+
+    [RelayCommand]
+    private async Task EditBeautifyTimeCodesProfile()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        await _windowService.ShowDialogAsync<BeautifyTimeCodesProfileWindow, BeautifyTimeCodesProfileViewModel>(Window, vm =>
+        {
+            vm.Initialize();
+        });
+    }
+
+    [RelayCommand]
+    private async Task EditWaveformToolbarProperties()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var result = await _windowService.ShowDialogAsync<WaveformToolbarItemsWindow, WaveformToolbarItemsViewModel>(Window, vm =>
+        {
+            vm.Initialize(_waveformToolbarItems);
+        });
+
+        if (result.OkPressed && result.HasChanges)
+        {
+            _waveformToolbarItems = result.ResultToolbarItems;
+        }
+    }
+
+    [RelayCommand]
+    private async Task OpenWaveformThemes()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var result = await _windowService.ShowDialogAsync<WaveformThemesWindow, WaveformThemesViewModel>(Window, vm =>
+        {
+            vm.Initialize(
+                WaveformTextColor, WaveformColor, WaveformBackgroundColor,
+                WaveformSelectedColor, WaveformCursorColor, WaveformShotChangeColor,
+                WaveformParagraphBackgroundColor, WaveformParagraphSelectedBackgroundColor,
+                WaveformParagraphLeftColor, WaveformParagraphRightColor, WaveformFancyHighColor);
+        });
+
+        if (result.OkPressed)
+        {
+            WaveformTextColor = result.TextColor;
+            WaveformColor = result.WaveformColor;
+            WaveformBackgroundColor = result.BackgroundColor;
+            WaveformSelectedColor = result.SelectedColor;
+            WaveformCursorColor = result.CursorColor;
+            WaveformShotChangeColor = result.ShotChangeColor;
+            WaveformParagraphBackgroundColor = result.ParagraphBackgroundColor;
+            WaveformParagraphSelectedBackgroundColor = result.ParagraphSelectedBackgroundColor;
+            WaveformParagraphLeftColor = result.ParagraphLeftColor;
+            WaveformParagraphRightColor = result.ParagraphRightColor;
+            WaveformFancyHighColor = result.FancyHighColor;
+        }
+    }
+
+    [RelayCommand]
+    private async Task RemoveFavoriteSubtitleFormat()
+    {
+        if (SelectedFavoriteSubtitleFormat != null && FavoriteSubtitleFormats.Contains(SelectedFavoriteSubtitleFormat))
+        {
+            var index = FavoriteSubtitleFormats.IndexOf(SelectedFavoriteSubtitleFormat);
+            FavoriteSubtitleFormats.Remove(SelectedFavoriteSubtitleFormat);
+
+            if (FavoriteSubtitleFormats.Count > 0)
+            {
+                SelectedFavoriteSubtitleFormat = index < FavoriteSubtitleFormats.Count
+                    ? FavoriteSubtitleFormats[index]
+                    : FavoriteSubtitleFormats[FavoriteSubtitleFormats.Count - 1];
+            }
+        }
+
+        await Task.CompletedTask;
+    }
+
+
+    [RelayCommand]
+    private async Task MoveUpFavoriteSubtitleFormat()
+    {
+        if (SelectedFavoriteSubtitleFormat != null && FavoriteSubtitleFormats.Contains(SelectedFavoriteSubtitleFormat))
+        {
+            var index = FavoriteSubtitleFormats.IndexOf(SelectedFavoriteSubtitleFormat);
+            if (index > 0)
+            {
+                var selectedItem = SelectedFavoriteSubtitleFormat;
+                FavoriteSubtitleFormats.Move(index, index - 1);
+                SelectedFavoriteSubtitleFormat = selectedItem;
+            }
+        }
+
+        await Task.CompletedTask;
+    }
+
+    [RelayCommand]
+    private async Task MoveDownFavoriteSubtitleFormat()
+    {
+        if (SelectedFavoriteSubtitleFormat != null && FavoriteSubtitleFormats.Contains(SelectedFavoriteSubtitleFormat))
+        {
+            var index = FavoriteSubtitleFormats.IndexOf(SelectedFavoriteSubtitleFormat);
+            if (index < FavoriteSubtitleFormats.Count - 1)
+            {
+                var selectedItem = SelectedFavoriteSubtitleFormat;
+                FavoriteSubtitleFormats.Move(index, index + 1);
+                SelectedFavoriteSubtitleFormat = selectedItem;
+            }
+        }
+
+        await Task.CompletedTask;
+    }
+
+    [RelayCommand]
+    private async Task AddFavoriteLanguage()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var existingCodes = FavoriteLanguages.Select(l => l.Code).ToList();
+        var viewModel = await _windowService.ShowDialogAsync<PickLanguageWindow, PickLanguageViewModel>(
+            Window, vm => vm.Initialize(existingCodes));
+
+        if (viewModel.OkPressed && viewModel.SelectedLanguage != null)
+        {
+            var selected = viewModel.SelectedLanguage;
+            if (FavoriteLanguages.All(l => !string.Equals(l.Code, selected.Code, StringComparison.OrdinalIgnoreCase)))
+            {
+                FavoriteLanguages.Add(selected);
+                SelectedFavoriteLanguage = selected;
+            }
+        }
+    }
+
+    [RelayCommand]
+    private async Task RemoveFavoriteLanguage()
+    {
+        if (SelectedFavoriteLanguage != null && FavoriteLanguages.Contains(SelectedFavoriteLanguage))
+        {
+            var index = FavoriteLanguages.IndexOf(SelectedFavoriteLanguage);
+            FavoriteLanguages.Remove(SelectedFavoriteLanguage);
+
+            if (FavoriteLanguages.Count > 0)
+            {
+                SelectedFavoriteLanguage = index < FavoriteLanguages.Count
+                    ? FavoriteLanguages[index]
+                    : FavoriteLanguages[FavoriteLanguages.Count - 1];
+            }
+        }
+
+        await Task.CompletedTask;
+    }
+
+    [RelayCommand]
+    private async Task MoveUpFavoriteLanguage()
+    {
+        if (SelectedFavoriteLanguage != null && FavoriteLanguages.Contains(SelectedFavoriteLanguage))
+        {
+            var index = FavoriteLanguages.IndexOf(SelectedFavoriteLanguage);
+            if (index > 0)
+            {
+                var selectedItem = SelectedFavoriteLanguage;
+                FavoriteLanguages.Move(index, index - 1);
+                SelectedFavoriteLanguage = selectedItem;
+            }
+        }
+
+        await Task.CompletedTask;
+    }
+
+    [RelayCommand]
+    private async Task MoveDownFavoriteLanguage()
+    {
+        if (SelectedFavoriteLanguage != null && FavoriteLanguages.Contains(SelectedFavoriteLanguage))
+        {
+            var index = FavoriteLanguages.IndexOf(SelectedFavoriteLanguage);
+            if (index < FavoriteLanguages.Count - 1)
+            {
+                var selectedItem = SelectedFavoriteLanguage;
+                FavoriteLanguages.Move(index, index + 1);
+                SelectedFavoriteLanguage = selectedItem;
+            }
+        }
+
+        await Task.CompletedTask;
+    }
+
+    [RelayCommand]
+    private async Task EmptyWaveformsAndSpectrograms()
+    {
+        var answer = MessageBoxResult.Yes;
+        if (Se.Settings.General.PromptBeforeDelete)
+        {
+            answer = await MessageBox.Show(
+                Window!,
+                Se.Language.General.Delete,
+                Se.Language.Options.Settings.DeleteWaveformAndSpectrogramFoldersQuestion,
+                MessageBoxButtons.YesNoCancel,
+                MessageBoxIcon.Question);
+        }
+
+        if (answer != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        DeleteWaveformAndSpectrogramFiles();
+        _ = UpdateWaveformSpaceInfoAsync();
+    }
+
+    public static void DeleteWaveformAndSpectrogramFiles()
+    {
+        if (Directory.Exists(Se.WaveformsFolder))
+        {
+            foreach (var file in Directory.GetFiles(Se.WaveformsFolder, "*.wav").ToList())
+            {
+                try
+                {
+                    File.Delete(file);
+                }
+                catch
+                {
+                    // ignore
+                }
+            }
+        }
+
+        if (Directory.Exists(Se.SpectrogramsFolder))
+        {
+            foreach (var file in Directory.GetFiles(Se.SpectrogramsFolder, "*.spectrogram").ToList())
+            {
+                try
+                {
+                    File.Delete(file);
+                }
+                catch
+                {
+                    // ignore
+                }
+            }
+        }
+    }
+
+    private static List<string> GetWaveformAndSpecgtrogramFiles()
+    {
+        var files = new List<string>();
+        if (Directory.Exists(Se.WaveformsFolder))
+        {
+            files.AddRange(Directory.GetFiles(Se.WaveformsFolder, "*.wav"));
+        }
+        if (Directory.Exists(Se.SpectrogramsFolder))
+        {
+            files.AddRange(Directory.GetFiles(Se.SpectrogramsFolder, "*.spectrogram", SearchOption.AllDirectories));
+        }
+        return files;
+    }
+
+    private async Task UpdateWaveformSpaceInfoAsync()
+    {
+        var files = GetWaveformAndSpecgtrogramFiles();
+
+        long totalBytes = await Task.Run(() =>
+        {
+            long total = 0;
+            foreach (var file in files)
+            {
+                try
+                {
+                    total += new FileInfo(file).Length;
+                }
+                catch
+                {
+                    // ignore
+                }
+            }
+
+            return total;
+        });
+
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            WaveformSpaceInfo = string.Format(
+                Se.Language.Options.Settings.WaveFormsAndSpectrogramFoldersContainsX,
+                Utilities.FormatBytesToDisplayFileSize(totalBytes)
+            );
+        });
+    }
+
+
+    [RelayCommand]
+    private void ScrollToSection(string title)
+    {
+        var section = Sections.FirstOrDefault(section => section.IsVisible && section.Title == title);
+        if (section != null)
+        {
+            ScrollElementIntoView(ScrollView, section.Panel!);
+        }
+    }
+
+    [RelayCommand]
+    private async Task DownloadFfmpeg()
+    {
+        var vm = await _windowService.ShowDialogAsync<DownloadFfmpegWindow, DownloadFfmpegViewModel>(Window!);
+        if (string.IsNullOrEmpty(vm.FfmpegFileName))
+        {
+            return;
+        }
+
+        FfmpegPath = vm.FfmpegFileName;
+        SetFfmpegStatus();
+    }
+
+    [RelayCommand]
+    private async Task DownloadLibMpv()
+    {
+        var result = await _windowService.ShowDialogAsync<DownloadLibMpvWindow, DownloadLibMpvViewModel>(Window!);
+        if (string.IsNullOrEmpty(result.LibMpvFileName))
+        {
+            return;
+        }
+
+        LibMpvPath = result.LibMpvFileName;
+        SetLibMpvStatus();
+    }
+
+    [RelayCommand]
+    private async Task DownloadLibVlc()
+    {
+        var result = await _windowService.ShowDialogAsync<DownloadLibVlcWindow, DownloadLibVlcViewModel>(Window!);
+        if (!result.OkPressed)
+        {
+            return;
+        }
+
+        LibVlcDynamicPlayer.LibVlcPath = Se.VlcFolder;
+        SetLibVlcStatus();
+    }
+
+    [RelayCommand]
+    private async Task ResetAllSettings()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var result = await _windowService.ShowDialogAsync<SettingsResetWindow, SettingsResetViewModel>(Window!);
+        if (!result.OkPressed)
+        {
+            return;
+        }
+
+        if (result.ResetAll)
+        {
+            Se.Settings = new Se();
+        }
+        else
+        {
+            if (result.ResetRecentFiles)
+            {
+                Se.Settings.File.RecentFiles = new List<RecentFile>();
+            }
+
+            if (result.ResetWindowPositionAndSize)
+            {
+                Se.Settings.General.WindowPositions = new List<SeWindowPosition>();
+            }
+
+            if (result.ResetShortcuts)
+            {
+                Se.Settings.Shortcuts = new List<SeShortCut>();
+            }
+
+            if (result.ResetMultipleReplaceRules)
+            {
+                Se.Settings.Edit.MultipleReplace = new SeEditMultipleReplace();
+            }
+
+            if (result.ResetRules)
+            {
+                var g = new SeGeneral();
+                Se.Settings.General.Profiles = g.Profiles;
+                Se.Settings.General.CurrentProfile = g.CurrentProfile;
+                Se.Settings.General.SubtitleLineMaximumLength = g.SubtitleLineMaximumLength;
+                Se.Settings.General.SubtitleOptimalCharactersPerSeconds = g.SubtitleOptimalCharactersPerSeconds;
+                Se.Settings.General.SubtitleMaximumCharactersPerSeconds = g.SubtitleMaximumCharactersPerSeconds;
+                Se.Settings.General.SubtitleMaximumWordsPerMinute = g.SubtitleMaximumWordsPerMinute;
+                Se.Settings.General.SubtitleMinimumDisplayMilliseconds = g.SubtitleMinimumDisplayMilliseconds;
+                Se.Settings.General.SubtitleMaximumDisplayMilliseconds = g.SubtitleMaximumDisplayMilliseconds;
+                Se.Settings.General.MinimumBetweenLines = g.MinimumBetweenLines;
+                Se.Settings.General.MaxNumberOfLines = g.MaxNumberOfLines;
+                Se.Settings.General.UnbreakLinesShorterThan = g.UnbreakLinesShorterThan;
+                Se.Settings.General.DialogStyle = g.DialogStyle;
+                Se.Settings.General.ContinuationStyle = g.ContinuationStyle;
+                Se.Settings.General.CpsLineLengthStrategy = g.CpsLineLengthStrategy;
+
+                Se.Settings.General.CustomContinuationStyle = new CustomContinuationStyle(g.CustomContinuationStyle);
+            }
+
+            if (result.ResetAppearance)
+            {
+                Se.Settings.Appearance = new SeAppearance();
+                Se.MigrateMacOsFontSettings(Se.Settings.Appearance, OperatingSystem.IsMacOS(), false);
+            }
+
+            if (result.ResetAutoTranslate)
+            {
+                Se.Settings.AutoTranslate = new SeAutoTranslate();
+            }
+
+            if (result.ResetWaveform)
+            {
+                Se.Settings.Waveform = new SeWaveform();
+            }
+
+            if (result.ResetSyntaxColoring)
+            {
+                var g = new SeGeneral();
+
+                Se.Settings.General.ColorDurationTooLong = g.ColorDurationTooLong;
+                Se.Settings.General.ColorDurationTooShort = g.ColorDurationTooShort;
+                Se.Settings.General.ColorTextTooLong = g.ColorTextTooLong;
+                Se.Settings.General.ColorTextTooWide = g.ColorTextTooWide;
+                Se.Settings.General.ColorTextTooManyLines = g.ColorTextTooManyLines;
+                Se.Settings.General.ColorCharactersPerSecond = g.ColorCharactersPerSecond;
+                Se.Settings.General.ColorWordsPerMinute = g.ColorWordsPerMinute;
+                Se.Settings.General.ColorTimeCodeOverlap = g.ColorTimeCodeOverlap;
+                Se.Settings.General.ColorGapTooShort = g.ColorGapTooShort;
+                Se.Settings.General.ErrorColor = g.ErrorColor;
+            }
+        }
+
+        Se.SaveSettings();
+        OkPressed = true;
+        Window?.Close();
+    }
+
+    // Runs the settings save and, if it fails (e.g. no write access to the data folder), logs it
+    // and tells the user instead of letting the exception unwind silently through the global
+    // handler with the dialog left in an ambiguous state (#12180). Returns false on failure.
+    private async Task<bool> TrySaveSettings()
+    {
+        try
+        {
+            SaveSettings();
+            return true;
+        }
+        catch (Exception exception)
+        {
+            Se.LogError(exception, "Failed to save settings");
+            if (Window != null)
+            {
+                await MessageBox.Show(
+                    Window,
+                    Se.Language.General.Error,
+                    string.Format(Se.Language.General.CouldNotSaveFileXErrorY, Se.GetSettingsFilePath(), exception.Message),
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+
+            return false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task CommandOk()
+    {
+        if (!await TrySaveSettings())
+        {
+            return;
+        }
+
+        await FileTypeAssociationsManager.SaveFileTypeAssociationsAsync(FileTypeAssociations, Window);
+
+        OkPressed = true;
+        Window?.Close();
+    }
+
+    [RelayCommand]
+    private async Task Apply()
+    {
+        if (!await TrySaveSettings())
+        {
+            return;
+        }
+
+        await FileTypeAssociationsManager.SaveFileTypeAssociationsAsync(FileTypeAssociations, Window);
+        _mainViewModel?.ApplySettings();
+    }
+
+    [RelayCommand]
+    private async Task EditProfiles()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var currentProfile = _profilesForEdit.FirstOrDefault(p => p.Name == SelectedProfile);
+        if (currentProfile != null)
+        {
+            currentProfile.SingleLineMaxLength = SingleLineMaxLength;
+            currentProfile.OptimalCharsPerSec = OptimalCharsPerSec;
+            currentProfile.MaxCharsPerSec = MaxCharsPerSec;
+            currentProfile.MaxWordsPerMin = MaxWordsPerMin;
+            currentProfile.MinDurationMs = MinDurationMs;
+            currentProfile.MaxDurationMs = MaxDurationMs;
+            currentProfile.MinGapMs = MinGapMs;
+            currentProfile.MaxLines = MaxLines;
+            currentProfile.UnbreakLinesShorterThan = UnbreakLinesShorterThan;
+            currentProfile.DialogStyle = DialogStyle;
+            currentProfile.ContinuationStyle = ContinuationStyle;
+            currentProfile.CpsLineLengthStrategy = CpsLineLengthStrategy;
+        }
+
+        var result = await _windowService
+            .ShowDialogAsync<ProfilesWindow, ProfilesViewModel>(Window, vm => { vm.Initialize(_profilesForEdit, SelectedProfile); });
+
+
+        if (!result.OkPressed)
+        {
+            return;
+        }
+
+        var oldProfileName = SelectedProfile;
+        _profilesForEdit = result.Profiles.ToList();
+
+        if (_profilesForEdit.Count == 0)
+        {
+            var g = new SeGeneral();
+            var pd = new ProfileDisplay
+            {
+                Name = "Default",
+                SingleLineMaxLength = g.SubtitleLineMaximumLength,
+                OptimalCharsPerSec = g.SubtitleOptimalCharactersPerSeconds,
+                MaxCharsPerSec = g.SubtitleMaximumCharactersPerSeconds,
+                MaxWordsPerMin = g.SubtitleMaximumWordsPerMinute,
+                MinDurationMs = g.SubtitleMinimumDisplayMilliseconds,
+                MaxDurationMs = g.SubtitleMaximumDisplayMilliseconds,
+                MinGapMs = g.MinimumBetweenLines.Milliseconds,
+                MaxLines = g.MaxNumberOfLines,
+                UnbreakLinesShorterThan = g.UnbreakLinesShorterThan,
+                DialogStyle = DialogStyles.FirstOrDefault(p => p.Code == g.DialogStyle) ?? DialogStyles.First(),
+                ContinuationStyle = ContinuationStyles.FirstOrDefault(p => p.Code == g.ContinuationStyle) ?? ContinuationStyles.First(),
+                CpsLineLengthStrategy = CpsLineLengthStrategies.FirstOrDefault(p => p.Code == g.CpsLineLengthStrategy) ?? CpsLineLengthStrategies.First()
+            };
+            _profilesForEdit.Add(pd);
+        }
+
+        Profiles.Clear();
+        var profilesForEdit = new List<ProfileDisplay>();
+        foreach (var profile in _profilesForEdit)
+        {
+            var pd = new ProfileDisplay(profile);
+            pd.DialogStyle = DialogStyles.FirstOrDefault(p => p.Code == profile.DialogStyle?.Code) ?? DialogStyles.First();
+            pd.ContinuationStyle = ContinuationStyles.FirstOrDefault(p => p.Code == profile.ContinuationStyle?.Code) ?? ContinuationStyles.First();
+            pd.CpsLineLengthStrategy = CpsLineLengthStrategies.FirstOrDefault(p => p.Code == profile.CpsLineLengthStrategy?.Code) ?? CpsLineLengthStrategies.First();
+            profilesForEdit.Add(pd);
+            Profiles.Add(profile.Name);
+        }
+
+        _profilesForEdit = profilesForEdit;
+
+        SelectedProfile = Profiles.FirstOrDefault(p => p == oldProfileName) ?? Profiles.First();
+    }
+
+    [RelayCommand]
+    private async Task ShowErrorLogFile()
+    {
+        if (Window == null || !File.Exists(Se.GetErrorLogFilePath()))
+        {
+            return;
+        }
+
+        await _folderHelper.OpenFolderWithFileSelected(Window!, Se.GetErrorLogFilePath());
+    }
+
+    [RelayCommand]
+    private async Task ShowToolsLogFile()
+    {
+        if (Window == null || !File.Exists(Se.GetToolsLogFilePath()))
+        {
+            return;
+        }
+
+        await _folderHelper.OpenFolderWithFileSelected(Window!, Se.GetToolsLogFilePath());
+    }
+
+    [RelayCommand]
+    private async Task ShowSettingsFile()
+    {
+        if (Window == null || !File.Exists(Se.GetSettingsFilePath()))
+        {
+            return;
+        }
+
+        await _folderHelper.OpenFolderWithFileSelected(Window!, Se.GetSettingsFilePath());
+    }
+
+    [RelayCommand]
+    private async Task ShowEditCustomContinuationStyle()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var result = await _windowService
+            .ShowDialogAsync<CustomContinuationStyleWindow, CustomContinuationStyleViewModel>(Window, vm =>
+            {
+                vm.Initialize(_editCustomContinuationStyle);
+            });
+
+        if (!result.OkPressed)
+        {
+            return;
+        }
+
+        _editCustomContinuationStyle = result.GetResult();
+
+        RuleValueChanged();
+    }
+
+    private void LoadFileTypeAssociations()
+    {
+        FileTypeAssociationsManager.LoadFileTypeAssociations(FileTypeAssociations);
+    }
+
+    [RelayCommand]
+    private void CommandCancel()
+    {
+        Window?.Close();
+    }
+
+    [RelayCommand]
+    private async Task ImportSettings()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var result = await _windowService.ShowDialogAsync<SettingsImportExport.SettingsImportExportWindow, SettingsImportExport.SettingsImportExportViewModel>(
+            Window,
+            vm => vm.SetIsExport(false));
+
+        if (result.OkPressed)
+        {
+            // Reload the settings from disk since they were updated
+            LoadSettings();
+        }
+    }
+
+    [RelayCommand]
+    private async Task ExportSettings()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        await _windowService.ShowDialogAsync<SettingsImportExport.SettingsImportExportWindow, SettingsImportExport.SettingsImportExportViewModel>(
+            Window,
+            vm => vm.SetIsExport(true));
+    }
+
+    public void OnKeyDown(KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            e.Handled = true;
+            Window?.Close();
+        }
+        else if (UiUtil.IsHelp(e))
+        {
+            e.Handled = true;
+            UiUtil.ShowHelp("features/settings");
+        }
+    }
+
+    internal void Initialize(MainViewModel mainViewModel)
+    {
+        _mainViewModel = mainViewModel;
+    }
+
+    internal void ProfileChanged()
+    {
+        var profile = _profilesForEdit.FirstOrDefault(p => p.Name == SelectedProfile);
+        if (profile == null)
+        {
+            return;
+        }
+
+        _skipRuleValueChanged = true;
+
+        try
+        {
+            SingleLineMaxLength = profile.SingleLineMaxLength;
+            OptimalCharsPerSec = profile.OptimalCharsPerSec;
+            MaxCharsPerSec = profile.MaxCharsPerSec;
+            MaxWordsPerMin = profile.MaxWordsPerMin;
+            MinDurationMs = profile.MinDurationMs;
+            MaxDurationMs = profile.MaxDurationMs;
+            MinGapMs = profile.MinGapMs;
+            // A profile stores the gap in milliseconds only, but the setting is ms-or-frames and
+            // frame mode reads the frame value, so derive it instead of leaving it on the old profile's.
+            if (profile.MinGapMs.HasValue)
+            {
+                MinGapFrames = SubtitleFormat.MillisecondsToFrames(profile.MinGapMs.Value);
+            }
+
+            MaxLines = profile.MaxLines;
+            UnbreakLinesShorterThan = profile.UnbreakLinesShorterThan;
+            DialogStyle = profile.DialogStyle;
+            ContinuationStyle = profile.ContinuationStyle;
+            CpsLineLengthStrategy = profile.CpsLineLengthStrategy;
+
+            _editCustomContinuationStyle = new CustomContinuationStyle(profile.CustomContinuationStyle);
+            IsEditCustomContinuationStyleVisible = ContinuationStyle?.Code == nameof(Core.Enums.ContinuationStyle.Custom);
+        }
+        finally
+        {
+            _skipRuleValueChanged = false;
+        }
+    }
+
+    internal void RuleValueChanged()
+    {
+        var profileItem = _profilesForEdit.FirstOrDefault(p => p.Name == SelectedProfile);
+        if (profileItem == null)
+        {
+            return;
+        }
+
+        if (_skipRuleValueChanged)
+        {
+            return;
+        }
+
+        profileItem.SingleLineMaxLength = SingleLineMaxLength;
+        profileItem.OptimalCharsPerSec = OptimalCharsPerSec;
+        profileItem.MaxCharsPerSec = MaxCharsPerSec;
+        profileItem.MaxWordsPerMin = MaxWordsPerMin;
+        profileItem.MinDurationMs = MinDurationMs;
+        profileItem.MaxDurationMs = MaxDurationMs;
+        // In frame mode the frames box is the one the user edits, so that is the value to store.
+        profileItem.MinGapMs = UseFrameMode && MinGapFrames.HasValue
+            ? SubtitleFormat.FramesToMilliseconds(MinGapFrames.Value)
+            : MinGapMs;
+        profileItem.MaxLines = MaxLines;
+        profileItem.UnbreakLinesShorterThan = UnbreakLinesShorterThan;
+        profileItem.DialogStyle = DialogStyle;
+        profileItem.ContinuationStyle = ContinuationStyle;
+        profileItem.CpsLineLengthStrategy = CpsLineLengthStrategy;
+
+        profileItem.CustomContinuationStyle = new CustomContinuationStyle(_editCustomContinuationStyle);
+    }
+
+    internal void ContinuationStyleChanged()
+    {
+        if (ContinuationStyle == null)
+        {
+            IsEditCustomContinuationStyleVisible = false;
+            return;
+        }
+
+        IsEditCustomContinuationStyleVisible = ContinuationStyle.Code == nameof(Core.Enums.ContinuationStyle.Custom);
+        RuleValueChanged();
+    }
+
+    public void VideoPlayerChanged()
+    {
+        IsMpvChosen = SelectedVideoPlayer.Name == "mpv";
+    }
+
+    internal void Onloaded(object? sender, RoutedEventArgs e)
+    {
+        UiUtil.RestoreWindowPosition(Window);
+        _ = UpdateWaveformSpaceInfoAsync();
+    }
+
+    internal void OnClosing(object? sender, WindowClosingEventArgs e)
+    {
+        UiUtil.SaveWindowPosition(Window);
+    }
+}

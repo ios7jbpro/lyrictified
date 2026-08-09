@@ -1,0 +1,220 @@
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
+using Avalonia.Platform;
+using Nikse.SubtitleEdit.UiLogic.AudioToText;
+using Nikse.SubtitleEdit.Logic.Config;
+
+namespace Nikse.SubtitleEdit.Features.Video.SpeechToText.Engines;
+
+public class WhisperEngineCpp : ISpeechToTextEngine
+{
+    public static string StaticName => "Whisper CPP";
+    public string Name => StaticName;
+    public string Choice => WhisperChoice.Cpp;
+    public string Url => "https://github.com/ggerganov/whisper.cpp";
+
+    public List<WhisperLanguage> Languages => WhisperLanguage.Languages.OrderBy(p => p.Name).ToList();
+
+    public List<WhisperModel> Models
+    {
+        get
+        {
+            var models = new WhisperCppModel().Models;
+            return models.ToList();
+        }
+    }
+
+    public string Extension => ".bin";
+
+    // The Windows whisper.cpp release (whisper-blas-bin-x64.zip) nests all binaries under a
+    // "Release/" folder, so whisper-cli.exe would otherwise land in Cpp/Release/ (see #12220).
+    // The Mac/Linux archives are flat; skipping "Release" is a no-op there because the unpacker
+    // only strips the prefix from entries that actually start with it.
+    public string UnpackSkipFolder => "Release";
+
+    public bool IsEngineInstalled()
+    {
+        var executableFile = GetExecutable();
+        return File.Exists(executableFile);
+    }
+
+    public override string ToString()
+    {
+        return WhisperCppEngine.GetBackendDisplayName(this);
+    }
+
+    public string GetAndCreateWhisperFolder()
+    {
+        var baseFolder = Se.SpeechToTextFolder;
+        if (!Directory.Exists(baseFolder))
+        {
+            Directory.CreateDirectory(baseFolder);
+        }
+
+        var folder = Path.Combine(baseFolder, "Cpp");
+        if (!Directory.Exists(folder))
+        {
+            Directory.CreateDirectory(folder);
+        }
+
+        return folder;
+    }
+
+    public string GetAndCreateWhisperModelFolder(WhisperModel? whisperModel)
+    {
+        var baseFolder = GetAndCreateWhisperFolder();
+
+        var folder = Path.Combine(baseFolder, "Models");
+        if (!Directory.Exists(folder))
+        {
+            Directory.CreateDirectory(folder);
+        }
+
+        return folder;
+    }
+
+    public string GetExecutable()
+    {
+        var fullPath = Path.Combine(GetAndCreateWhisperFolder(), GetExecutableFileName());
+
+        if (!File.Exists(fullPath) && OperatingSystem.IsLinux())
+        {
+            string[] paths = ["/usr/bin/whisper-cli", "usr/local/bin/"];
+            foreach (var path in paths)
+            {
+                if (File.Exists(path))
+                {
+                    return path;
+                }
+            }
+        }
+
+        return fullPath;
+    }
+
+    public bool IsModelInstalled(WhisperModel model)
+    {
+        var baseFolder = GetAndCreateWhisperFolder();
+        var folder = Path.Combine(baseFolder, "Models");
+        if (!Directory.Exists(folder))
+        {
+            return false;
+        }
+
+        var modelFileName = Path.Combine(folder, model.Name);
+        if (Extension.Length > 0 && !modelFileName.EndsWith(Extension))
+        {
+            modelFileName += Extension;
+        }
+
+        if (!File.Exists(modelFileName))
+        {
+            return false;
+        }
+
+        var fileInfo = new FileInfo(modelFileName);
+        return fileInfo.Length > 10_000_000;
+    }
+
+    public string GetModelForCmdLine(string modelName)
+    {
+        var modelFileName = Path.Combine(GetAndCreateWhisperModelFolder(null), modelName);
+        if (Extension.Length > 0 && !modelFileName.EndsWith(Extension))
+        {
+            modelFileName += Extension;
+        }
+
+        return modelFileName;
+    }
+
+    public bool SupportsCustomModels => true;
+
+    public bool CustomModelIsFolder => false;
+
+    public string ImportCustomModel(string sourcePath)
+    {
+        if (!File.Exists(sourcePath))
+        {
+            throw new FileNotFoundException("Model file not found.", sourcePath);
+        }
+
+        if (!sourcePath.EndsWith(".bin", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new Exception("A whisper.cpp model must be a ggml '.bin' file.");
+        }
+
+        if (new FileInfo(sourcePath).Length < 10_000_000)
+        {
+            throw new Exception("The model file is too small (must be at least 10 MB) - is it really a whisper.cpp model?");
+        }
+
+        var destination = Path.Combine(GetAndCreateWhisperModelFolder(null), Path.GetFileName(sourcePath));
+        File.Copy(sourcePath, destination, true);
+
+        return Path.GetFileNameWithoutExtension(destination);
+    }
+
+    public async Task<string> GetHelpText()
+    {
+        var assetName = $"{StaticName.Replace(" ", string.Empty)}.txt";
+        var uri = new Uri($"avares://SubtitleEdit/Assets/SpeechToText/{assetName}");
+
+        await using var stream = AssetLoader.Open(uri);
+        using var reader = new StreamReader(stream);
+
+        var contents = await reader.ReadToEndAsync();
+        return contents;
+    }
+
+    public string GetWhisperModelDownloadFileName(WhisperModel whisperModel, string url)
+    {
+        var folder = GetAndCreateWhisperModelFolder(whisperModel);
+        var fileName = Path.Combine(folder, whisperModel.Name + Extension);
+        return fileName;
+    }
+
+    private static string GetExecutableFileName()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return "whisper-cli.exe";
+        }
+
+        return "whisper-cli";
+    }
+
+    public bool CanBeDownloaded()
+    {
+        return true;
+    }
+
+    public string DownloadSizeText
+    {
+        get
+        {
+            // matches WhisperDownloadService.GetUrl() — the BLAS Windows build, Vulkan Linux build, or universal Mac build.
+            if (OperatingSystem.IsWindows())
+            {
+                return "~14 MB";
+            }
+            if (OperatingSystem.IsLinux())
+            {
+                return "~18 MB";
+            }
+            if (OperatingSystem.IsMacOS())
+            {
+                return "~3 MB";
+            }
+            return string.Empty;
+        }
+    }
+
+    public string CommandLineParameter
+    {
+        get => Se.Settings.Tools.AudioToText.CommandLineParameterCpp;
+        set => Se.Settings.Tools.AudioToText.CommandLineParameterCpp = value;
+    }
+}

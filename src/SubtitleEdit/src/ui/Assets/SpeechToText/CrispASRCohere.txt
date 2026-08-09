@@ -1,0 +1,6 @@
+﻿
+🧩 Cohere
+
+Type: Conformer + Transformer
+Focus: 🎯 Lowest WER (accuracy), especially English
+

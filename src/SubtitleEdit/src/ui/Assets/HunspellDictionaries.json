@@ -1,0 +1,821 @@
+[
+  {
+    "EnglishName": "Afrikaans",
+    "NativeName": "Afrikaans",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/af_ZA/af_ZA.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/af_ZA/af_ZA.dic"
+    ],
+    "Description": "Afrikaans spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Albanian",
+    "NativeName": "Shqip",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/sq_AL/sq_AL.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/sq_AL/sq_AL.dic"
+    ],
+    "Description": "Albanian spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Aragonese",
+    "NativeName": "Aragonés",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/an_ES/an_ES.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/an_ES/an_ES.dic"
+    ],
+    "Description": "Aragonese spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Arabic",
+    "NativeName": "عربي",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ar/ar.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ar/ar.dic"
+    ],
+    "Description": "Arabic spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Armenian",
+    "NativeName": "Հայերեն",
+    "Files": [
+      "https://github.com/SubtitleEdit/support-files/raw/master/hunspell/hy_AM.zip"
+    ],
+    "Description": "Armenian (Eastern) spell checker - araktransfer (GPL/LGPL/MPL)"
+  },
+  {
+    "EnglishName": "Assamese",
+    "NativeName": "অসমীয়া",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/as_IN/as_IN.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/as_IN/as_IN.dic"
+    ],
+    "Description": "Assamese spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Basque",
+    "NativeName": "Euskara",
+    "Files": [
+      "https://extensions.libreoffice.org/assets/downloads/z/xuxeniv-lo4-1-1.oxt"
+    ],
+    "Description": "Xuxen: Basque spell checking dictionary - v4.0"
+  },
+  {
+    "EnglishName": "Belarusian",
+    "NativeName": "Беларуская мова",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/be_BY/be-official.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/be_BY/be-official.dic"
+    ],
+    "Description": "Belarusian spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Bengali",
+    "NativeName": "বাংলা",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/bn_BD/bn_BD.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/bn_BD/bn_BD.dic"
+    ],
+    "Description": "Bengali spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Bosnian",
+    "NativeName": "Bosanski",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/bs_BA/bs_BA.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/bs_BA/bs_BA.dic"
+    ],
+    "Description": "Bosnian spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Breton",
+    "NativeName": "Brezhoneg",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/br_FR/br_FR.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/br_FR/br_FR.dic"
+    ],
+    "Description": "Breton spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Bulgarian",
+    "NativeName": "Български",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/bg_BG/bg_BG.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/bg_BG/bg_BG.dic"
+    ],
+    "Description": "Bulgarian spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Catalan",
+    "NativeName": "català",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ca/dictionaries/ca.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ca/dictionaries/ca.dic"
+    ],
+    "Description": "Catalan spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Catalan (Valencian)",
+    "NativeName": "català-valencià",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ca/dictionaries/ca-valencia.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ca/dictionaries/ca-valencia.dic"
+    ],
+    "Description": "Catalan (Valencian) spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Central Kurdish (Sorani)",
+    "NativeName": "کوردیی ناوەندی",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ckb/dictionaries/ckb.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ckb/dictionaries/ckb.dic"
+    ],
+    "Description": "Central Kurdish (Sorani) spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Croatian",
+    "NativeName": "Hrvatski",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/hr_HR/hr_HR.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/hr_HR/hr_HR.dic"
+    ],
+    "Description": "Croatian spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Czech",
+    "NativeName": "Čeština",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/cs_CZ/cs_CZ.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/cs_CZ/cs_CZ.dic"
+    ],
+    "Description": "Czech spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Danish",
+    "NativeName": "Dansk",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/da_DK/da_DK.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/da_DK/da_DK.dic"
+    ],
+    "Description": "Danish spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Dutch",
+    "NativeName": "Nederlands",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/nl_NL/nl_NL.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/nl_NL/nl_NL.dic"
+    ],
+    "Description": "Dutch spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "English (Australia)",
+    "NativeName": "English (Australia)",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/en/en_AU.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/en/en_AU.dic"
+    ],
+    "Description": "English (Australia) spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "English (Canada)",
+    "NativeName": "English (Canada)",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/en/en_CA.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/en/en_CA.dic"
+    ],
+    "Description": "English (Canada) spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "English (South Africa)",
+    "NativeName": "English (South Africa)",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/en/en_ZA.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/en/en_ZA.dic"
+    ],
+    "Description": "English (South Africa) spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "English (United Kingdom)",
+    "NativeName": "English (United Kingdom)",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/en/en_GB.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/en/en_GB.dic"
+    ],
+    "Description": "English (United Kingdom) spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "English (United States)",
+    "NativeName": "English (United States)",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/en/en_US.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/en/en_US.dic"
+    ],
+    "Description": "English (United States) spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Esperanto",
+    "NativeName": "Esperanto",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/eo/eo.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/eo/eo.dic"
+    ],
+    "Description": "Esperanto spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Estonian",
+    "NativeName": "Eesti keel",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/et_EE/et_EE.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/et_EE/et_EE.dic"
+    ],
+    "Description": "Estonian spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Faroese",
+    "NativeName": "Føroyskt",
+    "Files": [
+      "https://github.com/SubtitleEdit/support-files/raw/master/hunspell/fo_FO.zip"
+    ],
+    "Description": "Faroese spell checker - Fróðskaparsetur Føroya (GPL/LGPL/MPL)"
+  },
+  {
+    "EnglishName": "Farsi (Persian)",
+    "NativeName": "فارسی",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/fa_IR/fa-IR.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/fa_IR/fa-IR.dic"
+    ],
+    "Description": "Persian (Farsi) spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Finnish",
+    "NativeName": "Suomi",
+    "Files": [
+      "https://github.com/fginter/hunspell-fi/releases/download/0.2/fi-spell-0.2.xpi"
+    ],
+    "Description": "Finnish Spellchecker Dictionary - Dec 6, 2023"
+  },
+  {
+    "EnglishName": "French",
+    "NativeName": "Français",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/fr_FR/dictionaries/fr.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/fr_FR/dictionaries/fr.dic"
+    ],
+    "Description": "French spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Galician",
+    "NativeName": "Galego",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/gl/gl_ES.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/gl/gl_ES.dic"
+    ],
+    "Description": "Galician spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Georgian",
+    "NativeName": "ქართული",
+    "Files": [
+      "https://github.com/SubtitleEdit/support-files/raw/master/hunspell/ka_GE.zip"
+    ],
+    "Description": "Georgian spell checker - gamag/ka_GE.spell (MIT)"
+  },
+  {
+    "EnglishName": "German (Austria)",
+    "NativeName": "Deutsch (Österreich)",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/de/de_AT_frami.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/de/de_AT_frami.dic"
+    ],
+    "Description": "German (Austria) spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "German (Germany)",
+    "NativeName": "Deutsch (Deutschland)",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/de/de_DE_frami.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/de/de_DE_frami.dic"
+    ],
+    "Description": "German (Germany) spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "German (Switzerland)",
+    "NativeName": "Deutsch (Schweiz)",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/de/de_CH_frami.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/de/de_CH_frami.dic"
+    ],
+    "Description": "German (Switzerland) spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Greek",
+    "NativeName": "Ελληνικά",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/el_GR/el_GR.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/el_GR/el_GR.dic"
+    ],
+    "Description": "Greek spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Gujarati",
+    "NativeName": "ગુજરાતી",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/gu_IN/gu_IN.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/gu_IN/gu_IN.dic"
+    ],
+    "Description": "Gujarati spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Guarani",
+    "NativeName": "Avañe'ẽ",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/gug/gug.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/gug/gug.dic"
+    ],
+    "Description": "Guarani spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Hebrew",
+    "NativeName": "עברית",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/he_IL/he_IL.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/he_IL/he_IL.dic"
+    ],
+    "Description": "Hebrew spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Hindi",
+    "NativeName": "हिन्दी",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/hi_IN/hi_IN.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/hi_IN/hi_IN.dic"
+    ],
+    "Description": "Hindi spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Hungarian",
+    "NativeName": "Magyar",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/hu_HU/hu_HU.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/hu_HU/hu_HU.dic"
+    ],
+    "Description": "Hungarian spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Icelandic",
+    "NativeName": "íslenska",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/is/is.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/is/is.dic"
+    ],
+    "Description": "Icelandic spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Indonesian",
+    "NativeName": "Indonesia",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/id/id_ID.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/id/id_ID.dic"
+    ],
+    "Description": "Indonesian spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Irish",
+    "NativeName": "Gaeilge",
+    "Files": [
+      "https://extensions.libreoffice.org/assets/downloads/z/focloiri-gaeilge-5-0.oxt"
+    ],
+    "Description": "Irish language spell checker, thesaurus, and hyphenation patterns 4.5"
+  },
+  {
+    "EnglishName": "Italian",
+    "NativeName": "Italiano",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/it_IT/it_IT.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/it_IT/it_IT.dic"
+    ],
+    "Description": "Italian spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Kannada",
+    "NativeName": "ಕನ್ನಡ",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/kn_IN/kn_IN.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/kn_IN/kn_IN.dic"
+    ],
+    "Description": "Kannada spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Khmer",
+    "NativeName": "ខ្មែរ",
+    "Files": [
+      "https://downloads.sourceforge.net/project/aoo-extensions/5067/2/dict-km.oxt"
+    ],
+    "Description": "Khmer spelling dictionary 2011.05.11"
+  },
+  {
+    "EnglishName": "Korean",
+    "NativeName": "한국어",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ko_KR/ko_KR.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ko_KR/ko_KR.dic"
+    ],
+    "Description": "Korean spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Lao",
+    "NativeName": "ລາວ",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/lo_LA/lo_LA.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/lo_LA/lo_LA.dic"
+    ],
+    "Description": "Lao spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Latin",
+    "NativeName": "Latina",
+    "Files": [
+      "https://extensions.libreoffice.org/assets/downloads/z/dict-la-2013-03-31.oxt"
+    ],
+    "Description": "Latin spelling and hyphenation dictionaries 2013.03.31"
+  },
+  {
+    "EnglishName": "Latvian",
+    "NativeName": "Latviešu",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/lv_LV/lv_LV.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/lv_LV/lv_LV.dic"
+    ],
+    "Description": "Latvian spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Lithuanian",
+    "NativeName": "Lietuvių",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/lt_LT/lt.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/lt_LT/lt.dic"
+    ],
+    "Description": "Lithuanian spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Lower Sorbian",
+    "NativeName": "dolnoserbšćina",
+    "Files": [
+      "https://extensions.libreoffice.org/assets/downloads/z/lower-sorbian-spelling-dictionary-1-5-0.oxt"
+    ],
+    "Description": "Lower Sorbian dictionary 1.4.6"
+  },
+  {
+    "EnglishName": "Luxembourgish",
+    "NativeName": "Lëtzebuergesch",
+    "Files": [
+      "https://github.com/SubtitleEdit/support-files/raw/master/hunspell/lb_LU.zip"
+    ],
+    "Description": "Luxembourgish spell checker - spellchecker.lu (EUPL 1.1)"
+  },
+  {
+    "EnglishName": "Macedonian",
+    "NativeName": "Македонски",
+    "Files": [
+      "https://downloads.sourceforge.net/project/aoo-extensions/3403/0/dict-mk.oxt"
+    ],
+    "Description": "Macedonian dictionary was created by Taras Bendik"
+  },
+  {
+    "EnglishName": "Malay",
+    "NativeName": "Bahasa Melayu",
+    "Files": [
+      "https://downloads.sourceforge.net/project/aoo-extensions/3904/0/ms_my.oxt"
+    ],
+    "Description": "Malay Spell Checker v0.1 - 07/10/04"
+  },
+  {
+    "EnglishName": "Malayalam",
+    "NativeName": "മലയാളം",
+    "Files": [
+      "https://master.dl.sourceforge.net/project/aoo-extensions/2741/3/ml_in_dict-1-1.oxt"
+    ],
+    "Description": "Malayalam Spellchecker 1.1.0"
+  },
+  {
+    "EnglishName": "Marathi",
+    "NativeName": "मराठी",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/mr_IN/mr_IN.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/mr_IN/mr_IN.dic"
+    ],
+    "Description": "Marathi spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Mongolian",
+    "NativeName": "Монгол",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/mn_MN/mn_MN.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/mn_MN/mn_MN.dic"
+    ],
+    "Description": "Mongolian spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Nepali",
+    "NativeName": "नेपाली",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ne_NP/ne_NP.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ne_NP/ne_NP.dic"
+    ],
+    "Description": "Nepali spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Northern Kurdish (Kurmanji)",
+    "NativeName": "Kurmancî",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/kmr_Latn/kmr_Latn.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/kmr_Latn/kmr_Latn.dic"
+    ],
+    "Description": "Northern Kurdish (Kurmanji) spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Norwegian (Bokmål)",
+    "NativeName": "Norwegian (Bokmål)",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/no/nb_NO.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/no/nb_NO.dic"
+    ],
+    "Description": "Norwegian (Bokmål) spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Norwegian (Nynorsk)",
+    "NativeName": "Norwegian (Nynorsk)",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/no/nn_NO.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/no/nn_NO.dic"
+    ],
+    "Description": "Norwegian (Nynorsk) spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Occitan",
+    "NativeName": "Occitan",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/oc_FR/oc_FR.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/oc_FR/oc_FR.dic"
+    ],
+    "Description": "Occitan spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Odia",
+    "NativeName": "ଓଡ଼ିଆ",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/or_IN/or_IN.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/or_IN/or_IN.dic"
+    ],
+    "Description": "Odia spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Polish",
+    "NativeName": "polski",
+    "Files": [
+      "https://github.com/SubtitleEdit/support-files/releases/download/hunspell/pl_PL_2026-04-01.zip"
+    ],
+    "Description": "Polish by https://sjp.pl - 2026-04-01"
+  },
+  {
+    "EnglishName": "Portuguese (Brazil)",
+    "NativeName": "Português (Brasil)",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/pt_BR/pt_BR.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/pt_BR/pt_BR.dic"
+    ],
+    "Description": "Portuguese (Brazil) spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Portuguese (Portugal)",
+    "NativeName": "Português",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/pt_PT/pt_PT.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/pt_PT/pt_PT.dic"
+    ],
+    "Description": "Portuguese (Portugal) spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Punjabi",
+    "NativeName": "ਪੰਜਾਬੀ",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/pa_IN/pa_IN.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/pa_IN/pa_IN.dic"
+    ],
+    "Description": "Punjabi spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Romanian",
+    "NativeName": "Română",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ro/ro_RO.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ro/ro_RO.dic"
+    ],
+    "Description": "Romanian spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Russian",
+    "NativeName": "Русский",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ru_RU/ru_RU.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ru_RU/ru_RU.dic"
+    ],
+    "Description": "Russian spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Sanskrit",
+    "NativeName": "संस्कृतम्",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/sa_IN/sa_IN.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/sa_IN/sa_IN.dic"
+    ],
+    "Description": "Sanskrit spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Scottish Gaelic",
+    "NativeName": "Gàidhlig",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/gd_GB/gd_GB.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/gd_GB/gd_GB.dic"
+    ],
+    "Description": "Scottish Gaelic spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Serbian (Cyrillic)",
+    "NativeName": "Serbian (Cyrillic)",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/sr/sr.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/sr/sr.dic"
+    ],
+    "Description": "Serbian (Cyrillic) spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Serbian (Latin)",
+    "NativeName": "Serbian (Latin)",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/sr/sr-Latn.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/sr/sr-Latn.dic"
+    ],
+    "Description": "Serbian (Latin) spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Sinhala",
+    "NativeName": "සිංහල",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/si_LK/si_LK.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/si_LK/si_LK.dic"
+    ],
+    "Description": "Sinhala spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Slovak",
+    "NativeName": "Slovenčina",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/sk_SK/sk_SK.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/sk_SK/sk_SK.dic"
+    ],
+    "Description": "Slovak spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Slovenian",
+    "NativeName": "Slovenščina",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/sl_SI/sl_SI.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/sl_SI/sl_SI.dic"
+    ],
+    "Description": "Slovenian spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Spanish",
+    "NativeName": "Español",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/es/es_ES.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/es/es_ES.dic"
+    ],
+    "Description": "Spanish spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Swahili",
+    "NativeName": "Kiswahili",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/sw_TZ/sw_TZ.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/sw_TZ/sw_TZ.dic"
+    ],
+    "Description": "Swahili spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Swedish",
+    "NativeName": "Svenska",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/sv_SE/dictionaries/sv_SE.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/sv_SE/dictionaries/sv_SE.dic"
+    ],
+    "Description": "Swedish spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Swedish (Finland)",
+    "NativeName": "Svenska (Finland)",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/sv_SE/dictionaries/sv_FI.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/sv_SE/dictionaries/sv_FI.dic"
+    ],
+    "Description": "Swedish (Finland) spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Tamil",
+    "NativeName": "தமிழ்",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ta_IN/ta_IN.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/ta_IN/ta_IN.dic"
+    ],
+    "Description": "Tamil spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Telugu",
+    "NativeName": "తెలుగు",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/te_IN/te_IN.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/te_IN/te_IN.dic"
+    ],
+    "Description": "Telugu spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Thai",
+    "NativeName": "ภาษาไทย",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/th_TH/th_TH.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/th_TH/th_TH.dic"
+    ],
+    "Description": "Thai spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Tibetan",
+    "NativeName": "བོད་སྐད་",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/bo/bo.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/bo/bo.dic"
+    ],
+    "Description": "Tibetan spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Turkish",
+    "NativeName": "Türkçe",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/tr_TR/tr_TR.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/tr_TR/tr_TR.dic"
+    ],
+    "Description": "Turkish spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Ukrainian",
+    "NativeName": "Українська",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/uk_UA/uk_UA.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/uk_UA/uk_UA.dic"
+    ],
+    "Description": "Ukrainian spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Vietnamese",
+    "NativeName": "Tiếng Việt",
+    "Files": [
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/vi/vi_VN.aff",
+      "https://raw.githubusercontent.com/LibreOffice/dictionaries/master/vi/vi_VN.dic"
+    ],
+    "Description": "Vietnamese spell checker (LibreOffice)"
+  },
+  {
+    "EnglishName": "Vietnamese and English",
+    "NativeName": "Tiếng Việt and English",
+    "Files": [
+      "https://github.com/SubtitleEdit/support-files/raw/master/hunspell/vi_VN-and-English.zip"
+    ],
+    "Description": "Vietnamese/English by MMT Gouenji Tech - 2022-02-12"
+  },
+  {
+    "EnglishName": "Welsh",
+    "NativeName": "Cymraeg",
+    "Files": [
+      "https://downloads.sourceforge.net/project/aoo-extensions/1583/1/geiriadur-cy.oxt"
+    ],
+    "Description": "Welsh spell checker"
+  },
+  {
+    "EnglishName": "Xhosa",
+    "NativeName": "isiXhosa",
+    "Files": [
+      "https://sourceforge.net/projects/aoo-extensions/files/3133/0/dict-xh_za-2009.10.30.oxt/download"
+    ],
+    "Description": "Xhosa spell checker"
+  },
+  {
+    "EnglishName": "Zulu",
+    "NativeName": "isiZulu",
+    "Files": [
+      "https://downloads.sourceforge.net/project/aoo-extensions/3132/3/dict-zu_za-2010.01.26.oxt"
+    ],
+    "Description": "Zulu spell checker"
+  }
+]

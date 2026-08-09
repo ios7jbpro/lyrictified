@@ -1,0 +1,732 @@
+using System.Net;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Text;
+using Nikse.SubtitleEdit.Features.Video.SpeechToText.OpenAiCompatible;
+
+namespace UITests.Features.Video.SpeechToText.OpenAiCompatible;
+
+public class OpenAiSttServiceTests
+{
+    private static OpenAiCompatibleSettings MakeSettings(string model = "whisper-1", string extraHeaders = "")
+        => new()
+        {
+            EndpointUrl = "http://localhost:8000/v1/audio/transcriptions",
+            ApiKey = "test-key",
+            Model = model,
+            Language = "en",
+            TimeoutSeconds = 30,
+            Temperature = 0,
+            Prompt = string.Empty,
+            ExtraHeaders = extraHeaders,
+        };
+
+    private static string MakeTinyWav()
+    {
+        // Minimal valid 44-byte WAV header with 0 samples; the service only
+        // streams the file content as multipart, so the bytes don't have to
+        // be playable.
+        var path = Path.Combine(Path.GetTempPath(), $"se-stt-test-{Guid.NewGuid()}.wav");
+        var header = new byte[]
+        {
+            (byte)'R', (byte)'I', (byte)'F', (byte)'F', 36, 0, 0, 0,
+            (byte)'W', (byte)'A', (byte)'V', (byte)'E',
+            (byte)'f', (byte)'m', (byte)'t', (byte)' ', 16, 0, 0, 0,
+            1, 0, 1, 0, 0x40, 0x1f, 0, 0, 0x80, 0x3e, 0, 0, 2, 0, 16, 0,
+            (byte)'d', (byte)'a', (byte)'t', (byte)'a', 0, 0, 0, 0,
+        };
+        File.WriteAllBytes(path, header);
+        return path;
+    }
+
+    [Fact]
+    public async Task TranscribeAsync_NonStreamingJson_ParsesSegments()
+    {
+        const string json = """
+            {
+              "text": "hello world",
+              "language": "en",
+              "duration": 2.0,
+              "segments": [
+                { "id": 0, "start": 0.0, "end": 1.0, "text": "hello" },
+                { "id": 1, "start": 1.0, "end": 2.0, "text": " world" }
+              ]
+            }
+            """;
+
+        using var handler = new StubHandler((req, ct) => Task.FromResult(JsonResponse(json)));
+        using var client = new HttpClient(handler);
+        var service = new OpenAiSttService(client, MakeSettings());
+
+        var ct = TestContext.Current.CancellationToken;
+        var wav = MakeTinyWav();
+        try
+        {
+            var response = await service.TranscribeAsync(wav, cancellationToken: ct);
+
+            Assert.Equal("hello world", response.Text);
+            Assert.NotNull(response.Segments);
+            Assert.Equal(2, response.Segments!.Count);
+            Assert.Equal("hello", response.Segments[0].Text);
+            Assert.Equal(0.0, response.Segments[0].Start);
+            Assert.Equal(1.0, response.Segments[0].End);
+            Assert.Equal(" world", response.Segments[1].Text);
+            Assert.Equal("en", response.Language);
+        }
+        finally
+        {
+            File.Delete(wav);
+        }
+    }
+
+    [Fact]
+    public async Task TranscribeAsync_TopLevelWords_GroupsIntoSegmentsWithTimeCodes()
+    {
+        // Discussion #11239: xAI Grok (/v1/stt) returns only a top-level "words"
+        // array (with "text"/start/end) and no "segments". Those timings must be
+        // grouped into segments instead of collapsing to one timestamp-less block.
+        const string json = """
+            {
+              "text": "The balance is fine. Thanks a lot.",
+              "language": "English",
+              "duration": 3.45,
+              "words": [
+                { "text": "The", "start": 0.24, "end": 0.48 },
+                { "text": "balance", "start": 0.48, "end": 0.96 },
+                { "text": "is", "start": 0.96, "end": 1.12 },
+                { "text": "fine.", "start": 1.12, "end": 1.60 },
+                { "text": "Thanks", "start": 2.40, "end": 2.80 },
+                { "text": "a", "start": 2.80, "end": 2.90 },
+                { "text": "lot.", "start": 2.90, "end": 3.20 }
+              ]
+            }
+            """;
+
+        using var handler = new StubHandler((req, ct) => Task.FromResult(JsonResponse(json)));
+        using var client = new HttpClient(handler);
+        var service = new OpenAiSttService(client, MakeSettings());
+
+        var ct = TestContext.Current.CancellationToken;
+        var wav = MakeTinyWav();
+        try
+        {
+            var response = await service.TranscribeAsync(wav, cancellationToken: ct);
+
+            Assert.NotNull(response.Segments);
+            // A >0.5 s gap between "fine." (ends 1.60) and "Thanks" (starts 2.40)
+            // splits the words into two segments.
+            Assert.Equal(2, response.Segments!.Count);
+            Assert.Equal("The balance is fine.", response.Segments[0].Text);
+            Assert.Equal(0.24, response.Segments[0].Start);
+            Assert.Equal(1.60, response.Segments[0].End);
+            Assert.Equal("Thanks a lot.", response.Segments[1].Text);
+            Assert.Equal(2.40, response.Segments[1].Start);
+            Assert.Equal(3.20, response.Segments[1].End);
+        }
+        finally
+        {
+            File.Delete(wav);
+        }
+    }
+
+    [Fact]
+    public void BuildSegmentsFromWords_SplitsOnLongLineLength()
+    {
+        // With no large gaps, grouping must still break once a line would exceed
+        // ~80 characters so we don't emit one giant subtitle line.
+        var words = new List<OpenAiCompatibleWord>();
+        for (var i = 0; i < 30; i++)
+        {
+            words.Add(new OpenAiCompatibleWord { Text = "word", Start = i * 0.2, End = i * 0.2 + 0.1 });
+        }
+
+        var segments = OpenAiSttService.BuildSegmentsFromWords(words);
+
+        Assert.True(segments.Count > 1, "Expected long word run to split into multiple segments.");
+        Assert.All(segments, s => Assert.True(s.Text.Length <= 80, $"Segment too long: '{s.Text}'"));
+    }
+
+    [Fact]
+    public void BuildSegmentsFromWords_PrefersWordKeyWhenBothPresent()
+    {
+        // OpenAI verbose_json uses "word"; Grok uses "text". EffectiveText must
+        // resolve either, preferring the OpenAI "word" key when set.
+        var words = new List<OpenAiCompatibleWord>
+        {
+            new() { Word = "Hello", Start = 0.0, End = 0.5 },
+            new() { Text = "world", Start = 0.5, End = 1.0 },
+        };
+
+        var segments = OpenAiSttService.BuildSegmentsFromWords(words);
+
+        Assert.Single(segments);
+        Assert.Equal("Hello world", segments[0].Text);
+    }
+
+    [Fact]
+    public async Task TranscribeAsync_PlainTextBody_FallsBackToSingleSegment()
+    {
+        // Body that JsonSerializer cannot deserialize into OpenAiCompatibleSttResponse
+        // forces the fallback branch that wraps it as a single-segment response.
+        using var handler = new StubHandler((req, ct) =>
+            Task.FromResult(JsonResponse("not valid json at all", contentType: "application/json")));
+        using var client = new HttpClient(handler);
+        var service = new OpenAiSttService(client, MakeSettings());
+
+        var ct = TestContext.Current.CancellationToken;
+        var wav = MakeTinyWav();
+        try
+        {
+            var response = await service.TranscribeAsync(wav, cancellationToken: ct);
+
+            Assert.Equal("not valid json at all", response.Text);
+            Assert.NotNull(response.Segments);
+            Assert.Single(response.Segments!);
+            Assert.Equal("not valid json at all", response.Segments![0].Text);
+        }
+        finally
+        {
+            File.Delete(wav);
+        }
+    }
+
+    [Fact]
+    public async Task TranscribeAsync_SseStream_AccumulatesDeltasAndReportsDoneSegments()
+    {
+        // OpenAI streaming format: a sequence of `event:` + `data:` lines
+        // terminated by blank lines. ProcessSseEvent handles
+        // transcript.text.delta (append + Progress<string>) and
+        // transcript.text.done (segments + Progress<OpenAiCompatibleSegment>).
+        const string sse =
+            "event: transcript.text.delta\n" +
+            "data: {\"type\":\"transcript.text.delta\",\"delta\":\"Hello\"}\n" +
+            "\n" +
+            "event: transcript.text.delta\n" +
+            "data: {\"type\":\"transcript.text.delta\",\"delta\":\" there\"}\n" +
+            "\n" +
+            "event: transcript.text.done\n" +
+            "data: {\"type\":\"transcript.text.done\",\"text\":\"Hello there\"," +
+            "\"segments\":[{\"id\":0,\"start\":0,\"end\":1.2,\"text\":\"Hello there\"}]}\n" +
+            "\n";
+
+        using var handler = new StubHandler((req, ct) =>
+            Task.FromResult(JsonResponse(sse, contentType: "text/event-stream")));
+        using var client = new HttpClient(handler);
+        var service = new OpenAiSttService(client, MakeSettings());
+
+        var deltas = new List<string>();
+        var reportedSegments = new List<OpenAiCompatibleSegment>();
+        // Use a synchronous IProgress so callbacks run inline on the parse thread (the service reports
+        // synchronously while reading the stream). The BCL Progress<T> instead posts callbacks to a
+        // SynchronizationContext / the thread pool, which under full-suite parallelism either arrived
+        // late or raced on the (non-thread-safe) lists - making this test flaky.
+        var deltaProgress = new SyncProgress<string>(d => deltas.Add(d));
+        var segmentProgress = new SyncProgress<OpenAiCompatibleSegment>(s => reportedSegments.Add(s));
+
+        var ct = TestContext.Current.CancellationToken;
+        var wav = MakeTinyWav();
+        try
+        {
+            var response = await service.TranscribeAsync(wav, language: null, deltaProgress, segmentProgress, ct);
+
+            // Both deltas should be appended in order.
+            Assert.Equal("Hello there", response.Text);
+
+            // Reported synchronously during TranscribeAsync, so the lists are complete on return.
+            Assert.Equal(new[] { "Hello", " there" }, deltas);
+
+            Assert.NotNull(response.Segments);
+            Assert.Single(response.Segments!);
+            Assert.Equal("Hello there", response.Segments![0].Text);
+            Assert.Equal(1.2, response.Segments[0].End);
+            Assert.Single(reportedSegments);
+        }
+        finally
+        {
+            File.Delete(wav);
+        }
+    }
+
+    [Fact]
+    public async Task TranscribeAsync_AttachesExtraHeaders_AndIgnoresMalformedLines()
+    {
+        // ExtraHeaders is a free-form multi-line string of "Name: value" pairs;
+        // AddExtraHeaders should attach the well-formed ones, skip lines that
+        // don't contain a colon, and never overwrite Authorization (set from ApiKey).
+        var extra = string.Join("\n", new[]
+        {
+            "X-Custom-Header: custom-value",
+            "X-Another: another-value",
+            "not a header line",
+            "Authorization: should-be-ignored",
+        });
+
+        HttpRequestMessage? capturedRequest = null;
+        using var handler = new StubHandler((req, ct) =>
+        {
+            capturedRequest = req;
+            return Task.FromResult(JsonResponse("""{"text":"ok"}"""));
+        });
+        using var client = new HttpClient(handler);
+        var service = new OpenAiSttService(client, MakeSettings(extraHeaders: extra));
+
+        var ct = TestContext.Current.CancellationToken;
+        var wav = MakeTinyWav();
+        try
+        {
+            await service.TranscribeAsync(wav, cancellationToken: ct);
+
+            Assert.NotNull(capturedRequest);
+            Assert.True(capturedRequest!.Headers.TryGetValues("X-Custom-Header", out var custom));
+            Assert.Equal("custom-value", custom!.Single());
+            Assert.True(capturedRequest.Headers.TryGetValues("X-Another", out var another));
+            Assert.Equal("another-value", another!.Single());
+
+            // Authorization came from ApiKey ("Bearer test-key") and must not be
+            // replaced by the ExtraHeaders entry.
+            Assert.Equal("Bearer", capturedRequest.Headers.Authorization?.Scheme);
+            Assert.Equal("test-key", capturedRequest.Headers.Authorization?.Parameter);
+        }
+        finally
+        {
+            File.Delete(wav);
+        }
+    }
+
+    [Fact]
+    public void Constructor_DoesNotMutateHttpClientTimeout()
+    {
+        // Per-call timeouts are now applied via a linked CTS inside
+        // TranscribeAsync; the service must NOT mutate the passed-in
+        // HttpClient.Timeout so the instance is safe to share.
+        using var handler = new StubHandler((req, ct) => Task.FromResult(JsonResponse("""{"text":"ok"}""")));
+        using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(42) };
+
+        _ = new OpenAiSttService(client, MakeSettings());
+
+        Assert.Equal(TimeSpan.FromSeconds(42), client.Timeout);
+    }
+
+    [Fact]
+    public async Task TranscribeAsync_HonorsPerCallTimeout_FromSettings()
+    {
+        // settings.TimeoutSeconds drives a CancelAfter on a linked CTS; a
+        // handler that never completes is cancelled by it, and the service
+        // reports that as TimeoutException — distinct from a caller cancel,
+        // which surfaces as OperationCanceledException.
+        var requestStarted = new TaskCompletionSource();
+        using var handler = new StubHandler(async (req, ct) =>
+        {
+            requestStarted.TrySetResult();
+            // Wait forever — the per-call timeout should fire and cancel ct.
+            await Task.Delay(Timeout.Infinite, ct);
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+        using var client = new HttpClient(handler);
+        var settings = MakeSettings();
+        settings.TimeoutSeconds = 1; // 1 second for the test
+        var service = new OpenAiSttService(client, settings);
+
+        var wav = MakeTinyWav();
+        try
+        {
+            await Assert.ThrowsAsync<TimeoutException>(
+                () => service.TranscribeAsync(wav, cancellationToken: TestContext.Current.CancellationToken));
+            Assert.True(requestStarted.Task.IsCompletedSuccessfully);
+        }
+        finally
+        {
+            File.Delete(wav);
+        }
+    }
+
+    [Fact]
+    public void SharedHttpClient_IsStableAndHasInfiniteTimeout()
+    {
+        // The shared instance must be reused (single-instance) and must use
+        // InfiniteTimeSpan, otherwise long SSE streams would be truncated by
+        // the default 100-second HttpClient timeout.
+        var a = OpenAiSttService.SharedHttpClient;
+        var b = OpenAiSttService.SharedHttpClient;
+
+        Assert.Same(a, b);
+        Assert.Equal(Timeout.InfiniteTimeSpan, a.Timeout);
+    }
+
+    [Fact]
+    public async Task TranscribeAsync_NonSuccessStatus_ThrowsHttpRequestException()
+    {
+        using var handler = new StubHandler((req, ct) =>
+        {
+            var resp = new HttpResponseMessage(HttpStatusCode.Unauthorized)
+            {
+                Content = new StringContent("{\"error\":\"bad key\"}", Encoding.UTF8, "application/json"),
+            };
+            return Task.FromResult(resp);
+        });
+        using var client = new HttpClient(handler);
+        var service = new OpenAiSttService(client, MakeSettings());
+
+        var ct = TestContext.Current.CancellationToken;
+        var wav = MakeTinyWav();
+        try
+        {
+            var ex = await Assert.ThrowsAsync<HttpRequestException>(() => service.TranscribeAsync(wav, cancellationToken: ct));
+            Assert.Contains("401", ex.Message);
+            Assert.Equal(HttpStatusCode.Unauthorized, ex.StatusCode);
+        }
+        finally
+        {
+            File.Delete(wav);
+        }
+    }
+
+    [Fact]
+    public async Task TranscribeAsync_ModelRejected_KeepsStatusAndBody()
+    {
+        // xAI's /v1/stt has no "model" parameter and answers 404 for any value
+        // sent; the caller needs both the status and the body to tell the user
+        // which field to clear (issue #12877).
+        using var handler = new StubHandler((req, ct) =>
+        {
+            var resp = new HttpResponseMessage(HttpStatusCode.NotFound)
+            {
+                Content = new StringContent(
+                    "{\"error\":\"The model 'grok-voice-latest' does not exist or your team does not have access to it\"}",
+                    Encoding.UTF8,
+                    "application/json"),
+            };
+            return Task.FromResult(resp);
+        });
+        using var client = new HttpClient(handler);
+        var settings = MakeSettings();
+        settings.Model = "grok-voice-latest";
+        var service = new OpenAiSttService(client, settings);
+
+        var ct = TestContext.Current.CancellationToken;
+        var wav = MakeTinyWav();
+        try
+        {
+            var ex = await Assert.ThrowsAsync<HttpRequestException>(() => service.TranscribeAsync(wav, cancellationToken: ct));
+            Assert.Equal(HttpStatusCode.NotFound, ex.StatusCode);
+            Assert.Contains("grok-voice-latest", ex.Message);
+        }
+        finally
+        {
+            File.Delete(wav);
+        }
+    }
+
+    [Fact]
+    public async Task TranscribeAsync_DefaultSettings_DoesNotSendStreamPart()
+    {
+        // Groq and some other OpenAI-compatible providers reject the `stream`
+        // multipart field with HTTP 400. The opt-in default must keep the
+        // field out of the request entirely.
+        var capturedNames = await CaptureMultipartFieldNamesAsync(MakeSettings());
+
+        Assert.DoesNotContain("stream", capturedNames);
+    }
+
+    [Fact]
+    public async Task TranscribeAsync_StreamEnabled_SendsStreamTruePart()
+    {
+        var settings = MakeSettings();
+        settings.Stream = true;
+
+        var (names, values) = await CaptureMultipartFieldNamesAndValuesAsync(settings);
+
+        Assert.Contains("stream", names);
+        Assert.Equal("true", values["stream"]);
+    }
+
+    [Fact]
+    public async Task TranscribeAsync_NonStreaming_UsesVerboseJsonWithGranularities()
+    {
+        // Issue #11146: the OpenAI API rejects timestamp_granularities[] unless
+        // response_format=verbose_json. The non-streaming path must pair them.
+        var (names, values) = await CaptureMultipartFieldNamesAndValuesAsync(MakeSettings());
+
+        Assert.Equal("verbose_json", values["response_format"]);
+        Assert.Contains("timestamp_granularities[]", names);
+    }
+
+    [Fact]
+    public async Task TranscribeAsync_StreamEnabled_UsesJsonAndOmitsGranularities()
+    {
+        // Streaming only emits response_format=json; timestamp_granularities[]
+        // is incompatible with it and must not be sent.
+        var settings = MakeSettings();
+        settings.Stream = true;
+
+        var (names, values) = await CaptureMultipartFieldNamesAndValuesAsync(settings);
+
+        Assert.Equal("json", values["response_format"]);
+        Assert.DoesNotContain("timestamp_granularities[]", names);
+    }
+
+    [Fact]
+    public async Task TranscribeAsync_NonSuccessStatus_InvokesLogger_WithSanitizedUrl()
+    {
+        var logEntries = new List<string>();
+        var settings = MakeSettings();
+        settings.EndpointUrl = "https://user:secret@api.example.com/v1/audio/transcriptions?api_key=SHOULD_NOT_LEAK&model=x";
+        settings.Logger = msg => logEntries.Add(msg);
+
+        using var handler = new StubHandler((req, ct) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.BadRequest)
+            {
+                Content = new StringContent("{\"error\":\"nope\"}", Encoding.UTF8, "application/json"),
+            }));
+        using var client = new HttpClient(handler);
+        var service = new OpenAiSttService(client, settings);
+
+        var ct = TestContext.Current.CancellationToken;
+        var wav = MakeTinyWav();
+        try
+        {
+            var ex = await Assert.ThrowsAsync<HttpRequestException>(
+                () => service.TranscribeAsync(wav, cancellationToken: ct));
+
+            // Logger must have been invoked exactly once and the credentials
+            // must not appear in either the log entry or the exception message.
+            Assert.Single(logEntries);
+            Assert.DoesNotContain("secret", logEntries[0]);
+            Assert.DoesNotContain("SHOULD_NOT_LEAK", logEntries[0]);
+            Assert.Contains("api_key=***", logEntries[0]);
+            Assert.DoesNotContain("secret", ex.Message);
+            Assert.DoesNotContain("SHOULD_NOT_LEAK", ex.Message);
+        }
+        finally
+        {
+            File.Delete(wav);
+        }
+    }
+
+    [Fact]
+    public async Task TranscribeAsync_FileExtensionDrivesContentType_OverridingAudioFormat()
+    {
+        // Issue #11147: the ViewModel can short-circuit and hand us a .wav even
+        // when the user picked "mp3" in settings (e.g. dropping in an already-
+        // 16kHz WAV). Trusting settings.AudioFormat would attach Content-Type:
+        // audio/mpeg to WAV bytes — OpenAI rejects that. The actual on-disk
+        // extension must win.
+        MediaTypeHeaderValue? fileContentType = null;
+        using var handler = new StubHandler(async (req, ct) =>
+        {
+            if (req.Content is MultipartFormDataContent multipart)
+            {
+                foreach (var part in multipart)
+                {
+                    if (part.Headers.ContentDisposition?.Name?.Trim('"') == "file")
+                    {
+                        fileContentType = part.Headers.ContentType;
+                        // Drain so the request completes cleanly.
+                        await part.ReadAsByteArrayAsync(ct);
+                    }
+                }
+            }
+            return JsonResponse("""{"text":"ok"}""");
+        });
+        using var client = new HttpClient(handler);
+        var settings = MakeSettings();
+        settings.AudioFormat = "mp3"; // user picked mp3...
+        var service = new OpenAiSttService(client, settings);
+
+        var ct = TestContext.Current.CancellationToken;
+        var wav = MakeTinyWav(); // ...but the file we hand over is a .wav
+        try
+        {
+            await service.TranscribeAsync(wav, cancellationToken: ct);
+
+            Assert.NotNull(fileContentType);
+            Assert.Equal("audio/wav", fileContentType!.MediaType);
+        }
+        finally
+        {
+            File.Delete(wav);
+        }
+    }
+
+    [Fact]
+    public async Task TranscribeAsync_SendsFileAsLastMultipartField()
+    {
+        // Issue #12860: xAI's /v1/stt documents that "file" must be the final
+        // field in the multipart form — parameters written after the payload are
+        // not seen. Harmless for OpenAI, which ignores field order.
+        var fieldOrder = new List<string>();
+        using var handler = new StubHandler(async (req, ct) =>
+        {
+            if (req.Content is MultipartFormDataContent multipart)
+            {
+                foreach (var part in multipart)
+                {
+                    var name = part.Headers.ContentDisposition?.Name?.Trim('"') ?? string.Empty;
+                    if (!string.IsNullOrEmpty(name))
+                    {
+                        fieldOrder.Add(name);
+                    }
+
+                    if (name == "file")
+                    {
+                        // Drain so the request completes cleanly.
+                        await part.ReadAsByteArrayAsync(ct);
+                    }
+                }
+            }
+            return JsonResponse("""{"text":"ok"}""");
+        });
+        using var client = new HttpClient(handler);
+        var settings = MakeSettings();
+        settings.Prompt = "names: Nikse";
+        settings.Temperature = 0.5;
+        var service = new OpenAiSttService(client, settings);
+
+        var ct = TestContext.Current.CancellationToken;
+        var wav = MakeTinyWav();
+        try
+        {
+            await service.TranscribeAsync(wav, cancellationToken: ct);
+
+            Assert.Contains("model", fieldOrder);
+            Assert.Contains("prompt", fieldOrder);
+            Assert.Equal("file", fieldOrder[^1]);
+        }
+        finally
+        {
+            File.Delete(wav);
+        }
+    }
+
+    [Theory]
+    [InlineData("mp3", "audio/mpeg")]
+    [InlineData("m4a", "audio/mp4")]
+    [InlineData("webm", "audio/webm")]
+    [InlineData("wav", "audio/wav")]
+    [InlineData("", "audio/wav")]
+    [InlineData(null, "audio/wav")]
+    public void GetMediaTypeForFormat_MapsKnownFormats(string? format, string expectedMediaType)
+    {
+        Assert.Equal(expectedMediaType, OpenAiSttService.GetMediaTypeForFormat(format));
+    }
+
+    [Theory]
+    [InlineData("mp3", "mp3")]
+    [InlineData("M4A", "m4a")]
+    [InlineData("webm", "webm")]
+    [InlineData("wav", "wav")]
+    [InlineData("", "wav")]
+    [InlineData(null, "wav")]
+    public void GetFileExtensionForFormat_MapsKnownFormats(string? format, string expectedExtension)
+    {
+        Assert.Equal(expectedExtension, OpenAiSttService.GetFileExtensionForFormat(format));
+    }
+
+    [Fact]
+    public void SanitizeEndpointForLog_RedactsUserInfoAndSensitiveQueryParams()
+    {
+        var sanitized = OpenAiSttService.SanitizeEndpointForLog(
+            "https://user:pw@example.com/v1/audio/transcriptions?api_key=AAA&token=BBB&model=whisper&access_token=CCC");
+
+        Assert.DoesNotContain("user", sanitized);
+        Assert.DoesNotContain("pw@", sanitized);
+        Assert.DoesNotContain("AAA", sanitized);
+        Assert.DoesNotContain("BBB", sanitized);
+        Assert.DoesNotContain("CCC", sanitized);
+        Assert.Contains("api_key=***", sanitized);
+        Assert.Contains("token=***", sanitized);
+        Assert.Contains("access_token=***", sanitized);
+        Assert.Contains("model=whisper", sanitized);
+    }
+
+    [Fact]
+    public void SanitizeEndpointForLog_PassesThroughNonUrlOrEmpty()
+    {
+        Assert.Equal("", OpenAiSttService.SanitizeEndpointForLog(""));
+        Assert.Equal("not-a-url", OpenAiSttService.SanitizeEndpointForLog("not-a-url"));
+    }
+
+    private static async Task<HashSet<string>> CaptureMultipartFieldNamesAsync(OpenAiCompatibleSettings settings)
+    {
+        var (names, _) = await CaptureMultipartFieldNamesAndValuesAsync(settings);
+        return names;
+    }
+
+    private static async Task<(HashSet<string> Names, Dictionary<string, string> Values)>
+        CaptureMultipartFieldNamesAndValuesAsync(OpenAiCompatibleSettings settings)
+    {
+        // We need to inspect the parts before the handler returns, since
+        // MultipartFormDataContent is disposed once the request completes.
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        var values = new Dictionary<string, string>(StringComparer.Ordinal);
+        using var handler = new StubHandler(async (req, ct) =>
+        {
+            if (req.Content is MultipartFormDataContent multipart)
+            {
+                foreach (var part in multipart)
+                {
+                    var name = part.Headers.ContentDisposition?.Name?.Trim('"') ?? string.Empty;
+                    if (string.IsNullOrEmpty(name))
+                    {
+                        continue;
+                    }
+                    names.Add(name);
+                    // Only read string-valued parts, not the file stream.
+                    if (part is StringContent)
+                    {
+                        values[name] = await part.ReadAsStringAsync(ct);
+                    }
+                }
+            }
+            return JsonResponse("""{"text":"ok"}""");
+        });
+        using var client = new HttpClient(handler);
+        var service = new OpenAiSttService(client, settings);
+
+        var ct = TestContext.Current.CancellationToken;
+        var wav = MakeTinyWav();
+        try
+        {
+            await service.TranscribeAsync(wav, cancellationToken: ct);
+        }
+        finally
+        {
+            File.Delete(wav);
+        }
+        return (names, values);
+    }
+
+    private static HttpResponseMessage JsonResponse(string body, string contentType = "application/json")
+    {
+        var resp = new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(body, Encoding.UTF8),
+        };
+        resp.Content.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+        return resp;
+    }
+
+    // Runs IProgress callbacks inline (no SynchronizationContext / thread-pool marshaling), so progress
+    // reported synchronously by the service is observed deterministically and without a data race.
+    private sealed class SyncProgress<T> : IProgress<T>
+    {
+        private readonly Action<T> _onReport;
+
+        public SyncProgress(Action<T> onReport) => _onReport = onReport;
+
+        public void Report(T value) => _onReport(value);
+    }
+
+    private sealed class StubHandler : HttpMessageHandler
+    {
+        private readonly Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> _send;
+
+        public StubHandler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> send)
+        {
+            _send = send;
+        }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => _send(request, cancellationToken);
+    }
+}

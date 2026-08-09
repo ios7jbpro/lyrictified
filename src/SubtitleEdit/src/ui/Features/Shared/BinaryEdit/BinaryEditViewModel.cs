@@ -1,0 +1,2842 @@
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.Input;
+using Avalonia.Threading;
+using Avalonia.VisualTree;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using Nikse.SubtitleEdit.Controls.VideoPlayer;
+using Nikse.SubtitleEdit.Core.BluRaySup;
+using Nikse.SubtitleEdit.Core.Common;
+using Nikse.SubtitleEdit.Core.ContainerFormats.Matroska;
+using Nikse.SubtitleEdit.Core.ContainerFormats.TransportStream;
+using Nikse.SubtitleEdit.Core.VobSub;
+using Nikse.SubtitleEdit.Features.Ocr;
+using Nikse.SubtitleEdit.Features.Ocr.OcrSubtitle;
+using Nikse.SubtitleEdit.Features.Shared.BinaryEdit.BinaryAdjustAllTimes;
+using Nikse.SubtitleEdit.Features.Shared.BinaryEdit.BinaryApplyDurationLimits;
+using Nikse.SubtitleEdit.Features.Shared.PickMatroskaTrack;
+using Nikse.SubtitleEdit.Features.Sync.ChangeFrameRate;
+using Nikse.SubtitleEdit.Features.Sync.ChangeSpeed;
+using Nikse.SubtitleEdit.Logic;
+using Nikse.SubtitleEdit.Logic.Config;
+using Nikse.SubtitleEdit.Logic.Media;
+using Nikse.SubtitleEdit.Logic.VideoPlayers.LibMpvDynamic;
+using Nikse.SubtitleEdit.UiLogic.Export;
+using SkiaSharp;
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Collections.Specialized;
+using System.ComponentModel;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace Nikse.SubtitleEdit.Features.Shared.BinaryEdit;
+
+public partial class BinaryEditViewModel : ObservableObject
+{
+    [ObservableProperty] private string _fileName;
+    [ObservableProperty] private BinarySubtitleItem? _selectedSubtitle;
+    [ObservableProperty] private BinarySubtitleItem? _displayedSubtitle;
+    [ObservableProperty] private bool _selectCurrentSubtitleWhilePlaying;
+    [ObservableProperty] private int _screenWidth;
+    [ObservableProperty] private int _screenHeight;
+    [ObservableProperty] private string _statusText;
+    [ObservableProperty] private string _currentPosition;
+    [ObservableProperty] private string _currentSize;
+    [ObservableProperty] private bool _hasSelection;
+    [ObservableProperty] private bool _isInsertBeforeVisible;
+    [ObservableProperty] private bool _isInsertAfterVisible;
+    [ObservableProperty] private bool _isToggleForcedVisible;
+    [ObservableProperty] private bool _isPositionMonitorActive;
+    [ObservableProperty] private ObservableCollection<LetterboxRatioItem> _letterboxRatios;
+    [ObservableProperty] private LetterboxRatioItem _selectedLetterboxRatio;
+    [ObservableProperty] private int _letterboxBarHeight;
+    [ObservableProperty] private bool _isLetterboxBarHeightEditable;
+    [ObservableProperty] private bool _showTitleSafeArea;
+    [ObservableProperty] private double _titleSafePercent;
+    [ObservableProperty] private string _positionMonitorSummary;
+    [ObservableProperty] private string _activePictureCountText;
+    [ObservableProperty] private string _topBarCountText;
+    [ObservableProperty] private string _bottomBarCountText;
+    [ObservableProperty] private bool _hasTopBarSubtitles;
+    [ObservableProperty] private bool _hasBottomBarSubtitles;
+
+    public IOcrSubtitle? OcrSubtitle { get; set; }
+
+    public Window? Window { get; set; }
+    public Menu? Menu { get; set; }
+    public TableView? SubtitleGrid { get; set; }
+    public VideoPlayerControl? VideoPlayerControl { get; set; }
+    public Image? SubtitleOverlayImage { get; set; }
+    public Border? VideoContentBorder { get; set; }
+    public PositionMonitorControl? PositionMonitor { get; set; }
+    public bool OkPressed { get; private set; }
+    public ObservableCollection<BinarySubtitleItem> Subtitles { get; set; }
+
+    private ScrollViewer? _subtitleGridScrollViewer;
+    private Control? _focusBeforeMenu;
+    private bool _altClosesMenuOnKeyUp;
+    private readonly AltMenuActivationGuard _altMenuActivationGuard = new();
+
+    private readonly IFileHelper _fileHelper;
+    private readonly IFolderHelper _folderHelper;
+    private readonly IWindowService _windowService;
+    private readonly IShortcutManager _shortcutManager;
+    private readonly IBluRayHelper _bluRayHelper;
+
+    private string _loadFileName = string.Empty;
+    private string _sourceFileName = string.Empty;
+    private int _lastPlaybackSubtitleIndex = -2;
+    private bool _isDirty;
+    private bool _dirtyTrackingActive;
+
+    public BinaryEditViewModel(IFileHelper fileHelper, IWindowService windowService, IFolderHelper folderHelper, IShortcutManager shortcutManager, IBluRayHelper bluRayHelper)
+    {
+        _windowService = windowService;
+        _fileHelper = fileHelper;
+        _folderHelper = folderHelper;
+        _shortcutManager = shortcutManager;
+        _bluRayHelper = bluRayHelper;
+        _fileName = string.Empty;
+        _selectCurrentSubtitleWhilePlaying = Se.Settings.Tools.BinEditSelectCurrentSubtitleWhilePlaying;
+        Subtitles = new ObservableCollection<BinarySubtitleItem>();
+        StatusText = string.Empty;
+        CurrentPosition = string.Empty;
+        CurrentSize = string.Empty;
+
+        var lang = Se.Language.Tools.ImageBasedEdit;
+        _letterboxRatios = new ObservableCollection<LetterboxRatioItem>
+        {
+            new(lang.LetterboxOff, null, false, "off"),
+            new("1.66:1", 1.66, false, "1.66"),
+            new("1.85:1", 1.85, false, "1.85"),
+            new("2.00:1", 2.00, false, "2.00"),
+            new("2.20:1", 2.20, false, "2.20"),
+            new("2.35:1", 2.35, false, "2.35"),
+            new("2.39:1", 2.39, false, "2.39"),
+            new("2.40:1", 2.40, false, "2.40"),
+            new(lang.LetterboxCustom, null, true, "custom"),
+        };
+        _selectedLetterboxRatio = _letterboxRatios.FirstOrDefault(p => p.SettingsKey == Se.Settings.Tools.BinEditPositionMonitorRatio) ?? _letterboxRatios[0];
+        _letterboxBarHeight = Se.Settings.Tools.BinEditPositionMonitorBarHeight;
+        _isLetterboxBarHeightEditable = _selectedLetterboxRatio.IsCustom;
+        _showTitleSafeArea = Se.Settings.Tools.BinEditPositionMonitorTitleSafeOn;
+        _titleSafePercent = Se.Settings.Tools.BinEditPositionMonitorTitleSafePercent;
+        _isPositionMonitorActive = Se.Settings.Tools.BinEditPositionMonitorActive;
+        _positionMonitorSummary = string.Empty;
+        _activePictureCountText = string.Empty;
+        _topBarCountText = string.Empty;
+        _bottomBarCountText = string.Empty;
+    }
+
+    public void Initialize(string fileName, IOcrSubtitle? subtitle)
+    {
+        _loadFileName = fileName;
+        _sourceFileName = fileName;
+
+        if (subtitle != null && string.IsNullOrEmpty(fileName) && subtitle.Count > 0)
+        {
+            ScreenWidth = subtitle.GetScreenSize(0).Width;
+            ScreenHeight = subtitle.GetScreenSize(0).Height;
+            var items = subtitle.MakeOcrSubtitleItems();
+            foreach (var ocrItem in items)
+            {
+                var newItem = new BinarySubtitleItem(ocrItem, -1);
+                newItem.StartTime = TimeSpan.FromMilliseconds(ocrItem.StartTime.TotalMilliseconds);
+                newItem.EndTime = TimeSpan.FromMilliseconds(ocrItem.EndTime.TotalMilliseconds);
+                Subtitles.Add(newItem);
+            }
+            Renumber();
+        }
+
+        RefreshPositionMonitor();
+    }
+
+    public void Initialize(IList<OcrSubtitleItem> ocrSubtitleItems, string sourceFileName = "")
+    {
+        if (ocrSubtitleItems == null || ocrSubtitleItems.Count == 0)
+        {
+            return;
+        }
+
+        _sourceFileName = sourceFileName;
+
+        var screenSize = ocrSubtitleItems[0].GetScreenSize();
+        ScreenWidth = screenSize.Width;
+        ScreenHeight = screenSize.Height;
+
+        foreach (var ocrItem in ocrSubtitleItems)
+        {
+            var newItem = new BinarySubtitleItem(ocrItem, -1);
+            newItem.StartTime = TimeSpan.FromMilliseconds(ocrItem.StartTime.TotalMilliseconds);
+            newItem.EndTime = TimeSpan.FromMilliseconds(ocrItem.EndTime.TotalMilliseconds);
+            Subtitles.Add(newItem);
+        }
+
+        Renumber();
+        RefreshPositionMonitor();
+    }
+
+    public void RegisterVideoShortcuts()
+    {
+        var shortcuts = BinaryEditShortcuts.GetVideoShortcuts(this);
+
+        foreach (var shortcut in shortcuts)
+        {
+            _shortcutManager.RegisterShortcut(shortcut);
+        }
+    }
+
+    partial void OnSelectedSubtitleChanged(BinarySubtitleItem? value)
+    {
+        if (!IsVideoPlaying())
+        {
+            DisplayedSubtitle = value;
+        }
+
+        UpdateOverlayPosition();
+
+        var monitor = PositionMonitor;
+        if (monitor != null)
+        {
+            monitor.SelectedItem = value;
+            monitor.InvalidateVisual();
+        }
+    }
+
+    private bool IsVideoPlaying()
+    {
+        var vp = VideoPlayerControl;
+        if (vp == null || string.IsNullOrEmpty(vp.VideoPlayer.FileName))
+        {
+            return false;
+        }
+
+        return vp.IsPlaying;
+    }
+
+    partial void OnDisplayedSubtitleChanged(BinarySubtitleItem? value)
+    {
+        UpdateOverlayPosition();
+    }
+
+    partial void OnSelectCurrentSubtitleWhilePlayingChanged(bool value)
+    {
+        Se.Settings.Tools.BinEditSelectCurrentSubtitleWhilePlaying = value;
+    }
+
+    private bool _updatingPositionMonitor;
+    private int _currentLetterboxBarHeight;
+
+    partial void OnIsPositionMonitorActiveChanged(bool value)
+    {
+        Se.Settings.Tools.BinEditPositionMonitorActive = value;
+        RefreshPositionMonitor();
+    }
+
+    partial void OnSelectedLetterboxRatioChanged(LetterboxRatioItem value)
+    {
+        if (value == null)
+        {
+            return;
+        }
+
+        IsLetterboxBarHeightEditable = value.IsCustom;
+        Se.Settings.Tools.BinEditPositionMonitorRatio = value.SettingsKey;
+        RefreshPositionMonitor();
+    }
+
+    partial void OnLetterboxBarHeightChanged(int value)
+    {
+        if (_updatingPositionMonitor)
+        {
+            return;
+        }
+
+        if (SelectedLetterboxRatio is { IsCustom: true })
+        {
+            Se.Settings.Tools.BinEditPositionMonitorBarHeight = value;
+        }
+
+        RefreshPositionMonitor();
+    }
+
+    partial void OnShowTitleSafeAreaChanged(bool value)
+    {
+        Se.Settings.Tools.BinEditPositionMonitorTitleSafeOn = value;
+        RefreshPositionMonitor();
+    }
+
+    partial void OnTitleSafePercentChanged(double value)
+    {
+        Se.Settings.Tools.BinEditPositionMonitorTitleSafePercent = value;
+        RefreshPositionMonitor();
+    }
+
+    public void SelectSubtitleFromPositionMonitor(BinarySubtitleItem item)
+    {
+        var index = Subtitles.IndexOf(item);
+        if (index >= 0)
+        {
+            SelectAndScrollToRow(index);
+        }
+    }
+
+    /// <summary>
+    /// Cycles to the next subtitle in the given zone, starting after the current
+    /// selection - lets the summary chips act as "go to next offender" buttons.
+    /// </summary>
+    public void SelectNextInZone(PositionMonitorZone zone)
+    {
+        if (Subtitles.Count == 0)
+        {
+            return;
+        }
+
+        var startIndex = SelectedSubtitle != null ? Subtitles.IndexOf(SelectedSubtitle) : -1;
+        for (var offset = 1; offset <= Subtitles.Count; offset++)
+        {
+            var index = (startIndex + offset) % Subtitles.Count;
+            var item = Subtitles[index];
+            var h = item.Bitmap?.PixelSize.Height ?? 0;
+            if (PositionMonitorLogic.Classify(item.Y, h, ScreenHeight, _currentLetterboxBarHeight) == zone)
+            {
+                SelectAndScrollToRow(index);
+                return;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Recomputes the letterbox bar height and per-zone counts, updates the summary
+    /// header, and repaints the position map (discussion #12318).
+    /// </summary>
+    public void RefreshPositionMonitor()
+    {
+        if (_updatingPositionMonitor)
+        {
+            return;
+        }
+
+        _updatingPositionMonitor = true;
+        try
+        {
+            var ratio = SelectedLetterboxRatio;
+            int barHeight;
+            if (ratio == null || (!ratio.IsCustom && ratio.Ratio == null))
+            {
+                barHeight = 0; // letterbox off
+            }
+            else if (ratio.IsCustom)
+            {
+                barHeight = Math.Max(0, LetterboxBarHeight);
+            }
+            else
+            {
+                barHeight = PositionMonitorLogic.CalculateBarHeight(ScreenWidth, ScreenHeight, ratio.Ratio!.Value);
+                LetterboxBarHeight = barHeight; // display the computed value in the (read-only) up/down
+            }
+
+            _currentLetterboxBarHeight = barHeight;
+
+            var active = 0;
+            var top = 0;
+            var bottom = 0;
+            foreach (var item in Subtitles)
+            {
+                var h = item.Bitmap?.PixelSize.Height ?? 0;
+                switch (PositionMonitorLogic.Classify(item.Y, h, ScreenHeight, barHeight))
+                {
+                    case PositionMonitorZone.TopBar:
+                        top++;
+                        item.ZoneBrush = PositionMonitorControl.ZoneRedBrush;
+                        break;
+                    case PositionMonitorZone.BottomBar:
+                        bottom++;
+                        item.ZoneBrush = PositionMonitorControl.ZoneAmberBrush;
+                        break;
+                    default:
+                        active++;
+                        item.ZoneBrush = PositionMonitorControl.ZoneGreenBrush;
+                        break;
+                }
+            }
+
+            var lang = Se.Language.Tools.ImageBasedEdit;
+            PositionMonitorSummary = string.Format(lang.PositionSummary, ScreenWidth, ScreenHeight, Subtitles.Count, barHeight);
+            ActivePictureCountText = string.Format(lang.XInActivePicture, active);
+            TopBarCountText = string.Format(lang.XInTopBar, top);
+            BottomBarCountText = string.Format(lang.XInBottomBar, bottom);
+            HasTopBarSubtitles = top > 0;
+            HasBottomBarSubtitles = bottom > 0;
+
+            var monitor = PositionMonitor;
+            if (monitor != null)
+            {
+                monitor.Items = Subtitles;
+                monitor.SelectedItem = SelectedSubtitle;
+                monitor.ScreenWidth = ScreenWidth;
+                monitor.ScreenHeight = ScreenHeight;
+                monitor.BarHeight = barHeight;
+                monitor.ShowTitleSafe = ShowTitleSafeArea;
+                monitor.TitleSafePercent = TitleSafePercent;
+                monitor.InvalidateVisual();
+            }
+        }
+        finally
+        {
+            _updatingPositionMonitor = false;
+        }
+    }
+
+    internal void SubtitleGridSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        RefreshStatusText();
+    }
+
+    private void RefreshStatusText()
+    {
+        var selectedCount = SubtitleGrid?.SelectedItems?.Count ?? 0;
+        if (selectedCount == 0)
+        {
+            StatusText = $"0/{Subtitles.Count}";
+            CurrentPosition = string.Empty;
+            CurrentSize = string.Empty;
+        }
+        else if (selectedCount == 1)
+        {
+            var index = SubtitleGrid?.SelectedIndex ?? -1;
+            var item = SubtitleGrid?.SelectedItem as BinarySubtitleItem;
+            StatusText = index >= 0 ? $"{index + 1}/{Subtitles.Count}" : $"1/{Subtitles.Count}";
+            CurrentPosition = item != null
+                ? string.Format(Se.Language.General.PositionX, $"{item.X},{item.Y}")
+                : string.Empty;
+            CurrentSize = item != null
+                ? string.Format(Se.Language.General.SizeX, $"{item.Bitmap?.Size.Width}x{item.Bitmap?.Size.Height}")
+                : string.Empty;
+        }
+        else
+        {
+            StatusText = string.Format(Se.Language.Main.XLinesSelectedOfY, selectedCount, Subtitles.Count);
+            CurrentPosition = string.Empty;
+            CurrentSize = string.Empty;
+        }
+    }
+
+    partial void OnScreenWidthChanged(int value)
+    {
+        if (value <= 0)
+        {
+            return;
+        }
+
+        foreach (var subtitle in Subtitles)
+        {
+            subtitle.ScreenWidth = value;
+        }
+
+        UpdateOverlayPosition();
+        RefreshPositionMonitor();
+    }
+
+    partial void OnScreenHeightChanged(int value)
+    {
+        if (value <= 0)
+        {
+            return;
+        }
+
+        foreach (var subtitle in Subtitles)
+        {
+            subtitle.ScreenHeight = value;
+        }
+
+        UpdateOverlayPosition();
+        RefreshPositionMonitor();
+    }
+
+    public void UpdateOverlayPosition()
+    {
+        if (VideoContentBorder == null || VideoPlayerControl == null || ScreenWidth <= 0 || ScreenHeight <= 0)
+        {
+            return;
+        }
+
+        // Calculate and update the green rectangle
+        var videoPlayerWidth = VideoPlayerControl.Bounds.Width;
+        var videoPlayerHeight = VideoPlayerControl.Bounds.Height;
+
+        if (videoPlayerWidth <= 0 || videoPlayerHeight <= 0)
+        {
+            return;
+        }
+
+        const double controlsHeight = 55;
+        var availableHeight = videoPlayerHeight - controlsHeight;
+        if (availableHeight <= 0)
+        {
+            return;
+        }
+
+        var screenAspect = (double)ScreenWidth / ScreenHeight;
+        var availableAspect = videoPlayerWidth / availableHeight;
+
+        double rectWidth, rectHeight, rectX, rectY;
+
+        if (availableAspect > screenAspect)
+        {
+            rectHeight = availableHeight;
+            rectWidth = availableHeight * screenAspect;
+            rectX = (videoPlayerWidth - rectWidth) / 2;
+            rectY = 0;
+        }
+        else
+        {
+            rectWidth = videoPlayerWidth;
+            rectHeight = videoPlayerWidth / screenAspect;
+            rectX = 0;
+            rectY = (availableHeight - rectHeight) / 2;
+        }
+
+        VideoContentBorder.Width = rectWidth;
+        VideoContentBorder.Height = rectHeight;
+        VideoContentBorder.Margin = new Avalonia.Thickness(rectX, rectY, 0, 0);
+
+        // Update subtitle overlay
+        if (SubtitleOverlayImage == null || DisplayedSubtitle == null || DisplayedSubtitle.Bitmap == null)
+        {
+            if (SubtitleOverlayImage != null)
+            {
+                SubtitleOverlayImage.IsVisible = false;
+            }
+            return;
+        }
+
+        var subtitleScreenWidth = DisplayedSubtitle.ScreenSize.Width;
+        var subtitleScreenHeight = DisplayedSubtitle.ScreenSize.Height;
+
+        if (subtitleScreenWidth <= 0 || subtitleScreenHeight <= 0)
+        {
+            SubtitleOverlayImage.IsVisible = false;
+            return;
+        }
+
+        SubtitleOverlayImage.IsVisible = true;
+        SubtitleOverlayImage.Source = DisplayedSubtitle.Bitmap;
+
+        // Calculate scale based on rectangle
+        var scaleX = rectWidth / subtitleScreenWidth;
+        var scaleY = rectHeight / subtitleScreenHeight;
+
+        // Get original bitmap dimensions and set scaled size on image
+        var bitmapWidth = DisplayedSubtitle.Bitmap.Size.Width;
+        var bitmapHeight = DisplayedSubtitle.Bitmap.Size.Height;
+        SubtitleOverlayImage.Width = bitmapWidth * scaleX;
+        SubtitleOverlayImage.Height = bitmapHeight * scaleY;
+
+        // Position: rectangle position + scaled subtitle position
+        var overlayX = rectX + (DisplayedSubtitle.X * scaleX);
+        var overlayY = rectY + (DisplayedSubtitle.Y * scaleY);
+        SubtitleOverlayImage.Margin = new Avalonia.Thickness(overlayX, overlayY, 0, 0);
+    }
+
+    [RelayCommand]
+    private async Task FileOpen()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var fileName = await _fileHelper.PickOpenFile(Window, Se.Language.General.OpenSubtitleFileTitle, Se.Language.General.ImageBasedSubtitles, "*.sup;*.sub;*.ts;*.xml;*.mkv;*.mks", Se.Language.General.AllFiles, "*.*");
+        if (string.IsNullOrEmpty(fileName))
+        {
+            return;
+        }
+
+        await DoFileOpen(fileName);
+        _isDirty = false;
+    }
+
+    [RelayCommand]
+    private void VideoOneSecondBack()
+    {
+        MoveVideoPositionMs(-1000);
+    }
+
+    [RelayCommand]
+    private void VideoOneSecondForward()
+    {
+        MoveVideoPositionMs(1000);
+    }
+
+    [RelayCommand]
+    private void Video500MsBack()
+    {
+        MoveVideoPositionMs(-500);
+    }
+
+    [RelayCommand]
+    private void Video500MsForward()
+    {
+        MoveVideoPositionMs(500);
+    }
+
+    [RelayCommand]
+    private void Video100MsBack()
+    {
+        MoveVideoPositionMs(-100);
+    }
+
+    [RelayCommand]
+    private void Video100MsForward()
+    {
+        MoveVideoPositionMs(100);
+    }
+
+    [RelayCommand]
+    private void VideoOneFrameBack()
+    {
+        var vp = GetVideoPlayerControl();
+        if (vp != null && vp.VideoPlayer is LibMpvDynamicPlayer mpv)
+        {
+            mpv.StepOneFrameBack();
+            return;
+        }
+
+        if (Se.Settings.General.CurrentFrameRate >= 10)
+        {
+            var frameInMs = (int)Math.Round(1000.0 / Se.Settings.General.CurrentFrameRate, MidpointRounding.AwayFromZero);
+            MoveVideoPositionMs(-frameInMs);
+            return;
+        }
+
+        MoveVideoPositionMs(-40);
+    }
+
+    [RelayCommand]
+    private void VideoOneFrameForward()
+    {
+        var vp = GetVideoPlayerControl();
+        if (vp != null && vp.VideoPlayer is LibMpvDynamicPlayer mpv)
+        {
+            mpv.StepOneFrameForward();
+            return;
+        }
+
+        if (Se.Settings.General.CurrentFrameRate >= 10)
+        {
+            var frameInMs = (int)Math.Round(1000.0 / Se.Settings.General.CurrentFrameRate, MidpointRounding.AwayFromZero);
+            MoveVideoPositionMs(frameInMs);
+            return;
+        }
+
+        MoveVideoPositionMs(40);
+    }
+
+    private VideoPlayerControl? GetVideoPlayerControl()
+    {
+        return VideoPlayerControl;
+    }
+
+    [RelayCommand]
+    private void VideoMoveCustom1Back()
+    {
+        MoveVideoPositionMs(-Se.Settings.Video.MoveVideoPositionCustom1Back);
+    }
+
+    [RelayCommand]
+    private void VideoMoveCustom1Forward()
+    {
+        MoveVideoPositionMs(Se.Settings.Video.MoveVideoPositionCustom1Forward);
+    }
+
+    [RelayCommand]
+    private void VideoMoveCustom2Back()
+    {
+        MoveVideoPositionMs(-Se.Settings.Video.MoveVideoPositionCustom2Back);
+    }
+
+    [RelayCommand]
+    private void VideoMoveCustom2Forward()
+    {
+        MoveVideoPositionMs(Se.Settings.Video.MoveVideoPositionCustom2Forward);
+    }
+
+    [RelayCommand]
+    private void VideoMoveCustom3Back()
+    {
+        MoveVideoPositionMs(-Se.Settings.Video.MoveVideoPositionCustom3Back);
+    }
+
+    [RelayCommand]
+    private void VideoMoveCustom3Forward()
+    {
+        MoveVideoPositionMs(Se.Settings.Video.MoveVideoPositionCustom3Forward);
+    }
+
+    [RelayCommand]
+    private void VideoMoveCustom4Back()
+    {
+        MoveVideoPositionMs(-Se.Settings.Video.MoveVideoPositionCustom4Back);
+    }
+
+    [RelayCommand]
+    private void VideoMoveCustom4Forward()
+    {
+        MoveVideoPositionMs(Se.Settings.Video.MoveVideoPositionCustom4Forward);
+    }
+
+
+    private void MoveVideoPositionMs(int ms)
+    {
+        var vp = GetVideoPlayerControl();
+        if (vp == null || string.IsNullOrEmpty(vp.VideoPlayer.FileName))
+        {
+            return;
+        }
+
+        var newPosition = vp.Position + (ms / 1000.0);
+        if (newPosition < 0)
+        {
+            newPosition = 0;
+        }
+
+        if (newPosition > vp.Duration)
+        {
+            newPosition = vp.Duration;
+        }
+
+        vp.Position = newPosition;
+
+        if (vp.IsPlaying)
+        {
+            return;
+        }
+    }
+
+    private async Task DoFileOpen(string fileName)
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        IOcrSubtitle? imageSubtitle = await LoadImageSubtitle(fileName);
+
+        if (imageSubtitle == null)
+        {
+            await MessageBox.Show(Window, Se.Language.General.Error, "Image based subtitle format not found/supported.",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return;
+        }
+
+        FileName = fileName;
+        OcrSubtitle = imageSubtitle;
+
+        Subtitles.Clear();
+        List<Ocr.OcrSubtitleItem> list = imageSubtitle.MakeOcrSubtitleItems();
+        for (int i = 0; i < list.Count; i++)
+        {
+            Ocr.OcrSubtitleItem? s = list[i];
+            Subtitles.Add(new BinarySubtitleItem(s, i));
+        }
+
+        if (Subtitles.Count > 0)
+        {
+            SelectAndScrollToRow(0);
+            ScreenWidth = Subtitles[0].ScreenSize.Width;
+            ScreenHeight = Subtitles[0].ScreenSize.Height;
+            RefreshStatusText();
+            Window.Title = string.Format(Se.Language.Tools.ImageBasedEdit.EditImagedBaseSubtitleX, fileName);
+        }
+
+        RefreshPositionMonitor();
+
+        var videoFileName = TryGetVideoFileName(fileName);
+        if (ShouldAutoOpenMatchingVideo(Se.Settings.Video.AutoOpen, videoFileName) && VideoPlayerControl != null)
+        {
+            await VideoPlayerControl.Open(videoFileName!);
+        }
+    }
+
+    private async Task<IOcrSubtitle?> LoadImageSubtitle(string fileName)
+    {
+        // Blu-ray SUP
+        if (FileUtil.IsBluRaySup(fileName))
+        {
+            var subtitles = BluRaySupParser.ParseBluRaySup(fileName, new StringBuilder());
+            if (subtitles.Count > 0)
+            {
+                return new OcrSubtitleBluRay(subtitles);
+            }
+
+            return null;
+        }
+
+        // VobSub (.sub + .idx)
+        if (FileUtil.IsVobSub(fileName))
+        {
+            var vobSubParser = new VobSubParser(true);
+            var idxFileName = Path.ChangeExtension(fileName, ".idx");
+            vobSubParser.OpenSubIdx(fileName, idxFileName);
+            var mergedPacks = vobSubParser.MergeVobSubPacks();
+            var palette = vobSubParser.IdxPalette;
+            if (mergedPacks.Count > 0)
+            {
+                return new OcrSubtitleVobSub(mergedPacks, palette);
+            }
+
+            return null;
+        }
+
+        // Transport Stream (.ts)
+        if (FileUtil.IsTransportStream(fileName))
+        {
+            var tsParser = new TransportStreamParser();
+            tsParser.Parse(fileName, null);
+            var subtitles = tsParser.GetDvbSubtitles(0);
+            if (subtitles.Count > 0)
+            {
+                return new OcrSubtitleTransportStream(tsParser, subtitles, fileName);
+            }
+
+            return null;
+        }
+
+        // Matroska (.mkv / .mks) - PGS / VobSub / DVB tracks
+        if (FileUtil.IsMatroskaFileFast(fileName) && FileUtil.IsMatroskaFile(fileName))
+        {
+            return await LoadMatroskaImageSubtitle(fileName);
+        }
+
+        // BDN XML
+        if (fileName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
+        {
+            var bdnXml = new Nikse.SubtitleEdit.Core.SubtitleFormats.BdnXml();
+            var subtitle = new Subtitle();
+            bdnXml.LoadSubtitle(subtitle, File.ReadAllLines(fileName).ToList(), fileName);
+            if (subtitle.Paragraphs.Count > 0)
+            {
+                return new OcrSubtitleBdn(subtitle, fileName, false);
+            }
+        }
+
+        return null;
+    }
+
+    private async Task<IOcrSubtitle?> LoadMatroskaImageSubtitle(string fileName)
+    {
+        if (Window == null)
+        {
+            return null;
+        }
+
+        var matroska = new MatroskaFile(fileName);
+        try
+        {
+            var allTracks = matroska.GetTracks(true);
+            var imageTracks = allTracks.Where(IsImageBasedMatroskaTrack).ToList();
+            if (imageTracks.Count == 0)
+            {
+                return null;
+            }
+
+            MatroskaTrackInfo? selectedTrack;
+            if (imageTracks.Count == 1)
+            {
+                selectedTrack = imageTracks[0];
+            }
+            else
+            {
+                var pickResult = await _windowService.ShowDialogAsync<PickMatroskaTrackWindow, PickMatroskaTrackViewModel>(
+                    Window, vm => vm.Initialize(matroska, imageTracks, fileName));
+                if (!pickResult.OkPressed || pickResult.SelectedMatroskaTrack == null)
+                {
+                    return null;
+                }
+
+                selectedTrack = pickResult.SelectedMatroskaTrack;
+            }
+
+            if (selectedTrack.CodecId.Equals(MatroskaTrackType.BluRay, StringComparison.OrdinalIgnoreCase))
+            {
+                var pcsData = _bluRayHelper.LoadBluRaySubFromMatroska(selectedTrack, matroska, out _);
+                return pcsData.Count == 0 ? null : new OcrSubtitleMkvBluRay(selectedTrack, pcsData);
+            }
+
+            if (selectedTrack.CodecId.Equals(MatroskaTrackType.VobSub, StringComparison.OrdinalIgnoreCase))
+            {
+                if (selectedTrack.ContentEncodingType == 1)
+                {
+                    await MessageBox.Show(Window, Se.Language.General.Error,
+                        "Encrypted VobSub subtitles are not supported.",
+                        MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return null;
+                }
+
+                var mergedPacks = MatroskaImageSubtitleExtractor.ExtractVobSub(selectedTrack, matroska, out var idx);
+                return mergedPacks.Count == 0 ? null : new OcrSubtitleVobSub(mergedPacks, idx?.Palette);
+            }
+
+            if (selectedTrack.CodecId.Equals(MatroskaTrackType.Dvb, StringComparison.OrdinalIgnoreCase))
+            {
+                var (subtitle, subtitleImages) = MatroskaImageSubtitleExtractor.ExtractDvb(selectedTrack, matroska);
+                return subtitleImages.Count == 0 ? null : new OcrSubtitleMkvDvb(selectedTrack, subtitle, subtitleImages);
+            }
+
+            return null;
+        }
+        finally
+        {
+            matroska.Dispose();
+        }
+    }
+
+    private static bool IsImageBasedMatroskaTrack(MatroskaTrackInfo track)
+    {
+        return track.CodecId.Equals(MatroskaTrackType.BluRay, StringComparison.OrdinalIgnoreCase)
+            || track.CodecId.Equals(MatroskaTrackType.VobSub, StringComparison.OrdinalIgnoreCase)
+            || track.CodecId.Equals(MatroskaTrackType.Dvb, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private string? TryGetVideoFileName(string fileName)
+    {
+        var videoExtensions = new[] { ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".ts", ".mpg", ".mpeg" };
+        var baseName = Path.Combine(Path.GetDirectoryName(fileName) ?? string.Empty, Path.GetFileNameWithoutExtension(fileName));
+        var baseName2 = Path.Combine(Path.GetDirectoryName(fileName) ?? string.Empty, Path.GetFileNameWithoutExtension(Path.GetFileNameWithoutExtension(fileName)));
+
+        var baseNamesToTry = new[] { baseName, baseName2 };
+        foreach (var ext in videoExtensions)
+        {
+            foreach (var bName in baseNamesToTry)
+            {
+                var testFileName = bName + ext;
+                if (File.Exists(testFileName))
+                {
+                    return testFileName;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    [RelayCommand]
+    private async Task ExportBluRaySup()
+    {
+        await DoExport(new ExportHandlerBluRaySup(), ".sup");
+    }
+
+    [RelayCommand]
+    private async Task ExportBdnXml()
+    {
+        await DoExport(new ExportHandlerBdnXml(), string.Empty, false);
+    }
+
+    [RelayCommand]
+    private async Task ExportVobSub()
+    {
+        await DoExport(new ExportHandlerVobSub(), ".sub");
+    }
+
+    [RelayCommand]
+    private async Task ExportImscImage()
+    {
+        // Single self-contained TTML file; the binary sub's own bitmaps and X/Y placement carry
+        // straight through (DoExport sets OverridePosition), so no re-rendering is needed.
+        await DoExport(new ExportHandlerImscImage(), ".ttml");
+    }
+
+    [RelayCommand]
+    private async Task ExportHtmlIndex()
+    {
+        await DoExport(new ExportHandlerHtmlIndex(), string.Empty, false);
+    }
+
+    [RelayCommand]
+    private async Task ExportImagesWithTimeCode()
+    {
+        await DoExport(new ExportHandlerImagesWithTimeCode(), string.Empty, false);
+    }
+
+    [RelayCommand]
+    private async Task ExportWebVttThumbnail()
+    {
+        await DoExport(new ExportHandlerWebVttThumbnail(), string.Empty, false);
+    }
+
+    [RelayCommand]
+    private async Task ExportDostPng()
+    {
+        await DoExport(new ExportHandlerDost(), string.Empty, false);
+    }
+
+    [RelayCommand]
+    private async Task ExportFcpPng()
+    {
+        await DoExport(new ExportHandlerFcp(), string.Empty, false);
+    }
+
+    private string GetSuggestedExportFileName(string extension)
+    {
+        if (string.IsNullOrEmpty(_sourceFileName))
+        {
+            return "export";
+        }
+
+        var dir = Path.GetDirectoryName(_sourceFileName) ?? string.Empty;
+        var stem = Path.GetFileNameWithoutExtension(_sourceFileName);
+        var suggested = Path.Combine(dir, stem);
+
+        // collision: stem+extension would overwrite the source file
+        if (string.Equals(suggested + extension, _sourceFileName, StringComparison.OrdinalIgnoreCase))
+        {
+            suggested = Path.Combine(dir, stem + "_export");
+        }
+
+        return suggested;
+    }
+
+    private async Task<bool> DoExport(IExportHandler exportHandler, string extension, bool isTargetFile = true)
+    {
+        if (Window == null)
+        {
+            return false;
+        }
+
+        if (Subtitles.Count == 0)
+        {
+            return false;
+        }
+
+        var fileOrFolderName = string.Empty;
+        if (isTargetFile)
+        {
+            fileOrFolderName = await _fileHelper.PickSaveFile(Window, extension, GetSuggestedExportFileName(extension), Se.Language.General.SaveFileAsTitle);
+        }
+        else
+        {
+            fileOrFolderName = await _folderHelper.PickFolderAsync(Window, Se.Language.General.SelectedAFolderToSaveTo);
+        }
+
+        if (string.IsNullOrEmpty(fileOrFolderName))
+        {
+            return false;
+        }
+
+        var imageParameter = new ImageParameter()
+        {
+            ScreenWidth = ScreenWidth,
+            ScreenHeight = ScreenHeight,
+        };
+
+        exportHandler.WriteHeader(fileOrFolderName, imageParameter);
+        for (var i = 0; i < Subtitles.Count; i++)
+        {
+            // ToSkBitmap allocates a new SKBitmap each call; dispose it per iteration so the
+            // export of a large file doesn't accumulate one undisposed native bitmap per line.
+            using var skBitmap = Subtitles[i].Bitmap!.ToSkBitmap();
+            imageParameter.Bitmap = skBitmap;
+            imageParameter.Text = Subtitles[i].Text;
+            imageParameter.StartTime = Subtitles[i].StartTime;
+            imageParameter.EndTime = Subtitles[i].EndTime;
+            imageParameter.Index = i;
+            imageParameter.IsForced = Subtitles[i].IsForced;
+            imageParameter.OverridePosition = new SKPointI(Subtitles[i].X, Subtitles[i].Y);
+
+            exportHandler.CreateParagraph(imageParameter);
+            exportHandler.WriteParagraph(imageParameter);
+        }
+
+        exportHandler.WriteFooter();
+        _isDirty = false;
+        return true;
+    }
+
+    [RelayCommand]
+    private async Task ImportTimeCodes()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        if (Subtitles.Count == 0)
+        {
+            return;
+        }
+
+        var fileName = await _fileHelper.PickOpenSubtitleFile(Window, Se.Language.General.OpenSubtitleFileTitle, false);
+        if (string.IsNullOrEmpty(fileName))
+        {
+            return;
+        }
+
+        var subtitle = Subtitle.Parse(fileName);
+        if (subtitle == null)
+        {
+            await MessageBox.Show(Window, Se.Language.General.Error, Se.Language.General.UnknownSubtitleFormat,
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return;
+        }
+
+        if (subtitle.Paragraphs.Count != Subtitles.Count)
+        {
+            var message = "The time code import subtitle does not have the same number of lines as the current subtitle." + Environment.NewLine
+                + "Imported lines: " + subtitle.Paragraphs.Count + Environment.NewLine
+                + "Current lines: " + Subtitles.Count + Environment.NewLine
+                + Environment.NewLine +
+                "Do you want to continue anyway?";
+
+            var answer = await MessageBox.Show(Window, Se.Language.General.Import, message, MessageBoxButtons.YesNoCancel,
+                MessageBoxIcon.Error);
+
+            if (answer != MessageBoxResult.Yes)
+            {
+                return;
+            }
+        }
+
+        for (var i = 0; i < Subtitles.Count && i < subtitle.Paragraphs.Count; i++)
+        {
+            Subtitles[i].StartTime = subtitle.Paragraphs[i].StartTime.TimeSpan;
+            Subtitles[i].EndTime = subtitle.Paragraphs[i].EndTime.TimeSpan;
+            Subtitles[i].Duration = Subtitles[i].EndTime - Subtitles[i].StartTime;
+        }
+    }
+
+    [RelayCommand]
+    private async Task AdjustDurations()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var result = await _windowService.ShowDialogAsync<BinaryAdjustDuration.BinaryAdjustDurationWindow, BinaryAdjustDuration.BinaryAdjustDurationViewModel>(Window, vm => vm.Initialize(Subtitles));
+
+        if (!result.OkPressed)
+        {
+            return;
+        }
+
+        result.AdjustDuration(Subtitles.ToList(), null);
+    }
+
+    [RelayCommand]
+    private async Task AdjustDurationsSelectedLines()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var selectedIndices = GetSelectedIndices();
+
+        if (selectedIndices.Count == 0)
+        {
+            return;
+        }
+
+        var itemsInScope = selectedIndices.Select(i => Subtitles[i]);
+
+        var result = await _windowService.ShowDialogAsync<BinaryAdjustDuration.BinaryAdjustDurationWindow, BinaryAdjustDuration.BinaryAdjustDurationViewModel>(Window, vm => vm.Initialize(itemsInScope));
+
+        if (!result.OkPressed)
+        {
+            return;
+        }
+
+        result.AdjustDuration(Subtitles.ToList(), selectedIndices);
+    }
+
+    [RelayCommand]
+    private async Task ApplyDurationLimits()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var result = await _windowService.ShowDialogAsync<BinaryApplyDurationLimitsWindow, BinaryApplyDurationLimitsViewModel>(Window, vm => { });
+
+        if (!result.OkPressed)
+        {
+            return;
+        }
+
+        result.ApplyLimits(Subtitles.ToList(), null);
+    }
+
+    [RelayCommand]
+    private async Task ApplyDurationLimitsSelectedLines()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var selectedIndices = GetSelectedIndices();
+
+        if (selectedIndices.Count == 0)
+        {
+            return;
+        }
+
+        var result = await _windowService.ShowDialogAsync<BinaryApplyDurationLimitsWindow, BinaryApplyDurationLimitsViewModel>(Window, vm => { });
+
+        if (!result.OkPressed)
+        {
+            return;
+        }
+
+        result.ApplyLimits(Subtitles.ToList(), selectedIndices);
+    }
+
+    [RelayCommand]
+    private async Task Alignment()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var result = await _windowService.ShowDialogAsync<PickAlignment.PickAlignmentWindow, PickAlignment.PickAlignmentViewModel>(
+            Window, vm => vm.Initialize(null, Subtitles.Count));
+
+        if (!result.OkPressed || string.IsNullOrEmpty(result.Alignment))
+        {
+            return;
+        }
+
+        ApplyAlignmentToSubtitles(Subtitles.ToList(), result.Alignment);
+    }
+
+    [RelayCommand]
+    private async Task AlignmentSelectedLines()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var selectedItems = GetSelectedItems();
+
+        if (selectedItems.Count == 0)
+        {
+            return;
+        }
+
+        var result = await _windowService.ShowDialogAsync<PickAlignment.PickAlignmentWindow, PickAlignment.PickAlignmentViewModel>(
+            Window, vm => vm.Initialize(null, selectedItems.Count));
+
+        if (!result.OkPressed || string.IsNullOrEmpty(result.Alignment))
+        {
+            return;
+        }
+
+        ApplyAlignmentToSubtitles(selectedItems, result.Alignment);
+    }
+
+    private void ApplyAlignmentToSubtitles(List<BinarySubtitleItem> subtitles, string alignment)
+    {
+        var marginLeft = Se.Settings.Tools.BinEditLeftMargin;
+        var marginTop = Se.Settings.Tools.BinEditTopMargin;
+        var marginRight = Se.Settings.Tools.BinEditRightMargin;
+        var marginBottom = Se.Settings.Tools.BinEditBottomMargin;
+
+        foreach (var subtitle in subtitles)
+        {
+            if (subtitle.Bitmap == null)
+            {
+                continue;
+            }
+
+            var screenWidth = subtitle.ScreenSize.Width;
+            var screenHeight = subtitle.ScreenSize.Height;
+            var imageWidth = (int)subtitle.Bitmap.Size.Width;
+            var imageHeight = (int)subtitle.Bitmap.Size.Height;
+
+            // Calculate new position based on alignment with margins
+            switch (alignment)
+            {
+                case "an1": // Bottom Left
+                    subtitle.X = marginLeft;
+                    subtitle.Y = screenHeight - imageHeight - marginBottom;
+                    break;
+                case "an2": // Bottom Center
+                    subtitle.X = (screenWidth - imageWidth) / 2;
+                    subtitle.Y = screenHeight - imageHeight - marginBottom;
+                    break;
+                case "an3": // Bottom Right
+                    subtitle.X = screenWidth - imageWidth - marginRight;
+                    subtitle.Y = screenHeight - imageHeight - marginBottom;
+                    break;
+                case "an4": // Middle Left
+                    subtitle.X = marginLeft;
+                    subtitle.Y = (screenHeight - imageHeight) / 2;
+                    break;
+                case "an5": // Middle Center
+                    subtitle.X = (screenWidth - imageWidth) / 2;
+                    subtitle.Y = (screenHeight - imageHeight) / 2;
+                    break;
+                case "an6": // Middle Right
+                    subtitle.X = screenWidth - imageWidth - marginRight;
+                    subtitle.Y = (screenHeight - imageHeight) / 2;
+                    break;
+                case "an7": // Top Left
+                    subtitle.X = marginLeft;
+                    subtitle.Y = marginTop;
+                    break;
+                case "an8": // Top Center
+                    subtitle.X = (screenWidth - imageWidth) / 2;
+                    subtitle.Y = marginTop;
+                    break;
+                case "an9": // Top Right
+                    subtitle.X = screenWidth - imageWidth - marginRight;
+                    subtitle.Y = marginTop;
+                    break;
+            }
+        }
+
+        // Update overlay position if the selected subtitle was adjusted
+        UpdateOverlayPosition();
+    }
+
+    [RelayCommand]
+    private async Task ResizeImages()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var itemsToResize = Subtitles.ToList();
+
+        if (itemsToResize.Count == 0)
+        {
+            await MessageBox.Show(Window, Se.Language.General.Information,
+                "No subtitles to resize.",
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        using var result = await _windowService.ShowDialogAsync<BinaryResizeImages.BinaryResizeImagesWindow, BinaryResizeImages.BinaryResizeImagesViewModel>(
+            Window, vm => vm.Initialize(itemsToResize));
+
+        if (!result.OkPressed)
+        {
+            return;
+        }
+
+        if (SubtitleGrid != null)
+        {
+            var currentIndex = SubtitleGrid.SelectedIndex;
+            SubtitleGrid.ItemsSource = null;
+            SubtitleGrid.ItemsSource = Subtitles;
+            SubtitleGrid.SelectedIndex = currentIndex;
+        }
+
+        UpdateOverlayPosition();
+    }
+
+    [RelayCommand]
+    private async Task ResizeImagesSelectedLines()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var selectedItems = GetSelectedItems();
+
+        if (selectedItems.Count == 0)
+        {
+            return;
+        }
+
+        using var result = await _windowService.ShowDialogAsync<BinaryResizeImages.BinaryResizeImagesWindow, BinaryResizeImages.BinaryResizeImagesViewModel>(
+            Window, vm => vm.Initialize(selectedItems));
+
+        if (!result.OkPressed)
+        {
+            return;
+        }
+
+        ApplyGridSelection(selectedItems);
+        UpdateOverlayPosition();
+    }
+
+    [RelayCommand]
+    private async Task AdjustBrightness()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var itemsToAdjust = Subtitles.ToList();
+
+        if (itemsToAdjust.Count == 0)
+        {
+            await MessageBox.Show(Window, Se.Language.General.Information,
+                "No subtitles to adjust.",
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        using var result = await _windowService.ShowDialogAsync<BinaryAdjustBrightness.BinaryAdjustBrightnessWindow, BinaryAdjustBrightness.BinaryAdjustBrightnessViewModel>(
+            Window, vm => vm.Initialize(itemsToAdjust));
+
+        if (!result.OkPressed)
+        {
+            return;
+        }
+
+        if (SubtitleGrid != null)
+        {
+            var currentIndex = SubtitleGrid.SelectedIndex;
+            SubtitleGrid.ItemsSource = null;
+            SubtitleGrid.ItemsSource = Subtitles;
+            SubtitleGrid.SelectedIndex = currentIndex;
+        }
+
+        UpdateOverlayPosition();
+    }
+
+    [RelayCommand]
+    private async Task AdjustBrightnessSelectedLines()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var selectedItems = GetSelectedItems();
+
+        if (selectedItems.Count == 0)
+        {
+            return;
+        }
+
+        using var result = await _windowService.ShowDialogAsync<BinaryAdjustBrightness.BinaryAdjustBrightnessWindow, BinaryAdjustBrightness.BinaryAdjustBrightnessViewModel>(
+            Window, vm => vm.Initialize(selectedItems));
+
+        if (!result.OkPressed)
+        {
+            return;
+        }
+
+        ApplyGridSelection(selectedItems);
+        UpdateOverlayPosition();
+    }
+
+    [RelayCommand]
+    private async Task AdjustAlpha()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var itemsToAdjust = Subtitles.ToList();
+
+        if (itemsToAdjust.Count == 0)
+        {
+            await MessageBox.Show(Window, Se.Language.General.Information,
+                "No subtitles to adjust.",
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        using var result = await _windowService.ShowDialogAsync<BinaryAdjustAlpha.BinaryAdjustAlphaWindow, BinaryAdjustAlpha.BinaryAdjustAlphaViewModel>(
+            Window, vm => vm.Initialize(itemsToAdjust));
+
+        if (!result.OkPressed)
+        {
+            return;
+        }
+
+        if (SubtitleGrid != null)
+        {
+            var currentIndex = SubtitleGrid.SelectedIndex;
+            SubtitleGrid.ItemsSource = null;
+            SubtitleGrid.ItemsSource = Subtitles;
+            SubtitleGrid.SelectedIndex = currentIndex;
+        }
+
+        UpdateOverlayPosition();
+    }
+
+    [RelayCommand]
+    private async Task AdjustAlphaSelectedLines()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var selectedItems = GetSelectedItems();
+
+        if (selectedItems.Count == 0)
+        {
+            return;
+        }
+
+        using var result = await _windowService.ShowDialogAsync<BinaryAdjustAlpha.BinaryAdjustAlphaWindow, BinaryAdjustAlpha.BinaryAdjustAlphaViewModel>(
+            Window, vm => vm.Initialize(selectedItems));
+
+        if (!result.OkPressed)
+        {
+            return;
+        }
+
+        ApplyGridSelection(selectedItems);
+        UpdateOverlayPosition();
+    }
+
+    [RelayCommand]
+    private async Task AdjustColor()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var itemsToAdjust = Subtitles.ToList();
+
+        if (itemsToAdjust.Count == 0)
+        {
+            await MessageBox.Show(Window, Se.Language.General.Information,
+                "No subtitles to adjust.",
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        using var result = await _windowService.ShowDialogAsync<BinaryAdjustColor.BinaryAdjustColorWindow, BinaryAdjustColor.BinaryAdjustColorViewModel>(
+            Window, vm => vm.Initialize(itemsToAdjust));
+
+        if (!result.OkPressed)
+        {
+            return;
+        }
+
+        if (SubtitleGrid != null)
+        {
+            var currentIndex = SubtitleGrid.SelectedIndex;
+            SubtitleGrid.ItemsSource = null;
+            SubtitleGrid.ItemsSource = Subtitles;
+            SubtitleGrid.SelectedIndex = currentIndex;
+        }
+
+        UpdateOverlayPosition();
+    }
+
+    [RelayCommand]
+    private async Task AdjustColorSelectedLines()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var selectedItems = GetSelectedItems();
+
+        if (selectedItems.Count == 0)
+        {
+            return;
+        }
+
+        using var result = await _windowService.ShowDialogAsync<BinaryAdjustColor.BinaryAdjustColorWindow, BinaryAdjustColor.BinaryAdjustColorViewModel>(
+            Window, vm => vm.Initialize(selectedItems));
+
+        if (!result.OkPressed)
+        {
+            return;
+        }
+
+        ApplyGridSelection(selectedItems);
+        UpdateOverlayPosition();
+    }
+
+    [RelayCommand]
+    private void CenterHorizontally()
+    {
+        foreach (var subtitle in Subtitles)
+        {
+            if (subtitle.Bitmap == null) continue;
+            subtitle.X = (subtitle.ScreenSize.Width - (int)subtitle.Bitmap.Size.Width) / 2;
+        }
+
+        UpdateOverlayPosition();
+    }
+
+    [RelayCommand]
+    private void CenterHorizontallySelectedLines()
+    {
+        if (SubtitleGrid?.SelectedItems == null) return;
+        foreach (var item in SubtitleGrid.SelectedItems)
+        {
+            if (item is BinarySubtitleItem subtitle && subtitle.Bitmap != null)
+                subtitle.X = (subtitle.ScreenSize.Width - (int)subtitle.Bitmap.Size.Width) / 2;
+        }
+
+        UpdateOverlayPosition();
+    }
+
+    [RelayCommand]
+    private void TopAlign()
+    {
+        var marginTop = Se.Settings.Tools.BinEditTopMargin;
+        foreach (var subtitle in Subtitles)
+            subtitle.Y = marginTop;
+
+        UpdateOverlayPosition();
+    }
+
+    [RelayCommand]
+    private void TopAlignSelectedLines()
+    {
+        var marginTop = Se.Settings.Tools.BinEditTopMargin;
+        if (SubtitleGrid?.SelectedItems == null) return;
+        foreach (var item in SubtitleGrid.SelectedItems)
+            if (item is BinarySubtitleItem subtitle)
+                subtitle.Y = marginTop;
+
+        UpdateOverlayPosition();
+    }
+
+    [RelayCommand]
+    private void BottomAlign()
+    {
+        var marginBottom = Se.Settings.Tools.BinEditBottomMargin;
+        foreach (var subtitle in Subtitles)
+        {
+            if (subtitle.Bitmap == null) continue;
+            subtitle.Y = subtitle.ScreenSize.Height - (int)subtitle.Bitmap.Size.Height - marginBottom;
+        }
+
+        UpdateOverlayPosition();
+    }
+
+    [RelayCommand]
+    private void BottomAlignSelectedLines()
+    {
+        var marginBottom = Se.Settings.Tools.BinEditBottomMargin;
+        if (SubtitleGrid?.SelectedItems == null) return;
+        foreach (var item in SubtitleGrid.SelectedItems)
+        {
+            if (item is BinarySubtitleItem subtitle && subtitle.Bitmap != null)
+                subtitle.Y = subtitle.ScreenSize.Height - (int)subtitle.Bitmap.Size.Height - marginBottom;
+        }
+
+        UpdateOverlayPosition();
+    }
+
+    [RelayCommand]
+    private void Crop()
+    {
+        var itemsToCrop = Subtitles.ToList();
+        if (itemsToCrop.Count == 0) return;
+
+        foreach (var subtitle in itemsToCrop)
+        {
+            if (subtitle.Bitmap == null) continue;
+            using var skBitmap = subtitle.Bitmap.ToSkBitmap();
+            using var cropped = skBitmap.CropTransparentColors(out var offsetX, out var offsetY);
+            var old = subtitle.Bitmap;
+            subtitle.Bitmap = cropped.ToAvaloniaBitmap();
+            old?.Dispose();
+            subtitle.X += offsetX;
+            subtitle.Y += offsetY;
+        }
+
+        if (SubtitleGrid != null)
+        {
+            var currentIndex = SubtitleGrid.SelectedIndex;
+            SubtitleGrid.ItemsSource = null;
+            SubtitleGrid.ItemsSource = Subtitles;
+            SubtitleGrid.SelectedIndex = currentIndex;
+        }
+
+        UpdateOverlayPosition();
+        RefreshStatusText();
+    }
+
+    [RelayCommand]
+    private void CropSelectedLines()
+    {
+        var selectedItems = new List<BinarySubtitleItem>();
+        if (SubtitleGrid?.SelectedItems != null)
+        {
+            foreach (var item in SubtitleGrid.SelectedItems)
+                if (item is BinarySubtitleItem binaryItem)
+                    selectedItems.Add(binaryItem);
+        }
+
+        if (selectedItems.Count == 0) return;
+
+        foreach (var subtitle in selectedItems)
+        {
+            if (subtitle.Bitmap == null) continue;
+            using var skBitmap = subtitle.Bitmap.ToSkBitmap();
+            using var cropped = skBitmap.CropTransparentColors(out var offsetX, out var offsetY);
+            var old = subtitle.Bitmap;
+            subtitle.Bitmap = cropped.ToAvaloniaBitmap();
+            old?.Dispose();
+            subtitle.X += offsetX;
+            subtitle.Y += offsetY;
+        }
+
+        ApplyGridSelection(selectedItems);
+        UpdateOverlayPosition();
+        RefreshStatusText();
+    }
+
+    [RelayCommand]
+    private async Task AdjustAllTimes() => await DoAdjustAllTimes();
+
+    [RelayCommand]
+    private async Task AdjustAllTimesSelectedLines()
+    {
+        if (SubtitleGrid?.SelectedItems?.Count == 0)
+        {
+            return;
+        }
+
+        await DoAdjustAllTimes(forceSelectedLines: true);
+    }
+
+    private async Task DoAdjustAllTimes(bool forceSelectedLines = false)
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var selectedIndices = GetSelectedIndices();
+
+        selectedIndices.Sort();
+
+        var selectedItems = selectedIndices.Count > 0
+            ? selectedIndices.Select(i => Subtitles[i]).ToList()
+            : null;
+
+        void RefreshGrid()
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (SubtitleGrid?.SelectedItems is not { } gridSelection || selectedItems == null) return;
+                gridSelection.Clear();
+                foreach (var item in selectedItems)
+                    gridSelection.Add(item);
+            });
+        }
+
+        await _windowService.ShowDialogAsync<BinaryAdjustAllTimesWindow, BinaryAdjustAllTimesViewModel>(
+            Window, vm =>
+            {
+                vm.Initialize(Subtitles, selectedIndices, RefreshGrid);
+                if (forceSelectedLines)
+                {
+                    vm.AdjustAll = false;
+                    vm.AdjustSelectedLinesAndForward = false;
+                    vm.AdjustSelectedLines = true;
+                }
+            });
+    }
+
+    [RelayCommand]
+    private async Task ChangeFrameRate()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var result = await _windowService.ShowDialogAsync<ChangeFrameRateWindow, ChangeFrameRateViewModel>(Window, vm => { });
+
+        if (!result.OkPressed)
+        {
+            return;
+        }
+
+        var ratio = ChangeFrameRateViewModel.GetFrameRateRatio(result.SelectedFromFrameRate, result.SelectedToFrameRate);
+        ScaleBinarySubtitleTimes(Subtitles, ratio);
+    }
+
+    [RelayCommand]
+    private async Task ChangeSpeed()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var selectedIndices = new List<int>();
+        if (SubtitleGrid?.SelectedItems != null)
+        {
+            foreach (var item in SubtitleGrid.SelectedItems)
+            {
+                if (item is BinarySubtitleItem binaryItem)
+                {
+                    var index = Subtitles.IndexOf(binaryItem);
+                    if (index >= 0)
+                    {
+                        selectedIndices.Add(index);
+                    }
+                }
+            }
+        }
+
+        selectedIndices.Sort();
+
+        var selectedItems = selectedIndices.Count > 0
+            ? selectedIndices.Select(i => Subtitles[i]).ToList()
+            : null;
+
+        void RefreshGrid()
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (SubtitleGrid?.SelectedItems is not { } gridSelection || selectedItems == null) return;
+                gridSelection.Clear();
+                foreach (var item in selectedItems)
+                    gridSelection.Add(item);
+            });
+        }
+
+        // Snapshot the original times so Apply/Change recompute from them (idempotent) instead
+        // of compounding the factor when both Apply and Change (OK) are used.
+        var originalTimes = Subtitles.ToDictionary(
+            s => s,
+            s => (s.StartTime.TotalMilliseconds, s.EndTime.TotalMilliseconds));
+
+        void ApplyScaled(IEnumerable<BinarySubtitleItem> items, double factor)
+        {
+            foreach (var s in items)
+            {
+                if (!originalTimes.TryGetValue(s, out var o))
+                {
+                    continue;
+                }
+
+                s.StartTime = TimeSpan.FromMilliseconds(o.Item1 * factor);
+                s.EndTime = TimeSpan.FromMilliseconds(o.Item2 * factor);
+            }
+        }
+
+        void ApplySpeed(double speed, bool all, bool selected, bool selectedAndForward)
+        {
+            if (speed <= 0)
+            {
+                return;
+            }
+
+            var factor = 100.0 / speed;
+            if (selectedAndForward && selectedIndices.Count > 0)
+                ApplyScaled(Subtitles.Skip(selectedIndices[0]), factor);
+            else if (selected && selectedIndices.Count > 0)
+                ApplyScaled(selectedIndices.Select(i => Subtitles[i]), factor);
+            else
+                ApplyScaled(Subtitles, factor);
+            RefreshGrid();
+        }
+
+        // The dialog applies via this callback (Apply), so there is nothing to re-apply here
+        // when it closes with Done - re-applying compounded the factor.
+        await _windowService.ShowDialogAsync<ChangeSpeedWindow, ChangeSpeedViewModel>(Window, vm => { vm.Initialize(selectedIndices.Count > 0, ApplySpeed); });
+    }
+
+    [RelayCommand]
+    private async Task OpenVideo()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        if (VideoPlayerControl == null)
+        {
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(VideoPlayerControl.VideoPlayer.FileName))
+        {
+            VideoPlayerControl.VideoPlayer.CloseFile();
+        }
+
+        var videoFileName = await _fileHelper.PickOpenVideoFile(Window, Se.Language.General.OpenVideoFileTitle);
+        if (string.IsNullOrEmpty(videoFileName))
+        {
+            return;
+        }
+
+        await VideoPlayerControl.Open(videoFileName);
+    }
+
+    internal void VideoPlayerAreaPointerPressed()
+    {
+        if (VideoPlayerControl == null || !ShouldOpenVideoPickerOnSurfaceClick(VideoPlayerControl.VideoPlayer.FileName))
+        {
+            return;
+        }
+
+        Dispatcher.UIThread.Post(() => OpenVideoCommand.Execute(null));
+    }
+
+    [RelayCommand]
+    private void CloseVideo()
+    {
+        VideoPlayerControl?.Close();
+    }
+
+    [RelayCommand]
+    private void ToggleCurrentSubtitleWhilePlaying()
+    {
+        SelectCurrentSubtitleWhilePlaying = !SelectCurrentSubtitleWhilePlaying;
+    }
+
+    [RelayCommand]
+    private async Task Settings()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var result = await _windowService.ShowDialogAsync<BinarySettings.BinarySettingsWindow, BinarySettings.BinarySettingsViewModel>(Window, vm => { });
+
+        if (!result.OkPressed)
+        {
+            return;
+        }
+    }
+
+    [RelayCommand]
+    private async Task ExportImage()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var selectedItem = SelectedSubtitle;
+        if (selectedItem == null || selectedItem.Bitmap == null)
+        {
+            return;
+        }
+
+        var fileName = await _fileHelper.PickSaveFile(Window, ".png", "export.png", Se.Language.General.SaveImageAs);
+        if (string.IsNullOrEmpty(fileName))
+        {
+            return;
+        }
+
+        using var skBitmap = selectedItem.Bitmap.ToSkBitmap();
+        var pngBytes = skBitmap.ToPngArray();
+        System.IO.File.WriteAllBytes(fileName, pngBytes);
+    }
+
+    [RelayCommand]
+    private void InsertBefore()
+    {
+        if (Window == null || SubtitleGrid?.SelectedItems?.Count != 1)
+        {
+            return;
+        }
+
+        var selectedItem = SelectedSubtitle;
+        if (selectedItem == null || selectedItem.Bitmap == null)
+        {
+            return;
+        }
+
+        var newItem = new BinarySubtitleItem(selectedItem);
+        newItem.EndTime = TimeSpan.FromMilliseconds(selectedItem.StartTime.TotalMilliseconds + Se.Settings.General.MinimumBetweenLines.GetMilliseconds());
+        newItem.StartTime = TimeSpan.FromMilliseconds(newItem.EndTime.TotalMilliseconds - Se.Settings.General.NewEmptyDefaultMs);
+        var selectedIndex = SubtitleGrid.SelectedIndex;
+        Subtitles.Insert(selectedIndex, newItem);
+        Renumber();
+        SelectAndScrollToRow(selectedIndex);
+    }
+
+    [RelayCommand]
+    private void InsertAfter()
+    {
+        if (Window == null || SubtitleGrid?.SelectedItems?.Count != 1)
+        {
+            return;
+        }
+
+        var selectedItem = SelectedSubtitle;
+        if (selectedItem == null || selectedItem.Bitmap == null)
+        {
+            return;
+        }
+
+        var newItem = new BinarySubtitleItem(selectedItem);
+        newItem.StartTime = TimeSpan.FromMilliseconds(selectedItem.EndTime.TotalMilliseconds + Se.Settings.General.MinimumBetweenLines.GetMilliseconds());
+        newItem.EndTime = TimeSpan.FromMilliseconds(newItem.StartTime.TotalMilliseconds + Se.Settings.General.NewEmptyDefaultMs);
+        var selectedIndex = SubtitleGrid.SelectedIndex;
+        Subtitles.Insert(selectedIndex + 1, newItem);
+        Renumber();
+        SelectAndScrollToRow(selectedIndex + 1);
+    }
+
+    [RelayCommand]
+    private void ToggleForced()
+    {
+        if (Window == null || SubtitleGrid?.SelectedItems is not { Count: > 0 })
+        {
+            return;
+        }
+
+        var selectedItems = GetSelectedItems();
+        foreach (var item in selectedItems)
+        {
+            item.IsForced = !item.IsForced;
+        }
+    }
+
+    [RelayCommand]
+    private void SelectForcedLines()
+    {
+        ApplyGridSelection(Subtitles.Where(s => s.IsForced).ToList(), preserveScroll: true);
+    }
+
+    [RelayCommand]
+    private void SelectNonForcedLines()
+    {
+        ApplyGridSelection(Subtitles.Where(s => !s.IsForced).ToList(), preserveScroll: true);
+    }
+
+    // Captured before any await so focus shift cannot clear the grid selection.
+    private List<BinarySubtitleItem> GetSelectedItems() =>
+        SubtitleGrid?.SelectedItems?.Cast<BinarySubtitleItem>().ToList() ?? [];
+
+    private List<int> GetSelectedIndices() =>
+        GetSelectedItems().Select(item => Subtitles.IndexOf(item)).Where(i => i >= 0).ToList();
+
+    // Adding many rows to a realized grid's SelectedItems is O(n) visual work per
+    // row, so selecting all forced/non-forced lines on a large file hangs (#11529).
+    // Detaching ItemsSource de-realizes the rows so the adds only touch the grid's
+    // internal selection table; a single layout pass repaints after we reattach.
+    private void ApplyGridSelection(IReadOnlyList<BinarySubtitleItem> items, bool preserveScroll = false)
+    {
+        if (SubtitleGrid == null)
+        {
+            return;
+        }
+
+        ScrollViewer? scrollViewer = null;
+        Vector savedOffset = default;
+        if (preserveScroll)
+        {
+            _subtitleGridScrollViewer ??= SubtitleGrid.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault();
+            scrollViewer = _subtitleGridScrollViewer;
+            savedOffset = scrollViewer?.Offset ?? default;
+        }
+
+        var itemsSource = SubtitleGrid.ItemsSource;
+        SubtitleGrid.ItemsSource = null;
+        SubtitleGrid.ItemsSource = itemsSource;
+
+        SubtitleGrid.SelectedItems?.Clear();
+        foreach (var item in items)
+        {
+            SubtitleGrid.SelectedItems?.Add(item);
+        }
+
+        if (preserveScroll && scrollViewer != null)
+        {
+            var offset = savedOffset;
+            var sv = scrollViewer;
+            Dispatcher.UIThread.Post(() => sv.Offset = offset, DispatcherPriority.Background);
+        }
+    }
+
+    private void Renumber()
+    {
+        for (int i = 0; i < Subtitles.Count; i++)
+        {
+            Subtitles[i].Number = i + 1;
+        }
+    }
+
+    [RelayCommand]
+    private async Task ImportImage()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var selectedItem = SelectedSubtitle;
+        if (selectedItem == null)
+        {
+            return;
+        }
+
+        var fileName = await _fileHelper.PickOpenImageFile(Window, Se.Language.General.OpenImageFile);
+        if (string.IsNullOrEmpty(fileName))
+        {
+            return;
+        }
+
+        try
+        {
+            using var stream = File.OpenRead(fileName);
+            using var skBitmap = SkiaSharp.SKBitmap.Decode(stream);
+            if (skBitmap == null)
+            {
+                await MessageBox.Show(Window, Se.Language.General.Error, "Unable to load image file.",
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            var old = selectedItem.Bitmap;
+            selectedItem.Bitmap = skBitmap.ToAvaloniaBitmap();
+            old?.Dispose();
+
+            UpdateOverlayPosition();
+            RefreshStatusText();
+        }
+        catch (Exception ex)
+        {
+            await MessageBox.Show(Window, Se.Language.General.Error, $"Failed to import image: {ex.Message}",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    [RelayCommand]
+    private async Task SetText()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        // Only allow if exactly one subtitle is selected
+        if (SelectedSubtitle == null)
+        {
+            await MessageBox.Show(Window, Se.Language.Edit.NoSubtitleSelected, Se.Language.Edit.PleaseSelectExactlyOneSubtitle,
+                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
+        }
+
+        // Show the SetText dialog
+        var result = await _windowService.ShowDialogAsync<SetText.SetTextWindow, SetText.SetTextViewModel>(Window!);
+
+        if (result.OkPressed && result.ResultBitmap != null)
+        {
+            // Replace the selected subtitle's bitmap
+            SelectedSubtitle.Bitmap?.Dispose();
+            SelectedSubtitle.Bitmap = result.ResultBitmap.ToAvaloniaBitmap();
+
+            // Update the overlay
+            UpdateOverlayPosition();
+            RefreshStatusText();
+
+            // Clean up
+            result.ResultBitmap.Dispose();
+        }
+    }
+
+    [RelayCommand]
+    private void Ok()
+    {
+        OkPressed = true;
+        Window?.Close();
+    }
+
+    [RelayCommand]
+    private void Cancel()
+    {
+        Window?.Close();
+    }
+
+    [RelayCommand]
+    private void SortByStartTime()
+    {
+        var selectedItem = SelectedSubtitle;
+        var sorted = Subtitles.OrderBy(s => s.StartTime).ToList();
+        foreach (var item in sorted)
+            item.PropertyChanged -= OnSubtitleItemPropertyChanged;
+        Subtitles.Clear();
+        foreach (var item in sorted)
+        {
+            Subtitles.Add(item);
+        }
+        Renumber();
+        if (SubtitleGrid != null)
+        {
+            var newIndex = selectedItem != null ? Subtitles.IndexOf(selectedItem) : -1;
+            SubtitleGrid.ItemsSource = null;
+            SubtitleGrid.ItemsSource = Subtitles;
+            SelectAndScrollToRow(newIndex);
+        }
+        RefreshStatusText();
+    }
+
+    [RelayCommand]
+    private async Task AppendSubtitle()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var fileName = await _fileHelper.PickOpenFile(Window, Se.Language.General.OpenSubtitleFileTitle, Se.Language.General.ImageBasedSubtitles, "*.sup;*.sub;*.ts;*.xml;*.mkv;*.mks", Se.Language.General.AllFiles, "*.*");
+        if (string.IsNullOrEmpty(fileName))
+        {
+            return;
+        }
+
+        var suggestedOffset = Subtitles.Count > 0
+            ? Subtitles[^1].EndTime
+            : TimeSpan.Zero;
+
+        var settings = await _windowService.ShowDialogAsync<BinaryAppendSubtitle.BinaryAppendSubtitleWindow, BinaryAppendSubtitle.BinaryAppendSubtitleViewModel>(
+            Window, vm => vm.Initialize(suggestedOffset));
+
+        if (!settings.OkPressed)
+        {
+            return;
+        }
+
+        var imageSubtitle = await LoadImageSubtitle(fileName);
+        if (imageSubtitle == null)
+        {
+            await MessageBox.Show(Window, Se.Language.General.Error, "Image based subtitle format not found/supported.", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return;
+        }
+
+        var ocrItems = imageSubtitle.MakeOcrSubtitleItems();
+        if (ocrItems.Count == 0)
+        {
+            await MessageBox.Show(Window, Se.Language.General.Error, "No subtitles found in the file.", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return;
+        }
+
+        var firstAppendedIndex = Subtitles.Count;
+        foreach (var ocrItem in ocrItems)
+        {
+            var newItem = new BinarySubtitleItem(ocrItem, -1);
+            if (settings.AppendTimeCodes)
+            {
+                newItem.StartTime = ocrItem.StartTime + settings.TimeOffset;
+                newItem.EndTime = ocrItem.EndTime + settings.TimeOffset;
+            }
+            else
+            {
+                newItem.StartTime = ocrItem.StartTime;
+                newItem.EndTime = ocrItem.EndTime;
+            }
+            Subtitles.Add(newItem);
+        }
+
+        Renumber();
+        SelectAndScrollToRow(firstAppendedIndex);
+        RefreshStatusText();
+    }
+
+    public void OnKeyDown(KeyEventArgs e)
+    {
+        // F10 toggles menu-bar activation (Windows standard): the first press moves keyboard focus
+        // into the menu bar, a second press deactivates it and restores the previous focus, so it can
+        // be reached and read without a mouse (#11745). A user-assigned F10 shortcut wins over the
+        // menu toggle (#12504) - the menu stays reachable via Alt.
+        if (e.Key == Key.F10 && e.KeyModifiers == KeyModifiers.None && !_shortcutManager.HasSingleKeyShortcut("F10"))
+        {
+            if (IsMenuFocused() || Menu is { IsOpen: true })
+            {
+                DeactivateMenu();
+                e.Handled = true;
+                return;
+            }
+
+            if (ActivateMenu())
+            {
+                e.Handled = true;
+                return;
+            }
+        }
+
+        // Bare Alt activating/deactivating the menu bar is owned by Avalonia's built-in
+        // AccessKeyHandler; running a second toggle here made the two cancel each other out whenever
+        // a control inside the window had keyboard focus (#12087). Only remember the focused control,
+        // so an Escape deactivation after a built-in Alt activation can restore it.
+        if (e.Key is Key.LeftAlt or Key.RightAlt && e.KeyModifiers == KeyModifiers.Alt &&
+            Menu is not { IsOpen: true } && !IsMenuFocused())
+        {
+            _focusBeforeMenu = Window?.FocusManager?.GetFocusedElement() as Control;
+        }
+
+        // Alt while keyboard focus is inside an open drop-down must close the whole menu (Windows
+        // standard). The built-in AccessKeyHandler owns that toggle, but its key-down handler
+        // ignores any key whose focused element is not a visual descendant of the window - and
+        // drop-down items live in their own popup top-level, so a second Alt while navigating a
+        // drop-down did nothing (#12087). Close on the *release*, not here: the built-in tunnel
+        // key-up handler still holds "showing access keys" state from the activation, and its
+        // MainMenu.Open() call would instantly undo a close done on the press (it no-ops while
+        // the menu is still open). Mirrors MainViewModel.OnKeyDownHandler.
+        if (e.Key is Key.LeftAlt or Key.RightAlt)
+        {
+            if (e.KeyModifiers == KeyModifiers.Alt &&
+                Menu is { IsOpen: true } && IsMenuFocused() &&
+                Window?.FocusManager?.GetFocusedElement() is Visual focusedVisual &&
+                TopLevel.GetTopLevel(focusedVisual) is { } focusedTopLevel &&
+                !ReferenceEquals(focusedTopLevel, Window))
+            {
+                _altClosesMenuOnKeyUp = true;
+            }
+        }
+        else
+        {
+            // Alt+<key> is a shortcut or access key, not a toggle - releasing Alt afterwards
+            // must leave the menu alone (mirrors the built-in "ignore Alt up" bookkeeping).
+            _altClosesMenuOnKeyUp = false;
+        }
+
+        // While the menu has keyboard focus, let it own its own navigation keys. The window key
+        // handler runs even on keys the menu already handled (handledEventsToo: true), so without
+        // this arrow/Enter would be consumed as shortcuts, breaking menu navigation. Escape is
+        // handled here so that, once no drop-down is open, it fully deactivates the bar and restores
+        // focus instead of leaving it half-focused (and without closing the whole window) (#11745).
+        if (IsMenuFocused())
+        {
+            // Only deactivate when this Escape did not just close an open drop-down. The handler runs
+            // (handledEventsToo) after the menu's own Escape handling, which closes a drop-down while
+            // keeping the bar open (Menu.IsOpen stays true), but leaves focus stranded on the menu
+            // when it closes the bar itself (IsOpen false) - so IsOpen distinguishes "close the
+            // submenu" from "leave the bar", giving the two-stage Escape behavior (#11745, #12087).
+            if (e.Key == Key.Escape && Menu is { IsOpen: false })
+            {
+                DeactivateMenu();
+                e.Handled = true;
+            }
+
+            return;
+        }
+
+        if (e.Key == Key.Escape)
+        {
+            if (!e.Handled && Window?.OwnedWindows.Count == 0)
+            {
+                e.Handled = true;
+                Cancel();
+            }
+            return;
+        }
+
+        if (e.Key == Key.Enter && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            e.Handled = true;
+            Ok();
+            return;
+        }
+
+        if (UiUtil.IsHelp(e))
+        {
+            e.Handled = true;
+            UiUtil.ShowHelp("features/binary-edit");
+            return;
+        }
+
+        // Handle shortcuts
+        _shortcutManager.OnKeyPressed(this, e);
+        if (_shortcutManager.GetActiveKeys().Count == 0)
+        {
+            return;
+        }
+
+        var relayCommand = _shortcutManager.CheckShortcuts(e, "General");
+        if (relayCommand != null)
+        {
+            e.Handled = true;
+            relayCommand.Execute(null);
+        }
+    }
+
+    /// <summary>
+    /// Tunnelling pointer handler that tells <see cref="_altMenuActivationGuard"/> when Alt was used as
+    /// a mouse modifier, so the menu-bar activation Avalonia performs on the following Alt release can
+    /// be undone again (discussion #11744).
+    /// </summary>
+    internal void OnPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (!e.KeyModifiers.HasFlag(KeyModifiers.Alt))
+        {
+            return; // plain clicks arm nothing, and this runs on every press in the window
+        }
+
+        var isMenuPress = Menu is { IsOpen: true } || IsWithinMenu(e.Source as Visual);
+        _altMenuActivationGuard.NotifyPointerPressed(true, isMenuPress);
+
+        // The clicked control takes focus while the press is being handled, so read the resulting focus
+        // afterwards - that is where focus must return when the activation is undone.
+        Dispatcher.UIThread.Post(() =>
+            _altMenuActivationGuard.NotifyFocusAfterPointerPress(Window?.FocusManager?.GetFocusedElement() as Control));
+    }
+
+    private bool IsWithinMenu(Visual? visual)
+    {
+        if (Menu == null)
+        {
+            return false;
+        }
+
+        while (visual != null)
+        {
+            if (ReferenceEquals(visual, Menu))
+            {
+                return true;
+            }
+
+            visual = visual.GetVisualParent();
+        }
+
+        return false;
+    }
+
+    public void OnKeyUp(KeyEventArgs e)
+    {
+        // Undo the menu-bar activation Avalonia performs when Alt is released after an Alt+click/drag -
+        // otherwise the IsMenuFocused() guard in OnKeyDown swallows every shortcut until the user clicks
+        // something (discussion #11744).
+        if (_altMenuActivationGuard.TryConsumeAltRelease(e.Key, out var focusToRestore) &&
+            (Menu is { IsOpen: true } || IsMenuFocused()))
+        {
+            if (focusToRestore is { IsEffectivelyVisible: true })
+            {
+                _focusBeforeMenu = focusToRestore;
+            }
+
+            DeactivateMenu();
+        }
+        else if (e.Key is Key.LeftAlt or Key.RightAlt && Menu is { IsOpen: false, IsVisible: true } && IsMenuFocused())
+        {
+            // Alt on an open menu bar: Avalonia's AccessKeyHandler closes the bar on the Alt press,
+            // but it only restores focus for bars it opened itself via bare Alt - after an F10
+            // activation (Menu.Open) it has no saved focus element, so the close leaves keyboard
+            // focus stranded on the menu item, where the bar keeps swallowing every key (#13111).
+            // By the time the release arrives the press has settled, so "focused but not open" is
+            // exactly that stranded state - deactivate fully, restoring the focus saved at
+            // activation. (When Avalonia opens the bar on this very release, IsOpen is already
+            // true here and this branch stays out of the way.)
+            DeactivateMenu();
+        }
+        else if (e.Key is Key.LeftAlt or Key.RightAlt && _altClosesMenuOnKeyUp)
+        {
+            // Alt pressed while focus was inside an open drop-down (armed in OnKeyDown, where the
+            // built-in AccessKeyHandler ignores popup-focused keys): close the whole menu now that
+            // the built-in tunnel key-up handling has run out of ways to reopen it.
+            _altClosesMenuOnKeyUp = false;
+            if (Menu is { IsOpen: true } || IsMenuFocused())
+            {
+                DeactivateMenu();
+            }
+        }
+
+        _shortcutManager.OnKeyReleased(this, e);
+    }
+
+    /// <summary>
+    /// Activates the menu bar for keyboard navigation (Windows standard F10; bare Alt is handled by
+    /// Avalonia's built-in AccessKeyHandler), remembering the control that had focus so it can be
+    /// restored on deactivation. Returns false when the menu is hidden (macOS uses the native menu)
+    /// (#11745).
+    /// </summary>
+    private bool ActivateMenu()
+    {
+        if (Menu == null || !Menu.IsVisible || Menu.Items.Count == 0)
+        {
+            return false;
+        }
+
+        _focusBeforeMenu = Window?.FocusManager?.GetFocusedElement() as Control;
+
+        // Defer the activation: opening the menu from inside the key handler is racy, so let the
+        // current event finish first. Menu.Open is the same call Avalonia's bare-Alt handling
+        // makes: it selects and focuses the first top-level item, so the activation is visible
+        // ("File" highlights). Merely focusing the item, as this did before, gave no visual
+        // feedback at all - a top-level MenuItem has no keyboard-focus visual (#13111).
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (Menu is { IsOpen: false })
+            {
+                Menu.Open();
+
+                // Alt activation also underlines the access keys (Avalonia's AccessKeyHandler sets
+                // this inherited property on the window); Menu.Open alone does not, which made F10
+                // open a menu whose access keys work but are invisible (#13111 beta-4 feedback).
+                // The built-in handler clears the property again on every close path.
+                Window?.SetValue(AccessText.ShowAccessKeyProperty, true);
+            }
+        });
+        return true;
+    }
+
+    /// <summary>
+    /// Closes any open drop-down and fully deactivates the menu bar, restoring keyboard focus to the
+    /// control that was focused before activation (falling back to the subtitle grid). Mirrors the
+    /// Windows behavior where Alt/F10/Escape leave the menu and return to editing (#11745).
+    /// </summary>
+    private void DeactivateMenu()
+    {
+        Menu?.Close();
+
+        // Menu.Close() early-returns when the bar is already closed - but a top-level item can
+        // still be selected in that state, and skipping the reset would leave its highlight
+        // behind after deactivation (#13111 beta-4 feedback).
+        if (Menu != null)
+        {
+            Menu.SelectedIndex = -1;
+        }
+
+        var restore = _focusBeforeMenu;
+        _focusBeforeMenu = null;
+
+        // Defer the focus change: closing the menu and moving focus from inside the key handler is
+        // racy, so let the current event finish first.
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (restore is { IsEffectivelyVisible: true } && restore.Focus())
+            {
+                return;
+            }
+
+            // Only pull focus somewhere else when it is actually still stuck in the menu:
+            // overlapping deactivations (e.g. a task switch plus the synthetic Alt release, both
+            // running through here) would otherwise stomp the focus the first one just restored.
+            // Deactivation must never leave focus inside the menu - the bar would stay armed and
+            // every arrow key would keep navigating it even though it looks closed (#13111).
+            if (IsMenuFocused() && SubtitleGrid != null)
+            {
+                TableViewExtras.FocusRow(SubtitleGrid);
+            }
+        });
+    }
+
+    /// <summary>
+    /// Cleans up menu-bar state that a task switch (e.g. Alt+Tab) would otherwise leave behind (#11745).
+    /// </summary>
+    internal void OnWindowDeactivated(object? sender, EventArgs e)
+    {
+        // Complete Avalonia's bare-Alt cycle when a modal steals focus while Alt is held, so the
+        // stranded AccessKeyHandler state cannot leave the next bare Alt press unable to open the
+        // menu bar (#13083). If the synthetic release opens the menu, the cleanup below closes it.
+        UiUtil.RaiseSyntheticAltKeyUp(Window);
+
+        // A task switch (Alt+Tab) must drop any active menu-bar state, otherwise Avalonia leaves
+        // the access-key underlines / selection armed and they reappear when the window is re-activated
+        // (#11745 beta-2 feedback).
+        _altMenuActivationGuard.Reset();
+        _altClosesMenuOnKeyUp = false; // the matching Alt release will never arrive
+        if (Menu is { IsOpen: true } || IsMenuFocused())
+        {
+            DeactivateMenu();
+        }
+    }
+
+    /// <summary>
+    /// True when keyboard focus is on the menu or one of its items (top-level or an open drop-down),
+    /// so the menu can own arrow/Enter/Escape keys instead of the shortcut manager (#11745).
+    /// </summary>
+    private bool IsMenuFocused()
+    {
+        var focusedElement = Window?.FocusManager?.GetFocusedElement();
+        return focusedElement is MenuItem || (Menu != null && ReferenceEquals(focusedElement, Menu));
+    }
+
+    internal async void OnClosing(object? sender, WindowClosingEventArgs e)
+    {
+        if (_isDirty && Window != null)
+        {
+            e.Cancel = true;
+            try
+            {
+                var result = await MessageBox.Show(
+                    Window,
+                    "Unexported changes",
+                    "You have unexported changes. Close and discard them?",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question);
+
+                if (result != MessageBoxResult.Yes)
+                    return;
+
+                Window.Closing -= OnClosing;
+                PerformCleanup();
+                Window.Close();
+            }
+            catch (Exception ex)
+            {
+                Se.LogError(ex, "BinaryEditViewModel.OnClosing");
+                Window.Closing -= OnClosing;
+                PerformCleanup();
+                Window.Close();
+            }
+            return;
+        }
+
+        PerformCleanup();
+    }
+
+    private void PerformCleanup()
+    {
+        if (VideoPlayerControl == null)
+            return;
+        if (string.IsNullOrWhiteSpace(VideoPlayerControl.VideoPlayer.FileName))
+            return;
+        VideoPlayerControl.VideoPlayer.CloseFile();
+        UiUtil.SaveWindowPosition(Window);
+    }
+
+    public void Loaded()
+    {
+        UiUtil.RestoreWindowPosition(Window);
+
+        RegisterVideoShortcuts();
+
+        if (string.IsNullOrEmpty(_loadFileName))
+        {
+            if (Subtitles.Count > 0)
+            {
+                SelectAndScrollToRow(0);
+            }
+            EnableDirtyTracking();
+            return;
+        }
+
+        Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            await DoFileOpen(_loadFileName);
+            EnableDirtyTracking();
+            _isDirty = false;
+        });
+    }
+
+    private void EnableDirtyTracking()
+    {
+        if (_dirtyTrackingActive) return;
+        _dirtyTrackingActive = true;
+        Subtitles.CollectionChanged += OnSubtitlesCollectionChanged;
+        foreach (var item in Subtitles)
+            item.PropertyChanged += OnSubtitleItemPropertyChanged;
+    }
+
+    private void OnSubtitlesCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.OldItems != null)
+            foreach (BinarySubtitleItem item in e.OldItems)
+                item.PropertyChanged -= OnSubtitleItemPropertyChanged;
+        if (e.NewItems != null)
+            foreach (BinarySubtitleItem item in e.NewItems)
+                item.PropertyChanged += OnSubtitleItemPropertyChanged;
+        _isDirty = true;
+        RefreshPositionMonitor();
+    }
+
+    private void OnSubtitleItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        // Display-only zone indicator - must not mark the subtitle as modified.
+        if (e.PropertyName == nameof(BinarySubtitleItem.ZoneBrush))
+        {
+            return;
+        }
+
+        _isDirty = true;
+
+        // Keep the position map in sync when a subtitle is moved or its image changes.
+        if (e.PropertyName is nameof(BinarySubtitleItem.X) or nameof(BinarySubtitleItem.Y) or nameof(BinarySubtitleItem.Bitmap))
+        {
+            RefreshPositionMonitor();
+        }
+    }
+
+    internal void OnVideoPositionChanged(double positionSeconds)
+    {
+        var subtitleIndex = FindActiveSubtitleIndex(Subtitles, TimeSpan.FromSeconds(positionSeconds));
+        if (subtitleIndex < 0)
+        {
+            if (_lastPlaybackSubtitleIndex == -1 && DisplayedSubtitle == null)
+            {
+                return;
+            }
+
+            _lastPlaybackSubtitleIndex = -1;
+            DisplayedSubtitle = null;
+            return;
+        }
+
+        var subtitle = Subtitles[subtitleIndex];
+        if (_lastPlaybackSubtitleIndex != subtitleIndex || !ReferenceEquals(DisplayedSubtitle, subtitle))
+        {
+            _lastPlaybackSubtitleIndex = subtitleIndex;
+            DisplayedSubtitle = subtitle;
+        }
+
+        if (SelectCurrentSubtitleWhilePlaying &&
+            VideoPlayerControl?.IsPlaying == true &&
+            SubtitleGrid?.SelectedIndex != subtitleIndex)
+        {
+            SelectAndScrollToRow(subtitleIndex);
+        }
+    }
+
+    internal static int FindActiveSubtitleIndex(IReadOnlyList<BinarySubtitleItem> subtitles, TimeSpan position)
+    {
+        for (var i = 0; i < subtitles.Count; i++)
+        {
+            var subtitle = subtitles[i];
+            if (subtitle.StartTime <= position && position < subtitle.EndTime)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    internal static bool ShouldAutoOpenMatchingVideo(bool autoOpenVideo, string? videoFileName)
+    {
+        return autoOpenVideo && !string.IsNullOrEmpty(videoFileName);
+    }
+
+    internal static bool ShouldOpenVideoPickerOnSurfaceClick(string? videoFileName)
+    {
+        return string.IsNullOrEmpty(videoFileName);
+    }
+
+    internal static void ScaleBinarySubtitleTimes(IEnumerable<BinarySubtitleItem> subtitles, double factor)
+    {
+        foreach (var s in subtitles)
+        {
+            var newStart = TimeSpan.FromMilliseconds(s.StartTime.TotalMilliseconds * factor);
+            var newEnd = TimeSpan.FromMilliseconds(s.EndTime.TotalMilliseconds * factor);
+            s.StartTime = newStart;
+            s.EndTime = newEnd;
+        }
+    }
+
+    private void SelectAndScrollToRow(int index)
+    {
+        if (index < 0 || SubtitleGrid == null)
+        {
+            return;
+        }
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (SubtitleGrid.SelectedIndex != index)
+            {
+                SubtitleGrid.SelectedIndex = index;
+            }
+
+            if (SubtitleGrid.SelectedItem is { } selectedItem)
+            {
+                SubtitleGrid.ScrollIntoView(selectedItem);
+            }
+        });
+    }
+
+    internal void OnSubtitleGridKeyDown(KeyEventArgs e)
+    {
+        if (e.Key == Key.Delete)
+        {
+            e.Handled = true;
+            DeleteSectedLines();
+        }
+    }
+
+    [RelayCommand]
+    private void DeleteSectedLines()
+    {
+        Dispatcher.UIThread.Post(async void () =>
+        {
+            var selectedItems = SubtitleGrid?.SelectedItems?.Cast<BinarySubtitleItem>().ToList();
+            if (selectedItems == null || selectedItems.Count == 0)
+            {
+                return;
+            }
+
+            var answer = MessageBoxResult.Yes;
+
+            if (Se.Settings.General.PromptBeforeDelete)
+            {
+                if (selectedItems.Count == 1)
+                {
+                    answer = await MessageBox.Show(
+                        Window!,
+                        Se.Language.General.DeleteLines,
+                        $"Do you want to delete one line?",
+                        MessageBoxButtons.YesNoCancel,
+                        MessageBoxIcon.Question);
+                }
+                else
+                {
+                    answer = await MessageBox.Show(
+                        Window!,
+                        Se.Language.General.DeleteLines,
+                        $"Do you want to delete {selectedItems.Count} lines?",
+                        MessageBoxButtons.YesNoCancel,
+                        MessageBoxIcon.Question);
+                }
+            }
+
+            if (answer != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            var itemsToRemove = new List<BinarySubtitleItem>();
+            foreach (var item in selectedItems)
+            {
+                if (item is BinarySubtitleItem binaryItem)
+                {
+                    itemsToRemove.Add(binaryItem);
+                }
+            }
+
+            foreach (var item in itemsToRemove)
+            {
+                Subtitles.Remove(item);
+                item.Bitmap?.Dispose();
+            }
+
+            Renumber();
+            RefreshStatusText();
+
+            return;
+        });
+    }
+
+    internal void OnContextMenuOpening()
+    {
+        var selectedCount = SubtitleGrid?.SelectedItems?.Count ?? 0;
+        HasSelection = selectedCount > 0;
+        IsToggleForcedVisible = selectedCount > 0;
+        IsInsertAfterVisible = selectedCount == 1;
+        IsInsertBeforeVisible = selectedCount == 1;
+    }
+
+    internal void OnSubtitleGridDoubleTapped(TappedEventArgs e)
+    {
+        var vp = VideoPlayerControl;
+        var item = SubtitleGrid?.SelectedItem as BinarySubtitleItem;
+        if (vp == null || item == null)
+        {
+            return;
+        }
+
+        vp.Position = item.StartTime.TotalSeconds;
+    }
+}

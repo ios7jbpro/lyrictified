@@ -1,0 +1,1174 @@
+using Nikse.SubtitleEdit.Core.Common;
+using Nikse.SubtitleEdit.Core.Forms;
+using Nikse.SubtitleEdit.Core.Interfaces;
+using Nikse.SubtitleEdit.Core.SubtitleFormats;
+using Spectre.Console;
+using System.Text;
+
+namespace SeConv.Core;
+
+/// <summary>
+/// Helper class to integrate with LibSE subtitle library
+/// </summary>
+internal static class LibSEIntegration
+{
+    /// <summary>
+    /// Gets all subtitle formats from LibSE — text, binary (input-only), and "other text" lists combined.
+    /// </summary>
+    public static List<FormatEntry> GetAvailableFormats()
+    {
+        var entries = new List<FormatEntry>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var f in SubtitleFormat.AllSubtitleFormats)
+        {
+            if (seen.Add(f.Name))
+            {
+                entries.Add(new FormatEntry(f, "text"));
+            }
+        }
+
+        foreach (var f in SubtitleFormat.GetBinaryFormats(true))
+        {
+            if (seen.Add(f.Name))
+            {
+                entries.Add(new FormatEntry(f, "binary (input)"));
+            }
+        }
+
+        foreach (var f in SubtitleFormat.GetTextOtherFormats())
+        {
+            if (seen.Add(f.Name))
+            {
+                entries.Add(new FormatEntry(f, "text (input)"));
+            }
+        }
+
+        return entries;
+    }
+
+    public sealed record FormatEntry(SubtitleFormat Format, string Kind);
+
+    /// <summary>
+    /// Loads a subtitle file using LibSE. When <paramref name="encodingName"/> is null/blank,
+    /// the encoding is auto-detected from the file's content. When
+    /// <paramref name="fallbackEncodingName"/> is supplied (and <paramref name="encodingName"/>
+    /// is not), the fallback replaces the ANSI codepage heuristic: a BOM still wins, valid
+    /// UTF-8 still wins, but anything else uses the fallback rather than DetectAnsiEncoding.
+    /// Also returns the detected source format so the save side can apply
+    /// <c>RemoveNativeFormatting</c> if the target is different.
+    /// </summary>
+    public static (Subtitle Subtitle, SubtitleFormat Format) LoadSubtitleWithFormat(string filePath, string? encodingName = null, string? fallbackEncodingName = null, List<string>? warnings = null)
+    {
+        if (!File.Exists(filePath))
+        {
+            throw new FileNotFoundException($"Subtitle file not found: {filePath}");
+        }
+
+        var subtitle = new Subtitle();
+        Encoding encoding;
+        if (!string.IsNullOrWhiteSpace(encodingName))
+        {
+            encoding = GetEncoding(encodingName);
+        }
+        else if (!string.IsNullOrWhiteSpace(fallbackEncodingName))
+        {
+            encoding = DetectEncodingWithFallback(filePath, fallbackEncodingName);
+        }
+        else
+        {
+            encoding = LanguageAutoDetect.GetEncodingFromFile(filePath);
+        }
+
+        var lines = new List<string>(File.ReadAllLines(filePath, encoding));
+
+        // 0. For .csv files with a recognizable header, prefer the multi-column CSV importer over content
+        // sniffing — generic time-code formats (Spruce, Csv4, ...) match too eagerly and grab everything
+        // past the timestamps as text.
+        if (filePath.EndsWith(".csv", StringComparison.OrdinalIgnoreCase))
+        {
+            var csvSubtitle = new UnknownFormatImporterCsv().AutoGuessImport(lines);
+            if (csvSubtitle != null && csvSubtitle.Paragraphs.Count > 0)
+            {
+                return (csvSubtitle, new SubRip());
+            }
+        }
+
+        // 0b. A file that declares the Scenarist SCC signature is SCC, full stop — decode it
+        // with the SCC parsers and never let it fall through to the generic guessers below,
+        // which would digit-scrape the raw source lines into garbage cues (#12582). The SCC
+        // parser is lenient (it skips undecodable rows and counts them), so a partially
+        // damaged file still converts, with a warning; a file where nothing decodes fails.
+        if (HasScenaristSccSignature(lines))
+        {
+            var (sccSubtitle, sccFormat, undecodableRows) = LoadBestScenaristScc(lines, filePath);
+            if (sccSubtitle.Paragraphs.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    $"File declares the Scenarist_SCC signature, but no valid captions could be decoded" +
+                    $"{(undecodableRows > 0 ? $" ({undecodableRows} undecodable row(s))" : string.Empty)}: {filePath}");
+            }
+
+            if (undecodableRows > 0)
+            {
+                warnings?.Add($"{undecodableRows} SCC caption row(s) could not be decoded and were skipped.");
+            }
+
+            return (sccSubtitle, sccFormat);
+        }
+
+        // 1. Try text-based formats by content sniffing
+        foreach (var format in SubtitleFormat.AllSubtitleFormats)
+        {
+            if (format.IsMine(lines, filePath))
+            {
+                format.LoadSubtitle(subtitle, lines, filePath);
+                if (subtitle.Paragraphs.Count > 0)
+                {
+                    return (subtitle, format);
+                }
+            }
+        }
+
+        // 2. Try binary formats (Pac, Ebu, Cavena890, ...) — they read raw bytes themselves
+        foreach (var format in SubtitleFormat.GetBinaryFormats(true))
+        {
+            try
+            {
+                if (format.IsMine(lines, filePath))
+                {
+                    var freshSubtitle = new Subtitle();
+                    format.LoadSubtitle(freshSubtitle, lines, filePath);
+                    if (freshSubtitle.Paragraphs.Count > 0)
+                    {
+                        return (freshSubtitle, format);
+                    }
+                }
+            }
+            catch
+            {
+                // Binary IsMine can throw on text input; ignore and continue.
+            }
+        }
+
+        // 3. Try the "other text" formats (NkhCuePoints, BdnXml, JSON variants, ...)
+        foreach (var format in SubtitleFormat.GetTextOtherFormats())
+        {
+            if (format.IsMine(lines, filePath))
+            {
+                var freshSubtitle = new Subtitle();
+                format.LoadSubtitle(freshSubtitle, lines, filePath);
+                if (freshSubtitle.Paragraphs.Count > 0)
+                {
+                    return (freshSubtitle, format);
+                }
+            }
+        }
+
+        // 4. Last resort: generic auto-guesser (handles freeform CSV, xlsx, ods, JSON variants, ...)
+        // Its output is only trusted when the guessed timing is plausible — the guesser scrapes
+        // numbers out of arbitrary text, and treating that as a successful conversion turns
+        // unparseable input into corrupt output that still reports success (#12582).
+        var guessSubtitle = new UnknownFormatImporter { UseFrames = true }.AutoGuessImport(lines, filePath);
+        if (guessSubtitle.Paragraphs.Count > 0 && HasPlausibleGuessedTiming(guessSubtitle))
+        {
+            guessSubtitle.Paragraphs.RemoveAll(p => p.EndTime.TotalMilliseconds < p.StartTime.TotalMilliseconds);
+            return (guessSubtitle, new SubRip());
+        }
+
+        throw new InvalidOperationException($"Unable to determine subtitle format for: {filePath}");
+    }
+
+    private static bool HasScenaristSccSignature(List<string> lines)
+    {
+        var firstNonBlank = lines.FirstOrDefault(l => !string.IsNullOrWhiteSpace(l));
+        return firstNonBlank != null && firstNonBlank.TrimStart().StartsWith("Scenarist_SCC", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Decodes an SCC file with both timing variants (non-drop and drop-frame) and keeps the
+    /// better result: more decoded captions wins, then fewer undecodable rows.
+    /// </summary>
+    private static (Subtitle Subtitle, SubtitleFormat Format, int UndecodableRows) LoadBestScenaristScc(List<string> lines, string filePath)
+    {
+        (Subtitle Subtitle, SubtitleFormat Format, int UndecodableRows) Load(SubtitleFormat format)
+        {
+            var subtitle = new Subtitle();
+            format.LoadSubtitle(subtitle, lines, filePath);
+            return (subtitle, format, format.ErrorCount);
+        }
+
+        var regular = Load(new ScenaristClosedCaptions());
+        var dropFrame = Load(new ScenaristClosedCaptionsDropFrame());
+        if (dropFrame.Subtitle.Paragraphs.Count > regular.Subtitle.Paragraphs.Count
+            || (dropFrame.Subtitle.Paragraphs.Count == regular.Subtitle.Paragraphs.Count
+                && regular.Subtitle.Paragraphs.Count > 0
+                && dropFrame.UndecodableRows < regular.UndecodableRows))
+        {
+            return dropFrame;
+        }
+
+        // Nothing decoded either way: report the variant that at least matched time codes,
+        // so the error carries the undecodable-row count.
+        if (regular.Subtitle.Paragraphs.Count == 0 && dropFrame.UndecodableRows > regular.UndecodableRows)
+        {
+            return dropFrame;
+        }
+
+        return regular;
+    }
+
+    private static bool HasPlausibleGuessedTiming(Subtitle subtitle)
+    {
+        // Match UnknownFormatImporter's own tolerance: it accepts a guess containing up to
+        // two inverted cues (typos in an otherwise valid file), so rejecting the whole file
+        // for a single inverted cue would fail input that used to convert. Reject only when
+        // inversions dominate; the caller drops the inverted cues from the result.
+        var inverted = subtitle.Paragraphs.Count(p => p.EndTime.TotalMilliseconds < p.StartTime.TotalMilliseconds);
+        return inverted <= 2
+               && inverted < subtitle.Paragraphs.Count
+               && subtitle.Paragraphs.Any(p => p.EndTime.TotalMilliseconds > 0);
+    }
+
+    /// <summary>
+    /// Backwards-compatible wrapper that drops the detected format. Prefer
+    /// <see cref="LoadSubtitleWithFormat"/> when the source format is needed.
+    /// </summary>
+    public static Subtitle LoadSubtitle(string filePath, string? encodingName = null)
+        => LoadSubtitleWithFormat(filePath, encodingName).Subtitle;
+
+    /// <summary>
+    /// Resolves the input encoding for a file when the user supplied
+    /// <c>--input-encoding-fallback</c> but no explicit <c>--encoding</c>.
+    /// Mirrors the early decisions in <see cref="LanguageAutoDetect.GetEncodingFromFile"/>
+    /// (BOM, then UTF-8 byte-pattern check) and replaces the final ANSI heuristic with the
+    /// user-supplied fallback. The fallback only fires when no BOM is present and the bytes
+    /// do not validate as UTF-8, which is exactly where the heuristic was misfiring on
+    /// Central European content getting tagged as Western European.
+    /// </summary>
+    internal static Encoding DetectEncodingWithFallback(string filePath, string fallbackEncodingName)
+    {
+        try
+        {
+            using var file = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            var bom = new byte[4];
+            var bomRead = file.Read(bom, 0, bom.Length);
+
+            if (bomRead >= 3 && bom[0] == 0xef && bom[1] == 0xbb && bom[2] == 0xbf)
+            {
+                return Encoding.UTF8;
+            }
+            if (bomRead >= 4 && bom[0] == 0xff && bom[1] == 0xfe && bom[2] == 0 && bom[3] == 0)
+            {
+                return Encoding.GetEncoding(12000);
+            }
+            if (bomRead >= 2 && bom[0] == 0xff && bom[1] == 0xfe)
+            {
+                return Encoding.Unicode;
+            }
+            if (bomRead >= 2 && bom[0] == 0xfe && bom[1] == 0xff)
+            {
+                return Encoding.BigEndianUnicode;
+            }
+            if (bomRead >= 4 && bom[0] == 0 && bom[1] == 0 && bom[2] == 0xfe && bom[3] == 0xff)
+            {
+                return Encoding.GetEncoding(12001);
+            }
+
+            // No BOM — sniff for valid UTF-8 byte patterns over up to the first 500KB.
+            file.Position = 0;
+            var length = file.Length > 500_000 ? 500_000 : file.Length;
+            var buffer = new byte[length];
+            var totalRead = 0;
+            while (totalRead < buffer.Length)
+            {
+                var n = file.Read(buffer, totalRead, buffer.Length - totalRead);
+                if (n <= 0) break;
+                totalRead += n;
+            }
+
+            if (LooksLikeUtf8(buffer, totalRead))
+            {
+                return Encoding.UTF8;
+            }
+        }
+        catch
+        {
+            // Fall through to the user-supplied fallback on any read/IO trouble.
+        }
+
+        return GetEncoding(fallbackEncodingName);
+    }
+
+    /// <summary>
+    /// Returns true when <paramref name="buffer"/> contains at least one valid multi-byte
+    /// UTF-8 sequence and no invalid ones. Mirrors the private
+    /// <c>LanguageAutoDetect.IsUtf8</c> so we can decide UTF-8 vs. fallback without
+    /// touching libse's API surface — but scans the full buffer (libse stops 3 bytes
+    /// early, which misses a UTF-8 file whose only non-ASCII char is at the tail).
+    /// </summary>
+    private static bool LooksLikeUtf8(byte[] buffer, int length)
+    {
+        var utf8Count = 0;
+        var i = 0;
+        while (i < length)
+        {
+            var b = buffer[i];
+            if (b > 127)
+            {
+                if (b >= 194 && b <= 223 && i + 1 < length &&
+                    buffer[i + 1] >= 128 && buffer[i + 1] <= 191)
+                {
+                    utf8Count++;
+                    i++;
+                }
+                else if (b >= 224 && b <= 239 && i + 2 < length &&
+                         buffer[i + 1] >= 128 && buffer[i + 1] <= 191 &&
+                         buffer[i + 2] >= 128 && buffer[i + 2] <= 191)
+                {
+                    utf8Count++;
+                    i += 2;
+                }
+                else if (b >= 240 && b <= 244 && i + 3 < length &&
+                         buffer[i + 1] >= 128 && buffer[i + 1] <= 191 &&
+                         buffer[i + 2] >= 128 && buffer[i + 2] <= 191 &&
+                         buffer[i + 3] >= 128 && buffer[i + 3] <= 191)
+                {
+                    utf8Count++;
+                    i += 3;
+                }
+                else
+                {
+                    return false;
+                }
+            }
+            i++;
+        }
+
+        return utf8Count > 0;
+    }
+
+    /// <summary>
+    /// Saves a subtitle to a file using LibSE. Dispatches to format-specific Save methods
+    /// for binary formats (Pac, Ebu, Cavena890, ...) and applies format-specific encoding
+    /// rules for text formats (WebVTT/UTF-8 BOM, iTunes Timed Text/UTF-8 no-BOM, RTF/ASCII).
+    /// </summary>
+    public static void SaveSubtitle(
+        Subtitle subtitle,
+        string filePath,
+        string formatName,
+        string? encodingName = null,
+        SubtitleFormat? sourceFormat = null,
+        int? pacCodePage = null,
+        string? ebuHeaderFile = null,
+        ConversionOptions? options = null)
+    {
+        if (subtitle == null)
+        {
+            throw new ArgumentNullException(nameof(subtitle));
+        }
+
+        // Custom text format — render via UiLogic CustomTextFormatter
+        if (formatName.Replace(" ", "").Equals("CustomTextFormat", StringComparison.OrdinalIgnoreCase) ||
+            formatName.Replace(" ", "").Equals("CustomText", StringComparison.OrdinalIgnoreCase))
+        {
+            if (options is null || string.IsNullOrWhiteSpace(options.CustomFormatFile))
+            {
+                throw new InvalidOperationException("Custom text output requires --custom-format=<path-to-template.xml>.");
+            }
+            var template = CustomFormatTemplateLoader.Load(options.CustomFormatFile);
+            var rendered = Nikse.SubtitleEdit.UiLogic.Export.CustomTextFormatter.GenerateCustomText(
+                template, subtitle.Paragraphs.ToList(), Path.GetFileNameWithoutExtension(filePath), string.Empty);
+            var outputDirCustom = Path.GetDirectoryName(filePath);
+            if (!string.IsNullOrEmpty(outputDirCustom) && !Directory.Exists(outputDirCustom))
+            {
+                Directory.CreateDirectory(outputDirCustom);
+            }
+            File.WriteAllText(filePath, rendered, new UTF8Encoding(true));
+            return;
+        }
+
+        // Plain text output — strip HTML; optional merge/unbreak and blank-line control
+        if (formatName.Replace(" ", "").Equals("PlainText", StringComparison.OrdinalIgnoreCase))
+        {
+            var outputDirPlain = Path.GetDirectoryName(filePath);
+            if (!string.IsNullOrEmpty(outputDirPlain) && !Directory.Exists(outputDirPlain))
+            {
+                Directory.CreateDirectory(outputDirPlain);
+            }
+
+            var plainEncoding = string.IsNullOrWhiteSpace(encodingName)
+                ? new UTF8Encoding(true)
+                : GetEncoding(encodingName);
+
+            // Merge: collapse every paragraph into a single space-separated block.
+            if (options?.PlainTextMerge == true)
+            {
+                var parts = new List<string>();
+                foreach (var p in subtitle.Paragraphs)
+                {
+                    var text = HtmlUtil.RemoveHtmlTags(p.Text, true).Replace(Environment.NewLine, " ").Trim();
+                    if (!string.IsNullOrEmpty(text))
+                    {
+                        parts.Add(text);
+                    }
+                }
+                File.WriteAllText(filePath, string.Join(" ", parts), plainEncoding);
+                return;
+            }
+
+            var unbreak = options?.PlainTextUnbreak == true;
+            var blankLineBetween = options?.PlainTextLineBetweenSubtitles ?? true;
+            var sb = new StringBuilder();
+            foreach (var p in subtitle.Paragraphs)
+            {
+                var text = HtmlUtil.RemoveHtmlTags(p.Text, true);
+                if (unbreak)
+                {
+                    text = Utilities.UnbreakLine(text.Replace(Environment.NewLine, " "));
+                }
+                if (sb.Length > 0 && blankLineBetween)
+                {
+                    sb.AppendLine();
+                }
+                sb.AppendLine(text);
+            }
+            File.WriteAllText(filePath, sb.ToString(), plainEncoding);
+            return;
+        }
+
+        // Image-based output formats: render text → bitmaps → format-specific bytes
+        var imageHandler = ImageOutputWriter.TryCreateHandler(formatName);
+        if (imageHandler is not null)
+        {
+            var outputDirImg = Path.GetDirectoryName(filePath);
+            if (!string.IsNullOrEmpty(outputDirImg) && !Directory.Exists(outputDirImg))
+            {
+                Directory.CreateDirectory(outputDirImg);
+            }
+            ImageOutputWriter.Write(subtitle, filePath, imageHandler, options ?? throw new InvalidOperationException("Image-based formats require ConversionOptions"));
+            return;
+        }
+
+        var targetFormat = ResolveFormatByName(formatName)
+            ?? throw new InvalidOperationException($"Unknown subtitle format: {formatName}");
+
+        // Strip native source-format markup that the target wouldn't understand
+        if (sourceFormat != null && !sourceFormat.GetType().Equals(targetFormat.GetType()))
+        {
+            targetFormat.RemoveNativeFormatting(subtitle, sourceFormat);
+        }
+
+        var outputDir = Path.GetDirectoryName(filePath);
+        if (!string.IsNullOrEmpty(outputDir) && !Directory.Exists(outputDir))
+        {
+            Directory.CreateDirectory(outputDir);
+        }
+
+        // Ebu (binary) — optional header file
+        if (targetFormat is Ebu ebu)
+        {
+            Ebu.EbuGeneralSubtitleInformation? header = null;
+            if (!string.IsNullOrEmpty(ebuHeaderFile))
+            {
+                if (!File.Exists(ebuHeaderFile))
+                {
+                    throw new FileNotFoundException($"EBU header file not found: {ebuHeaderFile}", ebuHeaderFile);
+                }
+                var headerBytes = File.ReadAllBytes(ebuHeaderFile);
+                header = Ebu.ReadHeader(headerBytes);
+            }
+            ebu.Save(filePath, subtitle, true, header);
+            return;
+        }
+
+        // Pac and PacUnicode (binary) — optional code page
+        if (targetFormat is Pac pac)
+        {
+            if (pacCodePage.HasValue)
+            {
+                pac.CodePage = pacCodePage.Value;
+            }
+            pac.Save(filePath, subtitle);
+            return;
+        }
+
+        // Other binary formats (Cavena890, CheetahCaption, CapMakerPlus, Ayato, ...)
+        if (targetFormat is IBinaryPersistableSubtitle binary)
+        {
+            using var fs = File.Create(filePath);
+            binary.Save(filePath, fs, subtitle, true);
+            return;
+        }
+
+        // Text-based — apply format-specific encoding rules
+        SaveTextFormat(subtitle, filePath, targetFormat, encodingName);
+    }
+
+    private static void SaveTextFormat(Subtitle subtitle, string filePath, SubtitleFormat format, string? encodingName)
+    {
+        var content = format.ToText(subtitle, Path.GetFileNameWithoutExtension(filePath));
+
+        // WebVTT — always UTF-8 with BOM
+        if (format is WebVTT)
+        {
+            File.WriteAllText(filePath, content, new UTF8Encoding(true));
+            return;
+        }
+
+        // iTunes Timed Text — UTF-8 without BOM
+        if (format is ItunesTimedText)
+        {
+            File.WriteAllText(filePath, content, new UTF8Encoding(false));
+            return;
+        }
+
+        // .rtf — always ASCII
+        if (string.Equals(Path.GetExtension(filePath), ".rtf", StringComparison.OrdinalIgnoreCase))
+        {
+            File.WriteAllText(filePath, content, Encoding.ASCII);
+            return;
+        }
+
+        // Default: user-specified encoding (with auto UTF-8 BOM as fallback)
+        var encoding = GetEncoding(encodingName);
+        var textEncoding = GetTextEncoding(encodingName);
+        if (textEncoding.DisplayName == TextEncoding.Utf8WithBom)
+        {
+            File.WriteAllText(filePath, content, new UTF8Encoding(true));
+        }
+        else if (textEncoding.DisplayName == TextEncoding.Utf8WithoutBom)
+        {
+            File.WriteAllText(filePath, content, new UTF8Encoding(false));
+        }
+        else
+        {
+            File.WriteAllText(filePath, content, encoding);
+        }
+    }
+
+    private static SubtitleFormat? ResolveFormatByName(string formatName)
+    {
+        var normalized = formatName.Replace(" ", "");
+        bool Matches(SubtitleFormat f) =>
+            f.Name.Replace(" ", "").Equals(normalized, StringComparison.OrdinalIgnoreCase);
+
+        return SubtitleFormat.AllSubtitleFormats.FirstOrDefault(Matches)
+            ?? SubtitleFormat.GetBinaryFormats(true).FirstOrDefault(Matches)
+            ?? SubtitleFormat.GetTextOtherFormats().FirstOrDefault(Matches);
+    }
+
+    /// <summary>
+    /// Applies subtitle operations/transformations. <paramref name="fixCommonErrorsRules"/>
+    /// is consulted only when <c>fixcommonerrors</c> is in the operation list — pass
+    /// <c>null</c> or empty to run all FCE rules.
+    /// <paramref name="fixCommonErrorsLanguage"/> forces the language used for FCE gating /
+    /// OCR-fix (from <c>--fce-language</c>); pass <c>null</c> to auto-detect from content.
+    /// </summary>
+    public static void ApplyOperations(
+        Subtitle subtitle,
+        List<string> operations,
+        IReadOnlyList<string>? fixCommonErrorsRules = null,
+        string? fixCommonErrorsLanguage = null)
+    {
+        if (subtitle == null || operations == null || operations.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var operation in operations)
+        {
+            ApplyOperation(subtitle, operation, fixCommonErrorsRules, fixCommonErrorsLanguage);
+        }
+    }
+
+    private static void ApplyOperation(
+        Subtitle subtitle,
+        string operation,
+        IReadOnlyList<string>? fixCommonErrorsRules,
+        string? fixCommonErrorsLanguage)
+    {
+        switch (operation.ToLowerInvariant())
+        {
+            case "fixcommonerrors":
+                FixCommonErrorsRunner.Run(subtitle, fixCommonErrorsRules, fixCommonErrorsLanguage);
+                break;
+
+            case "removetextforhi":
+                {
+                    var hiSettings = new RemoveTextForHISettings(subtitle);
+                    var hiLib = new RemoveTextForHI(hiSettings);
+                    var hiLanguage = LanguageAutoDetect.AutoDetectGoogleLanguage(subtitle);
+                    var hiIndex = subtitle.Paragraphs.Count - 1;
+                    while (hiIndex >= 0)
+                    {
+                        var p = subtitle.Paragraphs[hiIndex];
+                        p.Text = hiLib.RemoveTextFromHearImpaired(p.Text, hiLanguage);
+                        if (string.IsNullOrWhiteSpace(p.Text))
+                        {
+                            subtitle.Paragraphs.RemoveAt(hiIndex);
+                        }
+                        hiIndex--;
+                    }
+                    subtitle.Renumber();
+                }
+                break;
+
+            case "mergesametexts":
+                {
+                    var merged = MergeLinesSameTextUtils.MergeLinesWithSameTextInSubtitle(subtitle, true, 250);
+                    if (merged.Paragraphs.Count != subtitle.Paragraphs.Count)
+                    {
+                        subtitle.Paragraphs.Clear();
+                        subtitle.Paragraphs.AddRange(merged.Paragraphs);
+                    }
+                }
+                break;
+
+            case "mergesametimecodes":
+                {
+                    var merged = MergeLinesWithSameTimeCodes.Merge(subtitle, new List<int>(), out _, true, false, false, 1000, "en", new List<int>(), new Dictionary<int, bool>(), new Subtitle());
+                    if (merged.Paragraphs.Count != subtitle.Paragraphs.Count)
+                    {
+                        subtitle.Paragraphs.Clear();
+                        subtitle.Paragraphs.AddRange(merged.Paragraphs);
+                    }
+                }
+                break;
+
+            case "mergeshortlines":
+                {
+                    var merged = MergeShortLinesUtils.MergeShortLinesInSubtitle(subtitle, Configuration.Settings.Tools.MergeShortLinesMaxGap, Configuration.Settings.General.SubtitleLineMaximumLength, Configuration.Settings.Tools.MergeShortLinesOnlyContinuous);
+                    if (merged.Paragraphs.Count != subtitle.Paragraphs.Count)
+                    {
+                        subtitle.Paragraphs.Clear();
+                        subtitle.Paragraphs.AddRange(merged.Paragraphs);
+                    }
+                }
+                break;
+
+            case "splitlonglines":
+                try
+                {
+                    var split = SplitLongLinesHelper.SplitLongLinesInSubtitle(subtitle, Configuration.Settings.General.SubtitleLineMaximumLength * 2, Configuration.Settings.General.SubtitleLineMaximumLength);
+                    subtitle.Paragraphs.Clear();
+                    subtitle.Paragraphs.AddRange(split.Paragraphs);
+                }
+                catch
+                {
+                    // ignore
+                }
+                break;
+
+            case "balancelines":
+                {
+                    var balanceLanguage = LanguageAutoDetect.AutoDetectGoogleLanguage(subtitle);
+                    foreach (var p in subtitle.Paragraphs)
+                    {
+                        p.Text = Utilities.AutoBreakLine(p.Text, balanceLanguage, false);
+                    }
+                }
+                break;
+
+            case "redocasing":
+                {
+                    var casingLanguage = LanguageAutoDetect.AutoDetectGoogleLanguage(subtitle);
+                    var fixCasing = new FixCasing(casingLanguage)
+                    {
+                        FixNormal = true,
+                        FixNormalOnlyAllUppercase = false,
+                        FixMakeUppercase = false,
+                        FixMakeLowercase = false,
+                    };
+                    fixCasing.Fix(subtitle);
+                }
+                break;
+
+            case "removeformatting":
+                RemoveFormatting(subtitle);
+                break;
+
+            case "removelinebreaks":
+                foreach (var p in subtitle.Paragraphs)
+                {
+                    p.Text = Utilities.RemoveLineBreaks(p.Text);
+                }
+                break;
+
+            case "applydurationlimits":
+                {
+                    var fixDurationLimits = new FixDurationLimits(
+                        Configuration.Settings.General.SubtitleMinimumDisplayMilliseconds,
+                        Configuration.Settings.General.SubtitleMaximumDisplayMilliseconds,
+                        new List<double>());
+                    var fixedSub = fixDurationLimits.Fix(subtitle);
+                    subtitle.Paragraphs.Clear();
+                    subtitle.Paragraphs.AddRange(fixedSub.Paragraphs);
+                }
+                break;
+
+            case "beautifytimecodes":
+                {
+                    // No video in headless mode, so no shot changes/exact time codes -
+                    // align cues to frames (honors --fps) and apply the profile's
+                    // gap/duration rules, like the UI's batch convert without a video.
+                    var beautifier = new Nikse.SubtitleEdit.Core.Forms.TimeCodesBeautifier(
+                        subtitle,
+                        Configuration.Settings.General.CurrentFrameRate,
+                        new List<double>(),
+                        new List<double>());
+                    beautifier.Beautify();
+                }
+                break;
+
+            case "convertcolorstodialog":
+                {
+                    var ctdLanguage = LanguageAutoDetect.AutoDetectGoogleLanguage(subtitle);
+                    ConvertColorsToDialogUtils.ConvertColorsToDialogInSubtitle(subtitle, true, false, false, false, false, ctdLanguage);
+                }
+                break;
+
+            case "fixrtlviaunicodechars":
+                foreach (var p in subtitle.Paragraphs)
+                {
+                    p.Text = Utilities.FixRtlViaUnicodeChars(p.Text);
+                }
+                break;
+
+            case "removeunicodecontrolchars":
+                RemoveUnicodeControlChars(subtitle);
+                break;
+
+            case "reversertlstartend":
+                foreach (var p in subtitle.Paragraphs)
+                {
+                    p.Text = Utilities.ReverseStartAndEndingForRightToLeft(p.Text);
+                }
+                break;
+
+            default:
+                // Unknown operation - ignore or log warning
+                break;
+        }
+    }
+
+    private static void RemoveFormatting(Subtitle subtitle)
+    {
+        foreach (var p in subtitle.Paragraphs)
+        {
+            p.Text = HtmlUtil.RemoveHtmlTags(p.Text, true);
+        }
+    }
+
+    private static void RemoveUnicodeControlChars(Subtitle subtitle)
+    {
+        foreach (var p in subtitle.Paragraphs)
+        {
+            p.Text = p.Text.RemoveControlCharacters();
+        }
+    }
+
+    /// <summary>
+    /// Bridges gaps shorter than <paramref name="maxMs"/> by extending the previous paragraph's
+    /// end time. Leaves a gap equal to <c>Configuration.Settings.General.MinimumMillisecondsBetweenLines</c>
+    /// (so it composes correctly with --apply-min-gap and the configured profile).
+    /// </summary>
+    public static void BridgeGaps(Subtitle subtitle, int maxMs)
+    {
+        if (subtitle == null || maxMs <= 0)
+        {
+            return;
+        }
+
+        // Zero is a valid minimum gap - it makes the previous line end exactly where the next one starts.
+        var minGap = Math.Max(0, Configuration.Settings.General.MinimumMillisecondsBetweenLines);
+        if (minGap > maxMs)
+        {
+            // BridgeGaps requires minGap <= maxMs. Clamp to keep the call valid.
+            minGap = Math.Max(0, maxMs - 1);
+        }
+
+        DurationsBridgeGaps.BridgeGaps(subtitle, minGap, divideEven: false, maxMs, fixedIndexes: null, dic: null, useFrames: false);
+    }
+
+    /// <summary>
+    /// Enforces a minimum gap of <paramref name="minMs"/> between consecutive paragraphs by pulling
+    /// the earlier end time backwards. Skips edits that would shrink a paragraph below the
+    /// configured minimum display duration.
+    /// </summary>
+    public static void ApplyMinGap(Subtitle subtitle, int minMs)
+    {
+        if (subtitle == null || minMs <= 0)
+        {
+            return;
+        }
+
+        var minDisplayMs = Configuration.Settings.General.SubtitleMinimumDisplayMilliseconds;
+        for (var i = 0; i < subtitle.Paragraphs.Count - 1; i++)
+        {
+            var current = subtitle.Paragraphs[i];
+            var next = subtitle.Paragraphs[i + 1];
+            var gapMs = next.StartTime.TotalMilliseconds - current.EndTime.TotalMilliseconds;
+            if (gapMs >= minMs)
+            {
+                continue;
+            }
+
+            var newEndMs = next.StartTime.TotalMilliseconds - minMs;
+            var newDuration = newEndMs - current.StartTime.TotalMilliseconds;
+            if (newDuration > minDisplayMs)
+            {
+                current.EndTime.TotalMilliseconds = newEndMs;
+            }
+        }
+    }
+
+    public static void DeleteFirst(Subtitle subtitle, int count)
+    {
+        if (count <= 0)
+        {
+            return;
+        }
+
+        var paragraphs = subtitle.Paragraphs.Skip(count).ToList();
+        subtitle.Paragraphs.Clear();
+        subtitle.Paragraphs.AddRange(paragraphs);
+        subtitle.Renumber();
+    }
+
+    public static void DeleteLast(Subtitle subtitle, int count)
+    {
+        if (count <= 0)
+        {
+            return;
+        }
+
+        var keep = Math.Max(0, subtitle.Paragraphs.Count - count);
+        var paragraphs = subtitle.Paragraphs.Take(keep).ToList();
+        subtitle.Paragraphs.Clear();
+        subtitle.Paragraphs.AddRange(paragraphs);
+        subtitle.Renumber();
+    }
+
+    /// <summary>
+    /// Applies ASSA-only options (<c>--resolution</c>, <c>--assa-style-file</c>) to the
+    /// subtitle's header before save. Emits a stderr warning when the target format is
+    /// not ASSA-compatible and either option is set.
+    /// </summary>
+    public static void ApplyAssaPostProcess(Subtitle subtitle, string normalizedFormat, (int Width, int Height)? resolution, string? assaStyleFile)
+    {
+        if (resolution is null && string.IsNullOrEmpty(assaStyleFile))
+        {
+            return;
+        }
+
+        var isAssaTarget = normalizedFormat.Replace(" ", "").Equals("AdvancedSubStationAlpha", StringComparison.OrdinalIgnoreCase)
+                         || normalizedFormat.Replace(" ", "").Equals("SubStationAlpha", StringComparison.OrdinalIgnoreCase);
+
+        if (!isAssaTarget)
+        {
+            // --resolution is also meaningful for image-based targets (canvas size,
+            // see ImageOutputWriter) — there only the ASSA style file is ignored.
+            if (ImageOutputWriter.TryCreateHandler(normalizedFormat) != null)
+            {
+                if (!string.IsNullOrEmpty(assaStyleFile))
+                {
+                    AnsiConsole.MarkupLine("[yellow]Warning: --assa-style-file only applies to ASSA/SSA targets; ignored.[/]");
+                }
+            }
+            else
+            {
+                AnsiConsole.MarkupLine("[yellow]Warning: --resolution and --assa-style-file only apply to ASSA/SSA targets; ignored.[/]");
+            }
+            return;
+        }
+
+        if (string.IsNullOrEmpty(subtitle.Header) || !subtitle.Header.Contains("[V4+ Styles]"))
+        {
+            subtitle.Header = AdvancedSubStationAlpha.DefaultHeader;
+        }
+
+        if (resolution is { } r)
+        {
+            subtitle.Header = AdvancedSubStationAlpha.SetResolution(subtitle.Header, r.Width, r.Height);
+        }
+
+        if (!string.IsNullOrEmpty(assaStyleFile))
+        {
+            if (!File.Exists(assaStyleFile))
+            {
+                throw new FileNotFoundException($"ASSA style file not found: {assaStyleFile}", assaStyleFile);
+            }
+            var styleSubtitle = new Subtitle();
+            var styleLines = new List<string>(File.ReadAllLines(assaStyleFile));
+            new AdvancedSubStationAlpha().LoadSubtitle(styleSubtitle, styleLines, assaStyleFile);
+            var styles = AdvancedSubStationAlpha.GetSsaStylesFromHeader(styleSubtitle.Header);
+            foreach (var style in styles)
+            {
+                subtitle.Header = AdvancedSubStationAlpha.UpdateOrAddStyle(subtitle.Header, style);
+            }
+        }
+    }
+
+    public static void DeleteContains(Subtitle subtitle, string deleteContains)
+    {
+        if (string.IsNullOrEmpty(deleteContains))
+        {
+            return;
+        }
+
+        var deleted = 0;
+        for (var index = subtitle.Paragraphs.Count - 1; index >= 0; index--)
+        {
+            var paragraph = subtitle.Paragraphs[index];
+            if (paragraph.Text.Contains(deleteContains, StringComparison.Ordinal))
+            {
+                deleted++;
+                subtitle.Paragraphs.RemoveAt(index);
+            }
+        }
+
+        if (deleted > 0)
+        {
+            subtitle.Renumber();
+        }
+    }
+
+    /// <summary>
+    /// Gets an encoding from a string name
+    /// </summary>
+    private static Encoding GetEncoding(string? encodingName)
+    {
+        if (string.IsNullOrWhiteSpace(encodingName))
+        {
+            return new UTF8Encoding(true); // UTF-8 with BOM by default
+        }
+
+        var name = encodingName.Trim().ToLowerInvariant();
+
+        // Handle UTF-8 variations
+        if (name is "utf8" or "utf-8" or "utf-8-bom")
+        {
+            return new UTF8Encoding(true); // with BOM
+        }
+
+        if (name is "utf-8-no-bom" or "utf-8-nobom" or "utf8-nobom")
+        {
+            return new UTF8Encoding(false); // without BOM
+        }
+
+        // Try to get encoding by name or code page
+        try
+        {
+            if (int.TryParse(encodingName, out var codePage))
+            {
+                return Encoding.GetEncoding(codePage);
+            }
+
+            return Encoding.GetEncoding(encodingName);
+        }
+        catch
+        {
+            // Fall back to UTF-8 with BOM if encoding not found
+            return new UTF8Encoding(true);
+        }
+    }
+
+    /// <summary>
+    /// True when the user passed <c>--encoding:source</c> (case-insensitive) — a sentinel
+    /// meaning "save with the same encoding the input file was read in". Resolved per-file
+    /// via <see cref="DetectSourceEncodingName"/> before the load/save calls.
+    /// </summary>
+    internal static bool IsSourceEncodingSentinel(string? encodingName)
+        => !string.IsNullOrWhiteSpace(encodingName) &&
+           string.Equals(encodingName.Trim(), "source", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Resolves <c>--encoding:source</c> for a given input file: runs the same detection
+    /// <see cref="LoadSubtitleWithFormat"/> would and returns a name that round-trips
+    /// through <see cref="GetEncoding"/> (preserving the UTF-8 BOM/no-BOM distinction the
+    /// raw <see cref="Encoding"/> object would lose on save).
+    /// </summary>
+    internal static string DetectSourceEncodingName(string filePath, string? fallbackEncodingName)
+    {
+        var encoding = !string.IsNullOrWhiteSpace(fallbackEncodingName)
+            ? DetectEncodingWithFallback(filePath, fallbackEncodingName)
+            : LanguageAutoDetect.GetEncodingFromFile(filePath);
+
+        if (encoding.CodePage == 65001)
+        {
+            return FileStartsWithUtf8Bom(filePath) ? "utf-8" : "utf-8-no-bom";
+        }
+
+        return encoding.CodePage.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private static bool FileStartsWithUtf8Bom(string filePath)
+    {
+        try
+        {
+            using var fs = File.OpenRead(filePath);
+            Span<byte> bom = stackalloc byte[3];
+            return fs.Read(bom) >= 3 && bom[0] == 0xEF && bom[1] == 0xBB && bom[2] == 0xBF;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Non-throwing variant of <see cref="GetEncoding"/> used to validate user input. Returns
+    /// false (and a null out) for an unrecognized name or code page so the CLI can report
+    /// a typo instead of silently substituting UTF-8 and producing mojibake.
+    /// </summary>
+    internal static bool TryGetEncoding(string? encodingName, out Encoding? encoding)
+    {
+        if (string.IsNullOrWhiteSpace(encodingName))
+        {
+            encoding = null;
+            return false;
+        }
+
+        var name = encodingName.Trim().ToLowerInvariant();
+
+        if (name is "utf8" or "utf-8" or "utf-8-bom")
+        {
+            encoding = new UTF8Encoding(true);
+            return true;
+        }
+
+        if (name is "utf-8-no-bom" or "utf-8-nobom" or "utf8-nobom")
+        {
+            encoding = new UTF8Encoding(false);
+            return true;
+        }
+
+        try
+        {
+            encoding = int.TryParse(encodingName, out var codePage)
+                ? Encoding.GetEncoding(codePage)
+                : Encoding.GetEncoding(encodingName);
+            return true;
+        }
+        catch
+        {
+            encoding = null;
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Gets a TextEncoding from a string name
+    /// </summary>
+    private static TextEncoding GetTextEncoding(string? encodingName)
+    {
+        if (string.IsNullOrWhiteSpace(encodingName))
+        {
+            return new TextEncoding(Encoding.UTF8, TextEncoding.Utf8WithBom);
+        }
+
+        var name = encodingName.Trim().ToLowerInvariant();
+
+        // Handle UTF-8 variations
+        if (name is "utf8" or "utf-8" or "utf-8-bom")
+        {
+            return new TextEncoding(Encoding.UTF8, TextEncoding.Utf8WithBom);
+        }
+
+        if (name is "utf-8-no-bom" or "utf-8-nobom" or "utf8-nobom")
+        {
+            return new TextEncoding(Encoding.UTF8, TextEncoding.Utf8WithoutBom);
+        }
+
+        // For other encodings, create TextEncoding with the encoding
+        try
+        {
+            Encoding encoding;
+            if (int.TryParse(encodingName, out var codePage))
+            {
+                encoding = Encoding.GetEncoding(codePage);
+            }
+            else
+            {
+                encoding = Encoding.GetEncoding(encodingName);
+            }
+
+            return new TextEncoding(encoding, null);
+        }
+        catch
+        {
+            // Fall back to UTF-8 with BOM if encoding not found
+            return new TextEncoding(Encoding.UTF8, TextEncoding.Utf8WithBom);
+        }
+    }
+
+    /// <summary>
+    /// Gets the appropriate file extension for a format. Looks across text, binary,
+    /// and "other text" format lists to cover targets like PAC and EBU STL, and
+    /// also handles image-based output targets (Blu-Ray sup, VobSub, BDN-XML, ...).
+    /// </summary>
+    public static string GetExtensionForFormat(string formatName)
+    {
+        var normalized = NormalizeFormatName(formatName);
+
+        if (normalized.Replace(" ", "").Equals("PlainText", StringComparison.OrdinalIgnoreCase))
+        {
+            return ".txt";
+        }
+
+        if (normalized.Replace(" ", "").Equals("CustomTextFormat", StringComparison.OrdinalIgnoreCase) ||
+            normalized.Replace(" ", "").Equals("CustomText", StringComparison.OrdinalIgnoreCase))
+        {
+            // Custom text extension is template-defined; default to .txt if we don't yet have it
+            return ".txt";
+        }
+
+        var imageHandler = ImageOutputWriter.TryCreateHandler(normalized);
+        if (imageHandler is not null)
+        {
+            return imageHandler.Extension;
+        }
+
+        var format = ResolveFormatByName(normalized);
+        return format?.Extension ?? ".txt";
+    }
+
+    /// <summary>
+    /// Normalizes format name (handles common shortcuts)
+    /// </summary>
+    public static string NormalizeFormatName(string formatName)
+    {
+        var normalized = formatName.Trim().ToLowerInvariant().Replace(" ", "");
+
+        return normalized switch
+        {
+            "ass" or "assa" => "AdvancedSubStationAlpha",
+            "ssa" => "SubStationAlpha",
+            "srt" => "SubRip",
+            "smi" => "SAMI",
+            "vtt" => "WebVTT",
+            "sbv" => "YouTubeSbv",
+            "pac" => Pac.NameOfFormat,
+            "pacunicode" or "unipac" => "PAC Unicode (UniPac)",
+            "ebu" or "ebustl" or "stl" => Ebu.NameOfFormat,
+            "cavena" or "cavena890" => Cavena890.NameOfFormat,
+            "cheetah" or "cheetahcaption" => CheetahCaption.NameOfFormat,
+            "capmaker" or "capmakerplus" => CapMakerPlus.NameOfFormat,
+            "ayato" => "Ayato",
+            "bluraysup" or "blurayup" or "sup" => "Blu-ray sup",
+            "vobsub" => "VobSub",
+            "bdnxml" or "bdn-xml" => "BDN-XML",
+            "dost" or "dostimage" => "DOST/image",
+            "fcp" or "fcpimage" => "FCP/image",
+            "dcinemainterop" or "dcinema-interop" => "D-Cinema interop/png",
+            "dcinemasmpte2014" or "dcinema-smpte" => "D-Cinema SMPTE 2014/png",
+            "imageswithtimecode" or "imagesintc" => "Images with time codes in file name",
+            "webvttthumbnail" or "webvtt-thumbnail" or "vttthumb" => "WebVTT Thumbnail",
+            "plaintext" or "text" or "txt" => "Plain text",
+            "customtext" or "customtextformat" => "Custom text format",
+            _ => formatName
+        };
+    }
+}
+

@@ -1,0 +1,7 @@
+﻿
+🐦 Parakeet
+
+Type: FastConformer + TDT (transducer-style)
+Focus: ⚡ Speed + efficiency
+Strengths: Very fast
+

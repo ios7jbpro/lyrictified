@@ -1,0 +1,79 @@
+# Settings
+
+Configure application preferences, profiles, subtitle defaults, video player, and more.
+
+- **Menu:** Options → Settings...
+- **Shortcut:** Configurable
+
+<!-- Screenshot: Settings window -->
+![Settings](../screenshots/settings.png)
+
+## How to Use
+
+1. Open **Options → Settings...**
+2. Navigate through the settings sections
+3. Adjust settings as needed
+4. Click **OK** to save
+
+## Profiles
+
+Profiles store subtitle rules and limits. You can switch between profiles for different workflows (e.g., Netflix, broadcast, default).
+
+- **Single line max length** — Maximum characters per line
+- **Optimal chars/sec** — Target reading speed
+- **Max chars/sec** — Maximum reading speed
+- **Max words/min** — Maximum words per minute
+- **Min duration** — Minimum subtitle display time (ms)
+- **Max duration** — Maximum subtitle display time (ms)
+- **Min gap** — Minimum gap between subtitles (ms)
+- **Max lines** — Maximum number of lines per subtitle
+- **Dialog style** — How dialog dashes are handled
+- **Continuation style** — How continuation markers work
+
+## General
+
+- **New empty default (ms)** — Default duration for new empty subtitles
+- **Prompt before deleting lines** — Ask before deleting subtitle lines
+- **Lock time codes** — Prevent accidental time code changes
+- **Remember window position and size** — Restore layout between sessions
+- **Use frame mode** — Display times as frame numbers instead of time codes
+- **Auto backup** — Enable automatic backups at a set interval
+- **Open file on start** — Choose whether Subtitle Edit reopens the previous file on startup
+- **Single-letter shortcuts in text boxes** — Control whether single-key shortcuts are active while editing text
+- **Focus text box after insert (grid / waveform)** — Move focus to the subtitle text box after inserting a new line from the grid or waveform
+
+## Subtitle Defaults
+
+- **Default subtitle format** — Format used when creating new subtitles
+- **Save format** — Default format for saving
+- **Favorite formats** — Quick access to frequently used formats
+- **Default encoding** — Text encoding for saving files
+- **Auto-convert to UTF-8** — Automatically convert files to UTF-8
+- **Force CR+LF on save** — Use Windows-style line endings
+- **Auto-trim whitespace** — Remove trailing spaces
+
+## Tools
+
+- **Merge lines: keep end time (allow overlap with next subtitle)** — Normally, merging lines ("Merge with line before/after" or merging a selection) trims the merged line so it ends just before the next subtitle starts. Enable this to keep the original end time of the last merged line, even if the merged subtitle then overlaps the next one. Off by default.
+- **Merge lines: keep end time only for "Advanced Sub Station Alpha"** — Limits the option above to ASSA files, where overlapping events are a normal part of the format (e.g., signs or effects shown on top of dialog). Uncheck to keep end times when merging in any format. On by default.
+
+## Video Player (MPV Preview)
+
+- **Font** — Subtitle preview font name, size, and bold
+- **Colors** — Primary, outline, and shadow colors
+- **Border style** — Outline or opaque box
+- **Outline/shadow width** — Border dimensions
+
+## Waveform and Audio Visualizer
+
+- **Waveform toolbar visibility** — Show or hide the waveform toolbar
+- **Waveform toolbar customization** — Choose which timing buttons are visible and how they are ordered
+- **Waveform theme import/export** — Reuse waveform color and toolbar preferences
+- **Shot change color** — Customize the color used for shot change markers
+
+## Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| Escape | Close settings |
+| F1 | Open help |

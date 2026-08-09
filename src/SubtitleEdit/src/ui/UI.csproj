@@ -1,0 +1,112 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<OutputType>WinExe</OutputType>
+		<TargetFramework>net10.0</TargetFramework>
+		<TargetFramework Condition="'$(LyrictifiedBuild)' == 'true'">net10.0-windows10.0.19041.0</TargetFramework>
+		<RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+		<Nullable>enable</Nullable>
+		<BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+		<ApplicationManifest>app.manifest</ApplicationManifest>
+		<AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+		<AssemblyName>SubtitleEdit</AssemblyName>
+		<RootNamespace>Nikse.SubtitleEdit</RootNamespace>
+		<AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+		<ApplicationIcon>SE.ico</ApplicationIcon>
+	</PropertyGroup>
+	<ItemGroup>
+	  <AvaloniaXaml Remove="Assets\Themes\**" />
+	  <Compile Remove="Assets\Themes\**" />
+	  <EmbeddedResource Remove="Assets\Themes\**" />
+	  <None Remove="Assets\Themes\**" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Avalonia" Version="12.1.1" />
+		<PackageReference Include="Avalonia.Desktop" Version="12.1.1" />
+		<PackageReference Include="Avalonia.Markup.Declarative" Version="12.1.1" />
+		<PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.1" />
+		<PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.1" />
+		<!--Condition below is needed to remove Avalonia.Diagnostics package from build output in Release configuration.-->
+		<PackageReference Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.3">
+			<IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
+			<PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
+		</PackageReference>
+		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+		<PackageReference Include="Google.Cloud.TextToSpeech.V1" Version="3.18.0" />
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="11.0.0-preview.2.26159.112" />
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="11.0.0-preview.2.26159.112" />
+		<PackageReference Include="Microsoft.Extensions.Http" Version="11.0.0-preview.2.26159.112" />
+		<PackageReference Include="Optris.Icons.Avalonia" Version="12.0.7" />
+		<PackageReference Include="Optris.Icons.Avalonia.FontAwesome" Version="12.0.7" />
+		<PackageReference Include="Optris.Icons.Avalonia.MaterialDesign" Version="12.0.7" />
+		<PackageReference Include="SharpCompress" Version="0.50.4" />
+		<PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="3.119.4" />
+		<PackageReference Include="SkiaSharp.HarfBuzz" Version="3.119.4" />
+		<!--
+		  Pin the Linux native HarfBuzz to match the managed HarfBuzzSharp (8.3.1.5) that
+		  SkiaSharp.HarfBuzz 3.119.4 resolves to. Avalonia references HarfBuzzSharp.NativeAssets.Linux
+		  8.3.1.3, and without this NuGet leaves the Linux native behind while unifying the
+		  managed wrapper up - an ABI mismatch that crashes the BluRay (sup) text shaper with
+		  "double free or corruption" on Linux (issue #11864). macOS/Windows already get the
+		  matching native.
+		-->
+		<PackageReference Include="HarfBuzzSharp.NativeAssets.Linux" Version="8.3.1.5" />
+		<PackageReference Include="TagLibSharp" Version="2.3.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!--
+		  Everything under Assets ships as an embedded Avalonia resource. These are globs
+		  rather than a file-per-line list so a newly added asset cannot be forgotten - that
+		  is exactly how ChineseTraditional.json ended up missing from builds (issue #12722).
+		  Assets\Themes\** is excluded in the ItemGroup near the top of this file.
+		  The patterns are scoped by extension on purpose: a bare * would also sweep up
+		  stray files such as the .DS_Store that macOS drops into these folders.
+		-->
+		<None Remove="Assets\**" />
+		<AvaloniaResource Include="Assets\*.ico" />
+		<AvaloniaResource Include="Assets\*.json" />
+		<AvaloniaResource Include="Assets\*.png" />
+		<AvaloniaResource Include="Assets\*.zip" />
+		<AvaloniaResource Include="Assets\FileTypes\*.ico" />
+		<AvaloniaResource Include="Assets\Layout\*.png" />
+		<AvaloniaResource Include="Assets\SevenZip\*.zip" />
+		<AvaloniaResource Include="Assets\SpeechToText\*.py" />
+		<AvaloniaResource Include="Assets\SpeechToText\*.txt" />
+		<AvaloniaResource Include="Assets\TextToSpeech\*.json" />
+		<Content Include="SE.ico" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <ProjectReference Include="..\libse\LibSE.csproj" />
+	  <ProjectReference Include="..\libuilogic\LibUiLogic.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+			<_Parameter1>UITests</_Parameter1>
+		</AssemblyAttribute>
+		<AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+			<_Parameter1>UiBenchmarks</_Parameter1>
+		</AssemblyAttribute>
+	</ItemGroup>
+
+	<Import Project="..\AssetZips.targets" />
+	<!--
+	  Themes.zip / Dictionaries.zip / Ocr.zip / Languages.zip are generated from their source
+	  folders by AssetZips.targets and injected here, so they never need to be rebuilt by hand.
+	  Assets\Languages\*.json is deliberately NOT an AvaloniaResource on its own - the
+	  translations ship deflated inside Languages.zip instead of as ~6.8 MB of raw JSON.
+	-->
+	<Target Name="IncludeAssetZips" BeforeTargets="GenerateAvaloniaResources" DependsOnTargets="BuildThemesZip;BuildDictionariesZip;BuildOcrZip;BuildLanguagesZip">
+		<!--
+		  The intermediate _AssetZipFiles item exists because Link="Assets\%(Filename)..."
+		  directly on the AvaloniaResource Include would be a metadata self-reference (MSB4120)
+		  and cross-apply against every pre-existing AvaloniaResource item.
+		-->
+		<ItemGroup>
+			<_AssetZipFiles Include="$(AssetZipsOutDir)*.zip" />
+			<AvaloniaResource Include="@(_AssetZipFiles)" Link="Assets\%(_AssetZipFiles.Filename)%(_AssetZipFiles.Extension)" />
+		</ItemGroup>
+	</Target>
+</Project>

@@ -1,0 +1,409 @@
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Layout;
+using Nikse.SubtitleEdit.Logic;
+using Avalonia.Controls.Primitives;
+using Avalonia.Controls.Templates;
+using Avalonia.Data;
+using Avalonia.Interactivity;
+using Avalonia.Media;
+using Avalonia.Threading;
+using Nikse.SubtitleEdit.Logic.Config;
+
+namespace Nikse.SubtitleEdit.Features.Tools.RemoveTextForHearingImpaired;
+
+public class RemoveTextForHearingImpairedWindow : Window
+{
+    // Same presets the SE 4 combo boxes offered - awkward characters to type, and they cover
+    // nearly every real use of these fields. All three fields stay free text.
+    private static readonly string[] SymbolPresets = ["¶", "♪", "♫"];
+    private static readonly string[] ContainsPresets = ["¶", "♪", "♫", "♪,♫"];
+
+    private readonly RemoveTextForHearingImpairedViewModel _vm;
+
+    public RemoveTextForHearingImpairedWindow(RemoveTextForHearingImpairedViewModel vm)
+    {
+        UiUtil.InitializeWindow(this, GetType().Name);
+        Title = Se.Language.General.RemoveTextForHearingImpaired;
+        Width = 910;
+        Height = 640;
+        MinWidth = 800;
+        MinHeight = 620;
+        CanResize = true;
+
+        _vm = vm;
+        vm.Window = this;
+        DataContext = vm;
+
+        var settingsView = MakeSettingsView(vm);
+        var fixesView = MakeFixesView(vm);
+
+        // Settings-only callers (BatchConvert) have no live target and commit once with Ok/Cancel;
+        // edit callers (menu, selected lines) apply live and repeatedly with Apply, then Done closes.
+        var buttonOk = UiUtil.MakeButtonOk(vm.OkCommand)
+            .WithBindIsVisible(nameof(vm.IsSettingsMode));
+        var buttonApply = UiUtil.MakeButton(Se.Language.General.Apply, vm.ApplyCommand)
+            .WithBindIsVisible(nameof(vm.IsApplyVisible));
+        var buttonDone = UiUtil.MakeButtonDone(vm.DoneCommand)
+            .WithBindIsVisible(nameof(vm.IsApplyVisible));
+        var buttonCancel = UiUtil.MakeButtonCancel(vm.CancelCommand)
+            .WithBindIsVisible(nameof(vm.IsSettingsMode));
+        var panelButtons = UiUtil.MakeButtonBar(
+            buttonOk,
+            buttonApply,
+            buttonDone,
+            buttonCancel
+        );
+
+        var grid = new Grid
+        {
+            RowDefinitions =
+            {
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Star) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+            },
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) },
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+            },
+            Margin = UiUtil.MakeWindowMargin(),
+            ColumnSpacing = 10,
+            RowSpacing = 10,
+            Width = double.NaN,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+
+        grid.Add(settingsView, 0, 0);
+        grid.Add(fixesView, 0, 1);
+        grid.Add(panelButtons, 1, 0, 1, 2);
+
+        Content = grid;
+
+        Activated += delegate { (vm.IsApplyVisible ? buttonDone : buttonOk).Focus(); }; // hack to make OnKeyDown work
+
+        Closing += delegate { UiUtil.SaveWindowPosition(this); };
+        Loaded += delegate { UiUtil.RestoreWindowPosition(this); };
+    }
+
+    private StackPanel MakeSettingsView(RemoveTextForHearingImpairedViewModel vm)
+    {
+        var removeBetweenView = MakeRemoveBetweenView(vm);
+        var removeBeforeColonView = MakeBeforeColonView(vm);
+        var lineUppercaseView = MakeUppercaseLineView(vm);
+        var lineContainsView = MakeLineContainsView(vm);
+        var musicSymbolsView = MakeMusicSymbolsContainsView(vm);
+        var interjectionsView = MakeInterjectionsView(vm);
+
+        var panel = new StackPanel
+        {
+            Orientation = Orientation.Vertical,
+            Children =
+            {
+                removeBetweenView,
+                removeBeforeColonView,
+                lineUppercaseView,
+                lineContainsView,
+                musicSymbolsView,
+                interjectionsView,
+            }
+        };
+
+        return panel;
+    }
+
+    private static Border MakeRemoveBetweenView(RemoveTextForHearingImpairedViewModel vm)
+    {
+        var labelTitle = UiUtil.MakeLabel(Se.Language.Tools.RemoveTextForHearingImpaired.RemoveTextBetween);
+
+        var comboBoxBrackets = UiUtil.MakeCheckBox(Se.Language.Tools.RemoveTextForHearingImpaired.Brackets, vm, nameof(vm.IsRemoveBracketsOn));
+        var comboBoxCurlyBrackets = UiUtil.MakeCheckBox(Se.Language.Tools.RemoveTextForHearingImpaired.CurlyBrackets, vm, nameof(vm.IsRemoveCurlyBracketsOn));
+        var comboBoxParentheses = UiUtil.MakeCheckBox(Se.Language.Tools.RemoveTextForHearingImpaired.Parentheses, vm, nameof(vm.IsRemoveParenthesesOn));
+
+        var checkBoxCustom = UiUtil.MakeCheckBox(string.Empty, vm, nameof(vm.IsRemoveCustomOn));
+        var textBoxCustomStart = UiUtil.MakeEditableComboBox(80, SymbolPresets, vm, nameof(vm.CustomStart));
+        var labelAnd = UiUtil.MakeLabel(Se.Language.Tools.RemoveTextForHearingImpaired.And);
+        var textBoxCustomEnd = UiUtil.MakeEditableComboBox(80, SymbolPresets, vm, nameof(vm.CustomEnd));
+        var panelCustom = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Children =
+            {
+                checkBoxCustom,
+                textBoxCustomStart,
+                labelAnd,
+                textBoxCustomEnd,
+            }
+        };
+        var checkBoxOnlySeparateLine = UiUtil
+            .MakeCheckBox(Se.Language.Tools.RemoveTextForHearingImpaired.OnlySeparateLines, vm, nameof(vm.IsOnlySeparateLine))
+            .WithMarginTop(5);
+
+        var grid = new Grid
+        {
+            RowDefinitions =
+            {
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+            },
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+            },
+            Width = double.NaN,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+
+        grid.Add(labelTitle, 0, 0);
+        grid.Add(comboBoxBrackets, 1, 0);
+        grid.Add(comboBoxCurlyBrackets, 2, 0);
+        grid.Add(comboBoxParentheses, 3, 0);
+        grid.Add(panelCustom, 4, 0);
+        grid.Add(checkBoxOnlySeparateLine, 5, 0);
+
+        return UiUtil.MakeBorderForControl(grid).WithMarginBottom(5);
+    }
+
+    private static Border MakeBeforeColonView(RemoveTextForHearingImpairedViewModel vm)
+    {
+        var comboBoxBrackets = UiUtil.MakeCheckBox(Se.Language.Tools.RemoveTextForHearingImpaired.RemoveTextBeforeColon, vm, nameof(vm.IsRemoveTextBeforeColonOn));
+        var comboBoxUppercase = UiUtil
+            .MakeCheckBox(Se.Language.Tools.RemoveTextForHearingImpaired.OnlyIfTextIsUppercase, vm, nameof(vm.IsRemoveTextBeforeColonUppercaseOn))
+            .WithMarginLeft(10);
+        var comboBoxSeparateLine = UiUtil
+            .MakeCheckBox(Se.Language.Tools.RemoveTextForHearingImpaired.OnlyOnSeparateLine, vm, nameof(vm.IsRemoveTextBeforeColonSeparateLineOn))
+            .WithMarginLeft(10);
+
+        var grid = new Grid
+        {
+            RowDefinitions =
+            {
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+            },
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+            },
+            Width = double.NaN,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+
+        grid.Add(comboBoxBrackets, 0, 0);
+        grid.Add(comboBoxUppercase, 1, 0);
+        grid.Add(comboBoxSeparateLine, 2, 0);
+
+        return UiUtil.MakeBorderForControl(grid).WithMarginBottom(5);
+    }
+
+    private static Border MakeUppercaseLineView(RemoveTextForHearingImpairedViewModel vm)
+    {
+        var comboBoxLineUppercase = UiUtil.MakeCheckBox(Se.Language.Tools.RemoveTextForHearingImpaired.IfLineIsUppercase, vm, nameof(vm.IsRemoveTextUppercaseLineOn));
+        var textBoxWhitelist = UiUtil.MakeTextBox(160, vm, nameof(vm.UppercaseWhitelist)).WithMarginLeft(5);
+        if (Se.Settings.Appearance.ShowHints)
+        {
+            ToolTip.SetTip(textBoxWhitelist, Se.Language.Tools.RemoveTextForHearingImpaired.KeepUppercaseWords);
+        }
+        var panel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Children =
+            {
+                comboBoxLineUppercase,
+                textBoxWhitelist,
+            }
+        };
+
+        return UiUtil.MakeBorderForControl(panel).WithMarginBottom(5);
+    }
+
+    private static Border MakeLineContainsView(RemoveTextForHearingImpairedViewModel vm)
+    {
+        var comboBoxLineContains = UiUtil.MakeCheckBox(Se.Language.Tools.RemoveTextForHearingImpaired.IfLineContains, vm, nameof(vm.IsRemoveTextContainsOn));
+        var textBoxContains = UiUtil.MakeEditableComboBox(150, ContainsPresets, vm, nameof(vm.TextContains)).WithMarginLeft(5);
+        var panelContains = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Children =
+            {
+                comboBoxLineContains,
+                textBoxContains,
+            }
+        };
+
+        return UiUtil.MakeBorderForControl(panelContains).WithMarginBottom(5);
+    }
+
+    private static Border MakeMusicSymbolsContainsView(RemoveTextForHearingImpairedViewModel vm)
+    {
+        var comboBoxMusicSymbols =
+            UiUtil.MakeCheckBox(Se.Language.Tools.RemoveTextForHearingImpaired.IfLineOnlyContainsMusicSymbols, vm, nameof(vm.IsRemoveOnlyMusicSymbolsOn));
+        return UiUtil.MakeBorderForControl(comboBoxMusicSymbols).WithMarginBottom(5);
+    }
+
+    private static Border MakeInterjectionsView(RemoveTextForHearingImpairedViewModel vm)
+    {
+        var comboBoxInterjections = UiUtil.MakeCheckBox(Se.Language.Tools.RemoveTextForHearingImpaired.RemoveInterjections, vm, nameof(vm.IsRemoveInterjectionsOn));
+        var buttonEdit = UiUtil.MakeButton(Se.Language.General.Edit, vm.EditInterjectionsCommand);
+
+        var panelInterjections = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Children =
+            {
+                comboBoxInterjections,
+                buttonEdit,
+            }
+        };
+
+        var labelLanguage = UiUtil.MakeLabel(Se.Language.General.Language);
+        var comboBoxLanguage = UiUtil.MakeComboBox(vm.Languages, vm, nameof(vm.SelectedLanguage));
+        var panelLanguege = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Children =
+            {
+                labelLanguage,
+                comboBoxLanguage,
+            }
+        };
+        
+        var checkBoxOnlySeparateLine = UiUtil
+            .MakeCheckBox(Se.Language.Tools.RemoveTextForHearingImpaired.OnlySeparateLines, vm, nameof(vm.IsInterjectionsSeparateLineOn))
+            .WithMarginTop(5);
+
+        var grid = new Grid
+        {
+            RowDefinitions =
+            {
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+            },
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+            },
+            Width = double.NaN,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+
+        grid.Add(panelInterjections, 0, 0);
+        grid.Add(panelLanguege, 1, 0);
+        grid.Add(checkBoxOnlySeparateLine, 2, 0);
+
+        return UiUtil.MakeBorderForControl(grid);
+    }
+
+    private Grid MakeFixesView(RemoveTextForHearingImpairedViewModel vm)
+    {
+        // Sorting dropped in the DataGrid -> TableView conversion: the grid previews
+        // fixes in subtitle order.
+        var dataGrid = TableViewExtras.MakeTableView();
+        dataGrid.Width = double.NaN;
+        dataGrid.Height = double.NaN;
+        dataGrid.DataContext = _vm;
+        dataGrid.ItemsSource = _vm.Fixes;
+        dataGrid.Columns.AddRange(new TableViewColumn[]
+        {
+                new SeTableViewColumn
+                {
+                    Header = Se.Language.General.Apply,
+                    CellTheme = UiUtil.TableViewNoPaddingCellTheme,
+                    HeaderTheme = UiUtil.TableViewColumnHeaderTheme,
+                    CellTemplate = new FuncDataTemplate<RemoveItem>((item, _) =>
+                        new Border
+                        {
+                            Background = Brushes.Transparent, // Prevents highlighting
+                            Padding = new Thickness(4),
+                            Child = new CheckBox
+                            {
+                                Focusable = false,
+                                [!ToggleButton.IsCheckedProperty] = new Binding(nameof(RemoveItem.Apply)),
+                                HorizontalAlignment = HorizontalAlignment.Center
+                            }
+                        }),
+                    // Content-sized (Auto) on the DataGrid; TableView treats Auto as star.
+                    Width = new GridLength(70)
+                },
+                new SeTableViewColumn
+                {
+                    Header = Se.Language.General.NumberSymbol,
+                    CellTheme = UiUtil.TableViewCellTheme,
+                    HeaderTheme = UiUtil.TableViewColumnHeaderTheme,
+                    Binding = new Binding(nameof(RemoveItem.IndexDisplay)),
+                    Width = new GridLength(60),
+                },
+                new SeTableViewColumn
+                {
+                    // Content-sized (Auto) on the DataGrid; Before holds subtitle text,
+                    // so it shares the star width with After.
+                    Header = Se.Language.General.Before,
+                    CellTheme = UiUtil.TableViewCellTheme,
+                    HeaderTheme = UiUtil.TableViewColumnHeaderTheme,
+                    Binding = new Binding(nameof(RemoveItem.Before)),
+                    Width = new GridLength(1, GridUnitType.Star),
+                },
+                new SeTableViewColumn
+                {
+                    Header = Se.Language.General.After,
+                    CellTheme = UiUtil.TableViewCellTheme,
+                    HeaderTheme = UiUtil.TableViewColumnHeaderTheme,
+                    Binding = new Binding(nameof(RemoveItem.After)),
+                    Width = new GridLength(1, GridUnitType.Star),
+                },
+        });
+        dataGrid.Bind(TableView.SelectedItemProperty, new Binding(nameof(_vm.SelectedFix)));
+
+        // Extended selection is native ListBox behavior on TableView; only the
+        // Space-toggles-checkbox piece of the old CheckboxMultiSelect needs wiring.
+        TableViewExtras.AddSpaceToggle<RemoveItem>(dataGrid,
+            item => item.Apply, (item, v) => item.Apply = v);
+
+        var labelLinesFound = UiUtil.MakeLabel().WithBindText(vm, new Binding($"{nameof(vm.Fixes)}.{nameof(vm.Fixes.Count)}")
+        {
+            Mode = BindingMode.OneWay,
+            StringFormat = Se.Language.Tools.RemoveTextForHearingImpaired.LinesFoundX,
+        });
+
+        var grid = new Grid
+        {
+            RowDefinitions =
+            {
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Star) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+            },
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+            },
+            RowSpacing = 5,
+            Width = double.NaN,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
+        };
+
+        grid.Add(UiUtil.MakeBorderForControl(dataGrid), 0, 0);
+        grid.Add(labelLinesFound, 1, 0);
+
+        return grid;
+    }
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+        _vm.OnKeyDown(e);
+    }
+
+    protected override void OnLoaded(RoutedEventArgs e)
+    {
+        base.OnLoaded(e);
+        _vm.OnLoaded(e);
+    }
+}

@@ -1,0 +1,91 @@
+﻿namespace Nikse.SubtitleEdit.Logic.Config.Language;
+
+public class LanguageImageBasedEdit
+{
+    public string EditImagedBaseSubtitle { get; set; }
+    public string EditImagedBaseSubtitleX { get; set; }
+    public string ResizeImagesDotDotDot { get;  set; }
+    public string AdjustBrightnessDotDotDot { get; set; }
+    public string AdjustAlphaDotDotDot { get; set; }
+    public string CropImages { get; set; }
+    public string ImportTimeCodes { get; set; }
+    public string SetText { get; set; }
+    public string ScreenWidth { get; set; }
+    public string ScreenHeight { get; set; }
+    public string AlphaThresholdInfo { get; set; }
+    public string ResetToDefaults { get; set; }
+    public string AlphaAdjustmentInfo { get; set; }
+    public string AdjustBrightness { get; set; }
+    public string Brightness { get; set; }
+    public string Contrast { get; set; }
+    public string Gamma { get; set; }
+    public string BrightnessAdjustmentInfo { get; set; }
+    public string ResizeImages { get; set; }
+    public string Percentage { get; set; }
+    public string ResizeImagesInfo { get; set; }
+    public string AdjustColorDotDotDot { get; set; }
+    public string AdjustColor { get; set; }
+    public string ColorAdjustmentInfo { get; set; }
+    public string TopAlignLines { get; set; }
+    public string BottomAlignLines { get; set; }
+    public string AppendSubtitleDotDotDot { get; set; }
+    public string ShiftTimeCodes { get; set; }
+    public string SortByStartTime { get; set; }
+    public string VideoPreview { get; set; }
+    public string PositionMap { get; set; }
+    public string Letterbox { get; set; }
+    public string LetterboxOff { get; set; }
+    public string LetterboxCustom { get; set; }
+    public string BarHeightPx { get; set; }
+    public string TitleSafePercent { get; set; }
+    public string PositionSummary { get; set; }
+    public string XInActivePicture { get; set; }
+    public string XInTopBar { get; set; }
+    public string XInBottomBar { get; set; }
+    public string NoImageSubtitlesLoaded { get; set; }
+
+    public LanguageImageBasedEdit()
+    {
+        EditImagedBaseSubtitle = "Edit image-based subtitle";
+        EditImagedBaseSubtitleX = "Edit image-based subtitle: {0}";
+        ResizeImagesDotDotDot = "Resize images...";
+        AdjustBrightnessDotDotDot = "Adjust brightness...";
+        AdjustAlphaDotDotDot = "Adjust alpha...";
+        CropImages = "Crop images";
+        ImportTimeCodes = "Import time codes...";
+        SetText = "Set text";
+        ScreenWidth = "Screen width";
+        ScreenHeight = "Screen height";
+        AlphaThresholdInfo = "Pixels with alpha below threshold become fully transparent";
+        ResetToDefaults = "Reset to defaults";
+        AlphaAdjustmentInfo = "Alpha adjustment: Add/subtract from alpha channel.\nPreview updates automatically and shows with checkered background to visualize transparency.";
+        AdjustBrightness = "Adjust brightness";
+        Brightness = "Brightness";
+        Contrast = "Contrast";
+        Gamma = "Gamma";
+        BrightnessAdjustmentInfo = "Adjust the sliders to modify brightness, contrast, and gamma.\nPreview updates automatically and shows the first selected subtitle.";
+        ResizeImages = "Resize images";
+        Percentage = "Percentage";
+        ResizeImagesInfo = "Enter the percentage to resize images.\nPreview updates automatically.";
+        AdjustColorDotDotDot = "Adjust color...";
+        AdjustColor = "Adjust color";
+        ColorAdjustmentInfo = "Click the color swatch to pick a color. Bright subtitle pixels shift toward the chosen hue; dark outlines and shadows are preserved.\nPreview shows the first selected subtitle.";
+        TopAlignLines = "Top align";
+        BottomAlignLines = "Bottom align";
+        AppendSubtitleDotDotDot = "Append subtitle...";
+        ShiftTimeCodes = "Shift time codes by";
+        SortByStartTime = "Sort by start time";
+        VideoPreview = "Video";
+        PositionMap = "Position map";
+        Letterbox = "Letterbox";
+        LetterboxOff = "Off (no letterbox)";
+        LetterboxCustom = "Custom bar height";
+        BarHeightPx = "Bar height (px)";
+        TitleSafePercent = "Title-safe (%)";
+        PositionSummary = "{0}×{1} - {2} subtitles - bar height: {3} px";
+        XInActivePicture = "{0} in picture";
+        XInTopBar = "{0} in top bar";
+        XInBottomBar = "{0} in bottom bar";
+        NoImageSubtitlesLoaded = "No image subtitles loaded";
+    }
+}

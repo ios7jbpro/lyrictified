@@ -1,0 +1,1120 @@
+using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Media;
+using Avalonia.Media.Imaging;
+using Avalonia.Skia;
+using Avalonia.Threading;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using Nikse.SubtitleEdit.Core.Common;
+using Nikse.SubtitleEdit.Core.SubtitleFormats;
+using Nikse.SubtitleEdit.Features.Assa;
+using Nikse.SubtitleEdit.Features.Shared;
+using Nikse.SubtitleEdit.Logic;
+using Nikse.SubtitleEdit.Logic.Config;
+using Nikse.SubtitleEdit.Logic.Media;
+using SkiaSharp;
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Globalization;
+using System.Linq;
+using System.Threading.Tasks;
+
+namespace Nikse.SubtitleEdit.Features.Ssa;
+
+public partial class SsaStylesViewModel : ObservableObject, IClosingCleanup
+{
+    [ObservableProperty] private string _title;
+    [ObservableProperty] private ObservableCollection<StyleDisplay> _fileStyles;
+    [ObservableProperty] private StyleDisplay? _selectedFileStyle;
+    [ObservableProperty] private ObservableCollection<StyleDisplay> _storageStyles;
+    [ObservableProperty] private StyleDisplay? _selectedStorageStyle;
+    [ObservableProperty] private StyleDisplay? _currentStyle;
+    [ObservableProperty] private ObservableCollection<string> _fonts;
+    [ObservableProperty] private ObservableCollection<BorderStyleItem> _borderTypes;
+    [ObservableProperty] private BorderStyleItem _selectedBorderType;
+    [ObservableProperty] private string _currentTitle;
+    [ObservableProperty] private bool _isFileStylesFocused;
+    [ObservableProperty] private bool _isApplyVisible;
+    [ObservableProperty] private Bitmap? _imagePreview;
+    [ObservableProperty] private bool _isDeleteVisible;
+    [ObservableProperty] private bool _isDeleteAllVisible;
+    [ObservableProperty] private bool _isFileStyleSelected;
+    [ObservableProperty] private bool _isStorageStyleSelected;
+    [ObservableProperty] private bool _isTakeUsagesFromVisible;
+    [ObservableProperty] private bool _isSetStyleAsDefaultVisible;
+    [ObservableProperty] private bool _isCopyToFileStylesVisible;
+    [ObservableProperty] private bool _isMoveVisible;
+
+    public Window? Window { get; set; }
+    public bool OkPressed { get; private set; }
+    public string Header { get; set; }
+    public TableView FileStyleGrid { get; set; }
+    public TableView StorageStyleGrid { get; set; }
+    public Subtitle ResultSubtitle => _subtitle;
+
+    private readonly IFileHelper _fileHelper;
+    private readonly IWindowService _windowService;
+    private IApplySsaStyles? _applySsaStyles;
+    private readonly FileStyleRenameTracker _renameTracker;
+    private Subtitle _subtitle;
+    private string _subtitleFileName;
+    private volatile bool _isClosing;
+    private readonly System.Timers.Timer _timerUpdatePreview;
+
+    public SsaStylesViewModel(IFileHelper fileHelper, IWindowService windowService)
+    {
+        _fileHelper = fileHelper;
+        _windowService = windowService;
+
+        Title = string.Empty;
+        FileStyles = new ObservableCollection<StyleDisplay>();
+        StorageStyles = new ObservableCollection<StyleDisplay>();
+        Fonts = new ObservableCollection<string>();
+        BorderTypes = new ObservableCollection<BorderStyleItem>(BorderStyleItem.List());
+        SelectedBorderType = BorderTypes[0];
+        CurrentTitle = string.Empty;
+        FileStyleGrid = new TableView();
+        StorageStyleGrid = new TableView();
+
+        Header = string.Empty;
+        _subtitle = new Subtitle();
+        _subtitleFileName = string.Empty;
+
+        LoadSettings();
+
+        _renameTracker = new FileStyleRenameTracker(FileStyles, () => _subtitle, UpdateUsages);
+
+        _timerUpdatePreview = new System.Timers.Timer(500);
+        _timerUpdatePreview.Elapsed += TimerUpdatePreviewElapsed;
+    }
+
+    /// <summary>
+    /// The font combo box binds SelectedItem to CurrentStyle.FontName; a font missing from
+    /// the item list would make Avalonia clear the selection and null out the style's font.
+    /// Make sure the font is listed before the style becomes current (#13101).
+    /// </summary>
+    partial void OnCurrentStyleChanging(StyleDisplay? value)
+    {
+        var fontName = value?.FontName;
+        if (!string.IsNullOrEmpty(fontName) && !Fonts.Contains(fontName))
+        {
+            Fonts.Insert(0, fontName);
+        }
+    }
+
+    private void TimerUpdatePreviewElapsed(object? sender, System.Timers.ElapsedEventArgs e)
+    {
+        if (_isClosing)
+        {
+            return;
+        }
+
+        _timerUpdatePreview.Stop();
+        UpdatePreview();
+
+        // Guard the restart: OnClosingCleanup may have disposed the timer while this
+        // handler ran, and Start() on a disposed timer throws ObjectDisposedException,
+        // crashing the app from a thread-pool thread. (#12739)
+        if (!_isClosing)
+        {
+            _timerUpdatePreview.Start();
+        }
+    }
+
+    [RelayCommand]
+    private void Ok()
+    {
+        OkPressed = true;
+        SaveFileStylesToHeader();
+        SaveSettings();
+        Close();
+    }
+
+    [RelayCommand]
+    private void Apply()
+    {
+        OkPressed = true;
+        SaveFileStylesToHeader();
+        SaveSettings();
+        _applySsaStyles?.ApplySsaStyles(this);
+    }
+
+    [RelayCommand]
+    private void Cancel()
+    {
+        Close();
+    }
+
+    [RelayCommand]
+    private async Task FileImport()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var format = new SubStationAlpha();
+        var fileName = await _fileHelper.PickOpenFile(Window, "Open subtitle file to import styles from", format.Name, "*" + format.Extension);
+        if (string.IsNullOrEmpty(fileName))
+        {
+            return;
+        }
+
+        var ssaStyles = StyleFileImportHelper.LoadStyles(fileName, format);
+        if (ssaStyles.Count == 0)
+        {
+            await MessageBox.Show(
+                Window,
+                Se.Language.General.Error,
+                "Nothing to import",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+            return;
+        }
+
+        var result = await _windowService.ShowDialogAsync<AssaStylePickerWindow, AssaStylePickerViewModel>(Window, vm =>
+        {
+            vm.Initialize(Se.Language.General.Import, ssaStyles.Select(p => StripAlpha(new StyleDisplay(p) { IsSelected = true, Name = MakeUniqueName(p.Name, FileStyles) })).ToList(), Se.Language.General.Import, false);
+        });
+
+        var selectedStyles = result.Styles.Where(p => p.IsSelected).ToList();
+        if (!result.OkPressed || selectedStyles.Count == 0)
+        {
+            return;
+        }
+
+        FileStyles.AddRange(selectedStyles);
+
+        UpdateUsages();
+    }
+
+    private static string MakeUniqueName(string name, ObservableCollection<StyleDisplay> styles)
+    {
+        var newName = name;
+        if (styles.Any(p => p.Name.Equals(newName, StringComparison.OrdinalIgnoreCase)))
+        {
+            var count = 2;
+            var doRepeat = true;
+            while (doRepeat)
+            {
+                newName = name + "_" + count;
+                doRepeat = styles.Any(p => p.Name.Equals(newName, StringComparison.OrdinalIgnoreCase));
+                count++;
+            }
+        }
+
+        return newName;
+    }
+
+    [RelayCommand]
+    private void FileNew()
+    {
+        var name = Se.Language.General.New;
+        if (FileStyles.Any(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+        {
+            var count = 2;
+            var doRepeat = true;
+            while (doRepeat)
+            {
+                name = Se.Language.General.New + count;
+                doRepeat = FileStyles.Any(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+                count++;
+            }
+        }
+
+        var style = new SsaStyle { Name = name };
+        FileStyles.Add(StripAlpha(new StyleDisplay(style)));
+        UpdateUsages();
+    }
+
+    [RelayCommand]
+    private void FileRemove()
+    {
+        var selectedItems = FileStyleGrid.SelectedItems?.Cast<StyleDisplay>().ToList() ?? new List<StyleDisplay>();
+        if (Window == null || selectedItems.Count == 0)
+        {
+            return;
+        }
+
+        if (selectedItems.Count == 1)
+        {
+            DeleteFileStyle(selectedItems[0]);
+            return;
+        }
+
+        DeleteFileStyles(selectedItems);
+    }
+
+    [RelayCommand]
+    private void FileRemoveAll()
+    {
+        FileStyles.Clear();
+    }
+
+    [RelayCommand]
+    private void FileMoveUp() => MoveFileStyles(ListMoveDirection.Up);
+
+    [RelayCommand]
+    private void FileMoveDown() => MoveFileStyles(ListMoveDirection.Down);
+
+    [RelayCommand]
+    private void FileMoveToTop() => MoveFileStyles(ListMoveDirection.Top);
+
+    [RelayCommand]
+    private void FileMoveToBottom() => MoveFileStyles(ListMoveDirection.Bottom);
+
+    /// <summary>
+    /// Reorders the selected file styles. The list order is not presentation-only - it is
+    /// the order the styles are written to the file header on OK (#13056).
+    /// </summary>
+    private void MoveFileStyles(ListMoveDirection direction)
+    {
+        TableViewExtras.MoveSelectedRows(FileStyleGrid, FileStyles, direction);
+    }
+
+    [RelayCommand]
+    private void FilesDuplicate()
+    {
+        var selectedItems = FileStyleGrid.SelectedItems?.Cast<StyleDisplay>().ToList() ?? new List<StyleDisplay>();
+        if (Window == null || selectedItems.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var selectedStyle in selectedItems)
+        {
+            var name = selectedStyle.Name + " - " + Se.Language.General.Copy;
+            if (FileStyles.Any(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+            {
+                var count = 2;
+                var doRepeat = true;
+                while (doRepeat)
+                {
+                    name = selectedStyle.Name + " - " + Se.Language.General.Copy + count;
+                    doRepeat = FileStyles.Any(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+                    count++;
+                }
+            }
+
+            var style = selectedStyle.ToSsaStyle();
+            style.Name = name;
+            FileStyles.Add(StripAlpha(new StyleDisplay(style)));
+        }
+
+        UpdateUsages();
+    }
+
+    [RelayCommand]
+    private async Task FileExport()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var fileName = await _fileHelper.PickSaveFile(Window, ".ssa", "export-styles.ssa", "Choose export file name");
+        if (string.IsNullOrEmpty(fileName))
+        {
+            return;
+        }
+
+        var styles = new List<SsaStyle>();
+        foreach (var style in FileStyles)
+        {
+            styles.Add(style.ToSsaStyle());
+        }
+
+        var s = new Subtitle();
+        s.Header = SubStationAlpha.GetHeaderAndStylesFromAdvancedSubStationAlpha(
+            AdvancedSubStationAlpha.GetHeaderAndStylesFromAdvancedSubStationAlpha(
+                AdvancedSubStationAlpha.DefaultHeader,
+                styles),
+            string.Empty);
+        var text = s.ToText(new SubStationAlpha());
+        await System.IO.File.WriteAllTextAsync(fileName, text);
+    }
+
+    [RelayCommand]
+    private void FileCopyToStorage()
+    {
+        var selectedItems = FileStyleGrid.SelectedItems?.Cast<StyleDisplay>().ToList() ?? new List<StyleDisplay>();
+        if (Window == null || selectedItems.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var item in selectedItems)
+        {
+            var style = item.ToSsaStyle();
+            style.Name = MakeUniqueName(style.Name, StorageStyles);
+            StorageStyles.Add(StripAlpha(new StyleDisplay(style)));
+        }
+    }
+
+    [RelayCommand]
+    private async Task FileTakeUsagesFrom()
+    {
+        var selectedStyle = SelectedFileStyle;
+        if (Window == null || selectedStyle == null)
+        {
+            return;
+        }
+
+        var ssaStyles = FileStyles.Where(p => p.UsageCount > 0 && p.Name != selectedStyle.Name).Select(p => p.ToSsaStyle()).ToList();
+        var result = await _windowService.ShowDialogAsync<AssaStylePickerWindow, AssaStylePickerViewModel>(Window, vm =>
+        {
+            var styles = ssaStyles.Select(p => StripAlpha(new StyleDisplay(p))).ToList();
+            vm.Initialize(Se.Language.Assa.TakeUsagesFromDotDotDot, styles, Se.Language.General.Ok, true);
+        });
+
+        var selectedStyles = result.Styles.Where(p => p.IsSelected).ToList();
+        if (!result.OkPressed || selectedStyles.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var paragraph in _subtitle.Paragraphs)
+        {
+            var style = selectedStyles.FirstOrDefault(p => p.Name.Equals(paragraph.Extra.TrimStart('*'), StringComparison.OrdinalIgnoreCase));
+            if (style != null)
+            {
+                paragraph.Extra = selectedStyle.Name;
+            }
+        }
+
+        UpdateUsages();
+    }
+
+    [RelayCommand]
+    private async Task StorageImport()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var format = new SubStationAlpha();
+        var fileName = await _fileHelper.PickOpenFile(Window, Se.Language.Assa.OpenStyleImportFile, format.Name, "*" + format.Extension);
+        if (string.IsNullOrEmpty(fileName))
+        {
+            return;
+        }
+
+        var ssaStyles = StyleFileImportHelper.LoadStyles(fileName, format);
+        if (ssaStyles.Count == 0)
+        {
+            await MessageBox.Show(
+                Window,
+                Se.Language.General.Error,
+                "Nothing to import",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+            return;
+        }
+
+        var result = await _windowService.ShowDialogAsync<AssaStylePickerWindow, AssaStylePickerViewModel>(Window, vm =>
+        {
+            vm.Initialize(Se.Language.General.Import, ssaStyles.Select(p => StripAlpha(new StyleDisplay(p) { IsSelected = true, Name = MakeUniqueName(p.Name, StorageStyles) })).ToList(), Se.Language.General.Import, false);
+        });
+
+        var selectedStyles = result.Styles.Where(p => p.IsSelected).ToList();
+        if (!result.OkPressed || selectedStyles.Count == 0)
+        {
+            return;
+        }
+
+        StorageStyles.AddRange(selectedStyles);
+
+        UpdateUsages();
+    }
+
+    [RelayCommand]
+    private void StorageNew()
+    {
+        var name = Se.Language.General.New;
+        if (StorageStyles.Any(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+        {
+            var count = 2;
+            var doRepeat = true;
+            while (doRepeat)
+            {
+                name = Se.Language.General.New + count;
+                doRepeat = StorageStyles.Any(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+                count++;
+            }
+        }
+
+        var style = new SsaStyle { Name = name };
+        StorageStyles.Add(StripAlpha(new StyleDisplay(style)));
+    }
+
+    [RelayCommand]
+    private void StorageRemove()
+    {
+        var selectedItems = StorageStyleGrid.SelectedItems?.Cast<StyleDisplay>().ToList() ?? new List<StyleDisplay>();
+        if (Window == null || selectedItems.Count == 0)
+        {
+            return;
+        }
+
+        Dispatcher.UIThread.Post(async void () =>
+        {
+            var answer = MessageBoxResult.Yes;
+
+            if (Se.Settings.General.PromptBeforeDelete)
+            {
+                if (selectedItems.Count == 1)
+                {
+                    answer = await MessageBox.Show(
+                        Window!,
+                        Se.Language.Assa.DeleteStyleQuestion,
+                        $"Do you want to delete style \"{selectedItems[0].Name}\" from storage?",
+                        MessageBoxButtons.YesNoCancel,
+                        MessageBoxIcon.Question);
+                }
+                else
+                {
+                    answer = await MessageBox.Show(
+                        Window!,
+                        Se.Language.Assa.DeleteStylesQuestion,
+                        $"Do you want to delete {selectedItems.Count} styles from storage?",
+                        MessageBoxButtons.YesNoCancel,
+                        MessageBoxIcon.Question);
+                }
+            }
+
+            if (answer != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            foreach (var selectedStyle in selectedItems)
+            {
+                var idx = StorageStyles.IndexOf(selectedStyle);
+                StorageStyles.Remove(selectedStyle);
+                SelectedStorageStyle = null;
+                CurrentStyle = null;
+
+                if (StorageStyles.Count > 0)
+                {
+                    if (idx >= StorageStyles.Count)
+                    {
+                        idx = StorageStyles.Count - 1;
+                    }
+
+                    SelectedStorageStyle = StorageStyles[idx];
+                    CurrentStyle = SelectedStorageStyle;
+                }
+            }
+
+            TableViewExtras.FocusRow(StorageStyleGrid);
+        });
+    }
+
+    [RelayCommand]
+    private void StorageRemoveAll()
+    {
+        StorageStyles.Clear();
+    }
+
+    [RelayCommand]
+    private void StorageDuplicate()
+    {
+        var selectedItems = StorageStyleGrid.SelectedItems?.Cast<StyleDisplay>().ToList() ?? new List<StyleDisplay>();
+        if (Window == null || selectedItems.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var selectedStyle in selectedItems)
+        {
+            var name = selectedStyle.Name + " - " + Se.Language.General.Copy;
+            if (StorageStyles.Any(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+            {
+                var count = 2;
+                var doRepeat = true;
+                while (doRepeat)
+                {
+                    name = selectedStyle.Name + " - " + Se.Language.General.Copy + count;
+                    doRepeat = StorageStyles.Any(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+                    count++;
+                }
+            }
+
+            var style = selectedStyle.ToSsaStyle();
+            style.Name = name;
+            StorageStyles.Add(StripAlpha(new StyleDisplay(style)));
+        }
+    }
+
+    [RelayCommand]
+    private async Task StorageExport()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var fileName = await _fileHelper.PickSaveFile(Window, ".ssa", "export-styles.ssa", "Choose export file name");
+        if (string.IsNullOrEmpty(fileName))
+        {
+            return;
+        }
+
+        var styles = new List<SsaStyle>();
+        foreach (var style in StorageStyles)
+        {
+            styles.Add(style.ToSsaStyle());
+        }
+
+        var s = new Subtitle();
+        s.Header = SubStationAlpha.GetHeaderAndStylesFromAdvancedSubStationAlpha(
+            AdvancedSubStationAlpha.GetHeaderAndStylesFromAdvancedSubStationAlpha(
+                AdvancedSubStationAlpha.DefaultHeader,
+                styles),
+            string.Empty);
+        var text = s.ToText(new SubStationAlpha());
+        await System.IO.File.WriteAllTextAsync(fileName, text);
+    }
+
+    [RelayCommand]
+    private void StorageCopyToFiles()
+    {
+        var selectedItems = StorageStyleGrid.SelectedItems?.Cast<StyleDisplay>().ToList() ?? new List<StyleDisplay>();
+        if (Window == null || selectedItems.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var item in selectedItems)
+        {
+            var style = item.ToSsaStyle();
+            style.Name = MakeUniqueName(style.Name, FileStyles);
+            FileStyles.Add(StripAlpha(new StyleDisplay(style)));
+        }
+    }
+
+    [RelayCommand]
+    private void StorageSetDefault()
+    {
+        var selectedStyle = SelectedStorageStyle;
+        if (Window == null || selectedStyle == null)
+        {
+            return;
+        }
+
+        foreach (var style in StorageStyles)
+        {
+            style.IsDefault = false;
+        }
+
+        selectedStyle.IsDefault = true;
+    }
+
+    private void Close()
+    {
+        Dispatcher.UIThread.Post(() => { Window?.Close(); });
+    }
+
+    public void OnClosingCleanup()
+    {
+        _isClosing = true;
+        _timerUpdatePreview.StopAndDispose(TimerUpdatePreviewElapsed);
+    }
+
+    public void Initialize(
+        Subtitle subtitle,
+        SubtitleFormat format,
+        string fileName,
+        string selectedStyleName,
+        IApplySsaStyles? applySsaStyles)
+    {
+        Title = string.Format(Se.Language.Assa.StylesTitleX, fileName);
+        Header = subtitle.Header;
+        _subtitle = new Subtitle(subtitle, false);
+        _subtitleFileName = fileName;
+        _applySsaStyles = applySsaStyles;
+        IsApplyVisible = applySsaStyles != null;
+
+        if (Header == null || !Header.Contains("style:", StringComparison.OrdinalIgnoreCase))
+        {
+            ResetHeader();
+        }
+
+        FileStyles.Clear();
+        foreach (var styleName in AdvancedSubStationAlpha.GetStylesFromHeader(Header))
+        {
+            var style = AdvancedSubStationAlpha.GetSsaStyle(styleName, Header);
+            if (style != null)
+            {
+                var display = StripAlpha(new StyleDisplay(style));
+                SelectedBorderType = display.BorderStyle;
+                FileStyles.Add(display);
+
+                var fontName = display.FontName;
+                if (!string.IsNullOrEmpty(fontName) && !Fonts.Contains(fontName))
+                {
+                    Fonts.Insert(0, fontName);
+                }
+            }
+        }
+
+        Task.Run(() => LoadFonts());
+
+        UpdateUsages();
+
+        if (FileStyles.Count > 0)
+        {
+            SelectedFileStyle =
+                FileStyles.FirstOrDefault(p => p.Name.Equals(selectedStyleName, StringComparison.OrdinalIgnoreCase));
+            if (SelectedFileStyle == null)
+            {
+                SelectedFileStyle = FileStyles[0];
+            }
+
+            CurrentStyle = SelectedFileStyle;
+            CurrentTitle = Se.Language.Assa.StylesInFile;
+        }
+
+        IsFileStyleSelected = SelectedFileStyle != null;
+        IsTakeUsagesFromVisible = FileStyleGrid.SelectedItems?.Count == 1;
+
+        _timerUpdatePreview.Start();
+    }
+
+    private void LoadFonts()
+    {
+        var fonts = FontHelper.GetLibAssaFonts();
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            foreach (var font in fonts)
+            {
+                if (!Fonts.Contains(font))
+                {
+                    Fonts.Add(font);
+                }
+            }
+        });
+    }
+
+    private void UpdateUsages()
+    {
+        foreach (var style in FileStyles)
+        {
+            style.UsageCount = _subtitle.Paragraphs.Count(p => p.Extra != null && p.Extra.TrimStart('*').Equals(style.Name.TrimStart('*'), StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    private void SaveFileStylesToHeader()
+    {
+        var styles = FileStyles.Select(p => p.ToSsaStyle()).ToList();
+        var assaHeader = AdvancedSubStationAlpha.GetHeaderAndStylesFromAdvancedSubStationAlpha(
+            string.IsNullOrEmpty(Header) ? AdvancedSubStationAlpha.DefaultHeader : Header,
+            styles);
+        Header = SubStationAlpha.GetHeaderAndStylesFromAdvancedSubStationAlpha(assaHeader, string.Empty);
+    }
+
+    private void ResetHeader()
+    {
+        var format = new SubStationAlpha();
+        var sub = new Subtitle();
+        var text = format.ToText(sub, string.Empty);
+        var lines = text.SplitToLines();
+        format.LoadSubtitle(sub, lines, string.Empty);
+        Header = sub.Header;
+    }
+
+    private void SaveSettings()
+    {
+        Se.Settings.Ssa.StoredStyles.Clear();
+        foreach (var style in StorageStyles)
+        {
+            var s = new SeAssaStyle(style);
+            Se.Settings.Ssa.StoredStyles.Add(s);
+        }
+
+        Se.SaveSettings();
+    }
+
+    private void LoadSettings()
+    {
+        StorageStyles.Clear();
+        foreach (var style in Se.Settings.Ssa.StoredStyles)
+        {
+            var display = StripAlpha(new StyleDisplay(style));
+            StorageStyles.Add(display);
+        }
+    }
+
+    internal static StyleDisplay StripAlpha(StyleDisplay display)
+    {
+        display.ColorPrimary = WithoutAlpha(display.ColorPrimary);
+        display.ColorSecondary = WithoutAlpha(display.ColorSecondary);
+        display.ColorOutline = WithoutAlpha(display.ColorOutline);
+        display.ColorShadow = WithoutAlpha(display.ColorShadow);
+        return display;
+    }
+
+    internal static Color WithoutAlpha(Color c)
+    {
+        return Color.FromArgb(255, c.R, c.G, c.B);
+    }
+
+    private void UpdatePreview()
+    {
+        var style = CurrentStyle;
+        if (style == null)
+        {
+            ImagePreview = new SKBitmap(1, 1, true).ToAvaloniaBitmap();
+            return;
+        }
+
+        var text = "This is a test";
+
+        // Scale the rendered font size to the preview canvas height (~360px) the same way
+        // libass scales fonts against PlayResY. Default to 288 (libass default) when missing.
+        var fontSize = (float)style.FontSize * 360f / GetPlayResY(_subtitle.Header);
+        var libAssFontName = FontHelper.GetSkiaFontNameFromLibAssaFontName(style.FontName);
+        SKBitmap bitmap;
+
+        if (style.BorderStyle.Style == BorderStyleType.BoxPerLine)
+        {
+            bitmap = TextToImageGenerator.GenerateImageWithPadding(
+                text,
+                style.FontName,
+                fontSize,
+                style.Bold,
+                style.ColorPrimary.ToSKColor(),
+                style.ColorShadow.ToSKColor(),
+                style.ColorOutline.ToSKColor(),
+                style.ColorOutline.ToSKColor(),
+                0,
+                (float)style.ShadowWidth,
+                isItalic: style.Italic,
+                isUnderline: style.Underline,
+                isStrikeout: style.Strikeout);
+
+            if (style.ShadowWidth > 0)
+            {
+                bitmap = TextToImageGenerator.AddShadowToBitmap(bitmap,
+                    (int)Math.Round(style.ShadowWidth, MidpointRounding.AwayFromZero), style.ColorShadow.ToSKColor());
+            }
+        }
+        else if (style.BorderStyle.Style == BorderStyleType.OneBox)
+        {
+            bitmap = TextToImageGenerator.GenerateImageWithPadding(
+                text,
+                libAssFontName,
+                fontSize,
+                style.Bold,
+                style.ColorPrimary.ToSKColor(),
+                style.ColorOutline.ToSKColor(),
+                SKColors.Red,
+                style.ColorShadow.ToSKColor(),
+                (float)style.OutlineWidth,
+                0,
+                1.0f,
+                (int)Math.Round(style.ShadowWidth),
+                isItalic: style.Italic,
+                isUnderline: style.Underline,
+                isStrikeout: style.Strikeout);
+        }
+        else // FontBoxType.None
+        {
+            bitmap = TextToImageGenerator.GenerateImageWithPadding(
+                text,
+                libAssFontName,
+                fontSize,
+                style.Bold,
+                style.ColorPrimary.ToSKColor(),
+                style.ColorOutline.ToSKColor(),
+                style.ColorShadow.ToSKColor(),
+                SKColors.Transparent,
+                (float)style.OutlineWidth,
+                (float)style.ShadowWidth,
+                isItalic: style.Italic,
+                isUnderline: style.Underline,
+                isStrikeout: style.Strikeout);
+        }
+
+        var frame = TextToImageGenerator.ComposeOnPreviewFrame(bitmap, GetAlignment(style), style.MarginLeft, style.MarginRight, style.MarginVertical);
+        ImagePreview = frame.ToAvaloniaBitmap();
+    }
+
+    private static int GetPlayResY(string? header)
+    {
+        if (string.IsNullOrEmpty(header))
+        {
+            return 288;
+        }
+
+        var value = AdvancedSubStationAlpha.GetTagValueFromHeader("PlayResY", "[Script Info]", header);
+        if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var y) && y > 0)
+        {
+            return y;
+        }
+
+        return 288;
+    }
+
+    private static int GetAlignment(StyleDisplay style)
+    {
+        if (style.AlignmentAn1)
+        {
+            return 1;
+        }
+        if (style.AlignmentAn2)
+        {
+            return 2;
+        }
+        if (style.AlignmentAn3)
+        {
+            return 3;
+        }
+        if (style.AlignmentAn4)
+        {
+            return 4;
+        }
+        if (style.AlignmentAn5)
+        {
+            return 5;
+        }
+        if (style.AlignmentAn6)
+        {
+            return 6;
+        }
+        if (style.AlignmentAn7)
+        {
+            return 7;
+        }
+        if (style.AlignmentAn8)
+        {
+            return 8;
+        }
+        if (style.AlignmentAn9)
+        {
+            return 9;
+        }
+        return 2;
+    }
+
+    internal void FileStylesChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        SwitchToFileStyle();
+    }
+
+    internal void StorageStylesChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        SwitchToStorageStyle();
+    }
+
+    // Also switch context when a grid merely gains focus (e.g. clicking the row that is already
+    // selected), otherwise SelectionChanged never fires and the title/editor stays on the other grid.
+    internal void FileStylesGotFocus(object? sender, FocusChangedEventArgs e)
+    {
+        SwitchToFileStyle();
+    }
+
+    internal void StorageStylesGotFocus(object? sender, FocusChangedEventArgs e)
+    {
+        SwitchToStorageStyle();
+    }
+
+    private void SwitchToFileStyle()
+    {
+        var selectedStyle = SelectedFileStyle;
+        CurrentStyle = selectedStyle;
+        CurrentTitle = Se.Language.Assa.StylesInFile;
+        SelectedBorderType = selectedStyle?.BorderStyle ?? BorderTypes[0];
+        IsFileStyleSelected = selectedStyle != null;
+        IsTakeUsagesFromVisible = FileStyleGrid.SelectedItems?.Count == 1;
+    }
+
+    private void SwitchToStorageStyle()
+    {
+        var selectedStyle = SelectedStorageStyle;
+        CurrentStyle = selectedStyle;
+        CurrentTitle = Se.Language.Assa.StylesSaved;
+        SelectedBorderType = selectedStyle?.BorderStyle ?? BorderTypes[0];
+        IsStorageStyleSelected = selectedStyle != null;
+        IsSetStyleAsDefaultVisible = StorageStyleGrid.SelectedItems?.Count == 1;
+        IsCopyToFileStylesVisible = StorageStyleGrid.SelectedItems?.Count > 0;
+    }
+
+    internal void BorderTypeChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        var selectedStyle = CurrentStyle;
+        if (selectedStyle == null)
+        {
+            return;
+        }
+
+        selectedStyle.BorderStyle = SelectedBorderType;
+    }
+
+    internal void FileStylesKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Delete)
+        {
+            var selectedStyle = SelectedFileStyle;
+            DeleteFileStyle(selectedStyle);
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>
+    /// Ctrl+Up/Ctrl+Down reorder the selected styles, as in SE 4. Tunneled, because the
+    /// ListBox underneath TableView handles Ctrl+Arrow itself (move focus without changing
+    /// the selection) and a bubbling handler would never see the key.
+    /// </summary>
+    internal void FileStylesMoveKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.KeyModifiers != KeyModifiers.Control || e.Source is TextBox)
+        {
+            return;
+        }
+
+        if (e.Key == Key.Up)
+        {
+            MoveFileStyles(ListMoveDirection.Up);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Down)
+        {
+            MoveFileStyles(ListMoveDirection.Down);
+            e.Handled = true;
+        }
+    }
+
+    private void DeleteFileStyle(StyleDisplay? selectedStyle)
+    {
+        if (selectedStyle == null)
+        {
+            return;
+        }
+
+        Dispatcher.UIThread.Post(async void () =>
+        {
+            var answer = MessageBoxResult.Yes;
+
+            if (Se.Settings.General.PromptBeforeDelete)
+            {
+                answer = await MessageBox.Show(
+                    Window!,
+                    Se.Language.Assa.DeleteStyleQuestion,
+                    $"Do you want to delete style \"{selectedStyle.Name}\" from current file?",
+                    MessageBoxButtons.YesNoCancel,
+                    MessageBoxIcon.Question);
+            }
+
+            if (answer != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            if (selectedStyle != null)
+            {
+                var idx = FileStyles.IndexOf(selectedStyle);
+                FileStyles.Remove(selectedStyle);
+                SelectedFileStyle = null;
+                CurrentStyle = null;
+                if (FileStyles.Count > 0)
+                {
+                    if (idx >= FileStyles.Count)
+                    {
+                        idx = FileStyles.Count - 1;
+                    }
+
+                    SelectedFileStyle = FileStyles[idx];
+                    CurrentStyle = SelectedFileStyle;
+                }
+
+                UpdateUsages();
+            }
+
+            TableViewExtras.FocusRow(FileStyleGrid);
+        });
+    }
+
+    private void DeleteFileStyles(List<StyleDisplay> selectedStyles)
+    {
+        if (selectedStyles.Count == 0)
+        {
+            return;
+        }
+
+        Dispatcher.UIThread.Post(async void () =>
+        {
+            var answer = MessageBoxResult.Yes;
+
+            if (Se.Settings.General.PromptBeforeDelete)
+            {
+                answer = await MessageBox.Show(
+                    Window!,
+                    Se.Language.Assa.DeleteStylesQuestion,
+                    $"Do you want to delete {selectedStyles.Count} styles?",
+                    MessageBoxButtons.YesNoCancel,
+                    MessageBoxIcon.Question);
+            }
+
+            if (answer != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            foreach (var selectedStyle in selectedStyles)
+            {
+                var idx = FileStyles.IndexOf(selectedStyle);
+                FileStyles.Remove(selectedStyle);
+                SelectedFileStyle = null;
+                CurrentStyle = null;
+                if (FileStyles.Count > 0)
+                {
+                    if (idx >= FileStyles.Count)
+                    {
+                        idx = FileStyles.Count - 1;
+                    }
+
+                    SelectedFileStyle = FileStyles[idx];
+                    CurrentStyle = SelectedFileStyle;
+                }
+
+            }
+
+            UpdateUsages();
+            TableViewExtras.FocusRow(FileStyleGrid);
+        });
+    }
+
+    internal void KeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            Close();
+        }
+        else if (UiUtil.IsHelp(e))
+        {
+            e.Handled = true;
+            UiUtil.ShowHelp("features/assa-styles");
+        }
+    }
+
+    internal void FilesContextMenuOpening(object? sender, EventArgs e)
+    {
+        IsDeleteAllVisible = FileStyles.Count > 0;
+        IsDeleteVisible = SelectedFileStyle != null;
+        IsMoveVisible = FileStyles.Count > 1 && FileStyleGrid.SelectedItems?.Count > 0;
+    }
+
+    internal void StoreContextMenuOpening(object? sender, EventArgs e)
+    {
+        // The storage menu's "Delete"/"Clear" must follow the storage list, not the file list -
+        // reading FileStyles here hid "Delete" whenever no file style happened to be selected,
+        // and offered "Clear" on an empty storage list.
+        IsDeleteAllVisible = StorageStyles.Count > 0;
+        IsDeleteVisible = SelectedStorageStyle != null;
+    }
+}

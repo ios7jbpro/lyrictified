@@ -1,0 +1,223 @@
+using Nikse.SubtitleEdit.Core.Common;
+using Nikse.SubtitleEdit.UiLogic.Export;
+
+namespace SeConv.Core;
+
+/// <summary>
+/// Renders text subtitles into image-based output formats (Blu-Ray sup, VobSub, BDN-XML,
+/// DOST, FCP, D-Cinema, images-with-time-code, WebVTT thumbnails). Each paragraph is
+/// rendered to an SKBitmap via <see cref="ImageRenderer.GenerateBitmap"/> and fed through
+/// the format-specific <see cref="IExportHandler"/>.
+/// </summary>
+internal static class ImageOutputWriter
+{
+    public sealed record FormatTarget(string Name, IExportHandler Handler);
+
+    public static IExportHandler? TryCreateHandler(string normalizedFormat)
+    {
+        var n = normalizedFormat.Trim();
+        return n switch
+        {
+            var x when x.Equals("Blu-ray sup", StringComparison.OrdinalIgnoreCase) || x.Equals("BluRaySup", StringComparison.OrdinalIgnoreCase)
+                => new ExportHandlerBluRaySup(),
+            var x when x.Equals("VobSub", StringComparison.OrdinalIgnoreCase)
+                => new ExportHandlerVobSub(),
+            var x when x.Equals("BDN-XML", StringComparison.OrdinalIgnoreCase) || x.Equals("BdnXml", StringComparison.OrdinalIgnoreCase)
+                => new ExportHandlerBdnXml(),
+            var x when x.Equals("DOST/image", StringComparison.OrdinalIgnoreCase) || x.Equals("Dost", StringComparison.OrdinalIgnoreCase)
+                => new ExportHandlerDost(),
+            var x when x.Equals("FCP/image", StringComparison.OrdinalIgnoreCase) || x.Equals("FcpImage", StringComparison.OrdinalIgnoreCase)
+                => new ExportHandlerFcp(),
+            var x when x.Equals("D-Cinema interop/png", StringComparison.OrdinalIgnoreCase) || x.Equals("DCinemaInterop", StringComparison.OrdinalIgnoreCase)
+                => new ExportHandlerDCinemaInteropPng(),
+            var x when x.Equals("D-Cinema SMPTE 2014/png", StringComparison.OrdinalIgnoreCase) || x.Equals("DCinemaSmpte2014", StringComparison.OrdinalIgnoreCase)
+                => new ExportHandlerDCinemaSmpte2014Png(),
+            var x when x.Equals("Images with time codes in file name", StringComparison.OrdinalIgnoreCase) || x.Equals("ImagesWithTimeCodes", StringComparison.OrdinalIgnoreCase)
+                => new ExportHandlerImagesWithTimeCode(),
+            // WebVTT thumbnail bundle: a directory of numbered PNG sprites plus an
+            // index.vtt that references each by start/end time. The handler treats
+            // the output path as a folder (creates it, writes PNGs + index.vtt
+            // inside), so e.g. `seconv movie.srt webvttthumbnail` produces
+            // `movie.vtt/0001.png`, `0002.png`, ..., `index.vtt`.
+            var x when x.Equals("WebVTT Thumbnail", StringComparison.OrdinalIgnoreCase) || x.Equals("WebVttThumbnail", StringComparison.OrdinalIgnoreCase)
+                => new ExportHandlerWebVttThumbnail(),
+            _ => null,
+        };
+    }
+
+    public static void Write(Subtitle subtitle, string filePath, IExportHandler handler, ConversionOptions options)
+    {
+        if (subtitle.Paragraphs.Count == 0)
+        {
+            throw new InvalidOperationException("No paragraphs to render.");
+        }
+
+        var (screenWidth, screenHeight) = options.Resolution ?? (1920, 1080);
+
+        // "{\pos(x,y)}" is in the script's own resolution, the export canvas may be another one.
+        var (scriptWidth, scriptHeight) = ExportTextTags.GetScriptResolution(subtitle.Header);
+
+        // Pre-render header with the first paragraph as a representative
+        var firstParam = BuildParameter(subtitle.Paragraphs[0], 0, screenWidth, screenHeight, options);
+        firstParam.Bitmap = ImageRenderer.GenerateBitmap(firstParam);
+        handler.WriteHeader(filePath, firstParam);
+        firstParam.Bitmap?.Dispose();
+
+        for (var i = 0; i < subtitle.Paragraphs.Count; i++)
+        {
+            var p = subtitle.Paragraphs[i];
+            var ip = BuildParameter(p, i, screenWidth, screenHeight, options);
+            ip.Bitmap = ImageRenderer.GenerateBitmap(ip);
+            // Needs the rendered size, so it cannot happen in BuildParameter.
+            ExportTextTags.ApplyPositionTag(ip, p.Text, scriptWidth, scriptHeight);
+            handler.CreateParagraph(ip);
+            handler.WriteParagraph(ip);
+            ip.Bitmap?.Dispose();
+        }
+        handler.WriteFooter();
+    }
+
+    /// <summary>
+    /// Image-to-image variant: write a sequence of pre-rendered bitmaps (Blu-Ray .sup,
+    /// VobSub, MKV PGS, DVB-sub) into <paramref name="handler"/> without going through
+    /// <see cref="ImageRenderer"/>. Source dimensions baked into each
+    /// <see cref="BitmapSubtitleLoader.BitmapSubtitleItem"/> override
+    /// <see cref="ConversionOptions.Resolution"/> when present, so e.g. a 1920x1080
+    /// Blu-Ray sup re-exports as 1920x1080 BDN-XML even if the CLI's default
+    /// <c>--resolution</c> is something else.
+    /// </summary>
+    public static void WritePreservedBitmaps(
+        IReadOnlyList<BitmapSubtitleLoader.BitmapSubtitleItem> items,
+        string filePath,
+        IExportHandler handler,
+        ConversionOptions options)
+    {
+        if (items.Count == 0)
+        {
+            throw new InvalidOperationException("No bitmaps to write.");
+        }
+
+        var (defaultWidth, defaultHeight) = options.Resolution ?? (1920, 1080);
+
+        var first = items[0];
+        var firstParam = BuildPreservedParameter(first, 0, defaultWidth, defaultHeight, options);
+        handler.WriteHeader(filePath, firstParam);
+
+        for (var i = 0; i < items.Count; i++)
+        {
+            var item = items[i];
+            var ip = BuildPreservedParameter(item, i, defaultWidth, defaultHeight, options);
+            handler.CreateParagraph(ip);
+            handler.WriteParagraph(ip);
+            // We do NOT dispose item.Bitmap here — ownership stays with BitmapSubtitleItem;
+            // the caller disposes the whole list when done. Disposing twice would crash.
+        }
+        handler.WriteFooter();
+    }
+
+    private static ImageParameter BuildPreservedParameter(
+        BitmapSubtitleLoader.BitmapSubtitleItem item,
+        int index,
+        int defaultWidth,
+        int defaultHeight,
+        ConversionOptions options)
+    {
+        var screenWidth = item.ScreenWidth ?? defaultWidth;
+        var screenHeight = item.ScreenHeight ?? defaultHeight;
+
+        // The source's own position, in the frame the bitmap came from - kept as-is because
+        // the item's screen size travels with it. Handlers ignore a position outside the
+        // frame and fall back to the alignment below, so an unusable one costs nothing.
+        var position = item.Position;
+        if (position is { } p &&
+            (p.X < 0 || p.X >= screenWidth || p.Y < 0 || p.Y >= screenHeight))
+        {
+            position = null;
+        }
+
+        var style = options.ImageStyle;
+        return new ImageParameter
+        {
+            Index = index,
+            Text = string.Empty,
+            Bitmap = item.Bitmap,
+            StartTime = item.StartTime.TimeSpan,
+            EndTime = item.EndTime.TimeSpan,
+            Alignment = style.Alignment,
+            OverridePosition = position,
+            ContentAlignment = style.ContentAlignment,
+            // Font/colour fields are still required by the ImageParameter contract even
+            // though no rendering happens — handlers read them for metadata in some
+            // formats (e.g. FCP XML). Mirror BuildParameter's resolved style.
+            FontName = style.FontName,
+            FontSize = style.FontSize,
+            FontColor = style.FontColor,
+            IsBold = style.IsBold,
+            OutlineColor = style.OutlineColor,
+            OutlineWidth = style.OutlineWidth,
+            ShadowColor = style.ShadowColor,
+            ShadowWidth = style.ShadowWidth,
+            BackgroundColor = style.BackgroundColor,
+            BackgroundCornerRadius = style.BackgroundCornerRadius,
+            LineSpacingPercent = style.LineSpacingPercent,
+            ScreenWidth = screenWidth,
+            ScreenHeight = screenHeight,
+            BottomTopMargin = style.BottomTopMargin ?? (int)(screenHeight * 0.05),
+            LeftRightMargin = style.LeftRightMargin ?? (int)(screenWidth * 0.05),
+            PaddingLeftRight = 0,
+            PaddingTopBottom = 0,
+            FramesPerSecond = options.TargetFps ?? options.Fps ?? 25.0,
+            IsRightToLeft = false,
+            IsForced = false,
+            IsFullFrame = false,
+            Error = string.Empty,
+        };
+    }
+
+    private static ImageParameter BuildParameter(Paragraph p, int index, int screenWidth, int screenHeight, ConversionOptions options)
+    {
+        var style = options.ImageStyle;
+
+        // "{\an8}" & co. position the single paragraph; --alignment is only the fallback for
+        // untagged lines. Without this the tag was rendered as literal text at the bottom of
+        // the frame (issue #13025) - as were "{\i1}", "{\b1}" and "{\c&H..&}", which
+        // ToRenderableText turns into the HTML tags the renderer understands.
+        var text = p.Text ?? string.Empty;
+        return new ImageParameter
+        {
+            Index = index,
+            Text = ExportTextTags.ToRenderableText(text),
+            StartTime = p.StartTime.TimeSpan,
+            EndTime = p.EndTime.TimeSpan,
+            Alignment = ExportTextTags.GetAlignment(text, style.Alignment),
+            ContentAlignment = style.ContentAlignment,
+            FontName = style.FontName,
+            FontSize = style.FontSize,
+            FontColor = style.FontColor,
+            IsBold = style.IsBold,
+            OutlineColor = style.OutlineColor,
+            OutlineWidth = style.OutlineWidth,
+            ShadowColor = style.ShadowColor,
+            ShadowWidth = style.ShadowWidth,
+            BackgroundColor = style.BackgroundColor,
+            BackgroundCornerRadius = style.BackgroundCornerRadius,
+            BoxType = style.EffectiveBoxType,
+            BoxPaddingLeft = style.BoxPaddingLeft,
+            BoxPaddingRight = style.BoxPaddingRight,
+            BoxPaddingTop = style.BoxPaddingTop,
+            BoxPaddingBottom = style.BoxPaddingBottom,
+            LineSpacingPercent = style.LineSpacingPercent,
+            ScreenWidth = screenWidth,
+            ScreenHeight = screenHeight,
+            BottomTopMargin = style.BottomTopMargin ?? (int)(screenHeight * 0.05),
+            LeftRightMargin = style.LeftRightMargin ?? (int)(screenWidth * 0.05),
+            PaddingLeftRight = 0,
+            PaddingTopBottom = 0,
+            FramesPerSecond = options.TargetFps ?? options.Fps ?? 25.0,
+            IsRightToLeft = false,
+            IsForced = false,
+            IsFullFrame = false,
+            Error = string.Empty,
+        };
+    }
+}

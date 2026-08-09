@@ -1,0 +1,7 @@
+﻿
+🐤 Canary
+
+Type: FastConformer + Transformer decoder
+Focus: 🧠 Accuracy + multilingual + translation
+Strengths: Text quality (punctuation, casing)
+

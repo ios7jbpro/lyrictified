@@ -1,0 +1,91 @@
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using Nikse.SubtitleEdit.Features.Video.TextToSpeech.Engines;
+using Nikse.SubtitleEdit.Logic.Config;
+
+namespace Nikse.SubtitleEdit.Features.Video.TextToSpeech;
+
+// Engines read voice-design instruction text out of Se.Settings during Speak(). To temporarily
+// substitute a different instruction (per-line in Generate, per-row in the Cast Test/Regenerate
+// buttons, per-line in Review Regenerate) we have to swap the global field, run the engine call,
+// then put the original back.
+//
+// Three places used to keep private copies of this swap. The duplication was harmless on its own
+// but the swap is GLOBAL: if two callers ran concurrently (e.g. user clicks Test in the Cast
+// dialog while a Generate loop is mid-paragraph) their swap/restore pairs would interleave and
+// one would restore the *other's* swap as if it were the original — leaving stale instruction
+// text in Se.Settings.
+//
+// The semaphore here serialises the entire swap → speak → restore critical section so concurrent
+// callers wait their turn. Side-effect: parallel Speak() calls that share the swap field are
+// effectively serialised, which is acceptable given how rarely both happen at once.
+public static class TtsInstructionSwap
+{
+    private static readonly SemaphoreSlim Gate = new(1, 1);
+
+    // Runs `speak` with the given instruction temporarily applied to Se.Settings. Returns
+    // whatever `speak` returns. Settings are always restored, even when `speak` throws.
+    public static async Task<T> RunAsync<T>(ITtsEngine? engine, string? instruction, Func<Task<T>> speak)
+    {
+        await Gate.WaitAsync();
+        var previous = Swap(engine, instruction);
+        try
+        {
+            // Task.Run, not a bare await: every engine's Speak() runs a stretch of synchronous
+            // work before its first real await (Process.Start of the local server, --help probes,
+            // file checks), and awaiting it from a command handler runs all of that on the UI
+            // thread. That is how the CrispASR --help probe froze the whole app in #12878, and
+            // even without a deadlock it stalls the window for as long as a server takes to spawn.
+            return await Task.Run(speak);
+        }
+        finally
+        {
+            Restore(engine, previous);
+            Gate.Release();
+        }
+    }
+
+    private static string? Swap(ITtsEngine? engine, string? instruction)
+    {
+        var s = Se.Settings.Video.TextToSpeech;
+        switch (engine)
+        {
+            // The captured previous value is coalesced to "": null doubles as Restore's
+            // "engine has no instruction field" sentinel, so a null saved setting (settings
+            // JSON with null, a binding writing null) would skip the restore and permanently
+            // commit the temporary per-line instruction to global settings.
+            case Qwen3TtsCpp:
+            case Qwen3TtsCrispAsr:
+                var prevQwen = s.Qwen3TtsCppInstruction ?? string.Empty;
+                s.Qwen3TtsCppInstruction = instruction ?? string.Empty;
+                return prevQwen;
+            case OmniVoiceTtsCpp:
+                var prevOmni = s.OmniVoiceTtsCppInstruction ?? string.Empty;
+                s.OmniVoiceTtsCppInstruction = instruction ?? string.Empty;
+                return prevOmni;
+            default:
+                return null;
+        }
+    }
+
+    private static void Restore(ITtsEngine? engine, string? previous)
+    {
+        if (previous == null)
+        {
+            return;
+        }
+
+        var s = Se.Settings.Video.TextToSpeech;
+        switch (engine)
+        {
+            case Qwen3TtsCpp:
+            case Qwen3TtsCrispAsr:
+                s.Qwen3TtsCppInstruction = previous;
+                break;
+            case OmniVoiceTtsCpp:
+                s.OmniVoiceTtsCppInstruction = previous;
+                break;
+        }
+    }
+}

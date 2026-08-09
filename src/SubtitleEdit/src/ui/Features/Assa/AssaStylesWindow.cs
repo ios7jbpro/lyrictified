@@ -1,0 +1,756 @@
+﻿using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Data;
+using Avalonia.Input;
+using Avalonia.Interactivity;
+using Avalonia.Layout;
+using Avalonia.Media;
+using System.Collections;
+using System.Windows.Input;
+using Nikse.SubtitleEdit.Features.Shared.ColorPicker;
+using Nikse.SubtitleEdit.Logic;
+using Nikse.SubtitleEdit.Logic.Config;
+
+namespace Nikse.SubtitleEdit.Features.Assa;
+
+public class AssaStylesWindow : Window
+{
+    public AssaStylesWindow(AssaStylesViewModel vm)
+    {
+        UiUtil.InitializeWindow(this, GetType().Name);
+        Bind(Window.TitleProperty, new Binding(nameof(vm.Title))
+        {
+            Source = vm,
+            Mode = BindingMode.TwoWay,
+        });
+        CanResize = true;
+        Width = 1200;
+        Height = 850;
+        MinWidth = 1100;
+        MinHeight = 600;
+
+        vm.Window = this;
+        DataContext = vm;
+
+        var grid = new Grid
+        {
+            RowDefinitions =
+            {
+                new RowDefinition { Height = new GridLength(2, GridUnitType.Star) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+            },
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+            },
+            Margin = UiUtil.MakeWindowMargin(),
+            ColumnSpacing = 5,
+            RowSpacing = 5,
+            Width = double.NaN,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+
+        var buttonApply = UiUtil.MakeButton(Se.Language.General.Apply, vm.ApplyCommand)
+            .WithBindIsVisible(nameof(vm.IsApplyVisible));
+        var buttonOk = UiUtil.MakeButtonOk(vm.OkCommand);
+        var buttonCancel = UiUtil.MakeButtonCancel(vm.CancelCommand);
+        var panelButtons = UiUtil.MakeButtonBar(buttonApply, buttonOk, buttonCancel);
+
+        grid.Add(MakeLeftView(vm), 0);
+        grid.Add(MakeRightView(vm), 0, 1);
+        grid.Add(panelButtons, 3, 0, 1, 2);
+
+        Content = grid;
+
+        // initial focus on an input, not an action button - a focused button clicks on bare Space
+        Activated += delegate { TableViewExtras.FocusRow(vm.FileStyleGrid); };
+        KeyDown += vm.KeyDown;
+
+        Closing += delegate { UiUtil.SaveWindowPosition(this); };
+        Loaded += delegate { UiUtil.RestoreWindowPosition(this); };
+    }
+
+    private static Grid MakeLeftView(AssaStylesViewModel vm)
+    {
+        var grid = new Grid
+        {
+            RowDefinitions =
+            {
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Star) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Star) },
+            },
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+            },
+            Width = double.NaN,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+
+        grid.Add(MakeFileStyles(vm), 0);
+        grid.Add(MakeStorageStyles(vm), 1);
+
+        return grid;
+    }
+
+    private static Border MakeFileStyles(AssaStylesViewModel vm)
+    {
+        var grid = new Grid
+        {
+            RowDefinitions =
+            {
+                new RowDefinition { Height = new GridLength(2, GridUnitType.Auto) }, // label
+                new RowDefinition { Height = new GridLength(2, GridUnitType.Star) }, // data grid
+                new RowDefinition { Height = new GridLength(2, GridUnitType.Auto) }, // buttons
+            },
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+            },
+            Width = double.NaN,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+
+        var label = UiUtil.MakeLabel(Se.Language.Assa.StylesInFile).WithBold();
+
+        // No header sorting: ASSA styles are written to the file header in list
+        // order on OK, so the collection order is not presentation-only.
+        var dataGrid = TableViewExtras.MakeTableView();
+        dataGrid.DataContext = vm;
+        dataGrid.ItemsSource = vm.FileStyles;
+
+        dataGrid.Columns.Add(new SeTableViewColumn
+        {
+            Header = Se.Language.General.Name,
+            CellTheme = UiUtil.TableViewCellTheme,
+            HeaderTheme = UiUtil.TableViewColumnHeaderTheme,
+            Binding = new Binding(nameof(StyleDisplay.Name)),
+            Width = new GridLength(1, GridUnitType.Star),
+        });
+        dataGrid.Columns.Add(new SeTableViewColumn
+        {
+            Header = Se.Language.General.FontName,
+            CellTheme = UiUtil.TableViewCellTheme,
+            HeaderTheme = UiUtil.TableViewColumnHeaderTheme,
+            Binding = new Binding(nameof(StyleDisplay.FontName)),
+            Width = new GridLength(150),
+        });
+        dataGrid.Columns.Add(new SeTableViewColumn
+        {
+            Header = Se.Language.General.FontSize,
+            CellTheme = UiUtil.TableViewCellTheme,
+            HeaderTheme = UiUtil.TableViewColumnHeaderTheme,
+            Binding = new Binding(nameof(StyleDisplay.FontSize)),
+            Width = new GridLength(90),
+        });
+        dataGrid.Columns.Add(new SeTableViewColumn
+        {
+            Header = Se.Language.General.Usages,
+            CellTheme = UiUtil.TableViewCellTheme,
+            HeaderTheme = UiUtil.TableViewColumnHeaderTheme,
+            Binding = new Binding(nameof(StyleDisplay.UsageCount)),
+            Width = new GridLength(90),
+        });
+
+        dataGrid.Bind(TableView.SelectedItemProperty, new Binding(nameof(vm.SelectedFileStyle)) { Source = vm });
+        dataGrid.SelectionChanged += vm.FileStylesChanged;
+        dataGrid.GotFocus += vm.FileStylesGotFocus;
+        dataGrid.KeyDown += vm.FileStylesKeyDown;
+        dataGrid.AddHandler(InputElement.KeyDownEvent, vm.FileStylesMoveKeyDown, RoutingStrategies.Tunnel);
+        TableViewExtras.AttachListNavigation(dataGrid);
+        vm.FileStyleGrid = dataGrid;
+
+        var flyout = new MenuFlyout();
+        flyout.Opening += vm.FilesContextMenuOpening;
+        dataGrid.ContextFlyout = flyout;
+        UiUtil.AttachMacContextFlyoutHandler(dataGrid);
+
+        var menuItemCopyToStorageStyles = new MenuItem
+        {
+            Header = Se.Language.Assa.CopyToStorageStyles,
+            DataContext = vm,
+            Command = vm.FileCopyToStorageCommand,
+        };
+        menuItemCopyToStorageStyles.Bind(MenuItem.IsVisibleProperty, new Binding(nameof(vm.IsFileStyleSelected)) { Source = vm });
+        flyout.Items.Add(menuItemCopyToStorageStyles);
+
+        var menuItemDelete = new MenuItem
+        {
+            Header = Se.Language.General.Delete,
+            DataContext = vm,
+            Command = vm.FileRemoveCommand,
+        };
+        menuItemDelete.Bind(MenuItem.IsVisibleProperty, new Binding(nameof(vm.IsDeleteVisible)) { Source = vm });
+        flyout.Items.Add(menuItemDelete);
+
+        var menuItemClear = new MenuItem
+        {
+            Header = Se.Language.General.Clear,
+            DataContext = vm,
+            Command = vm.FileRemoveAllCommand,
+        };
+        menuItemClear.Bind(MenuItem.IsVisibleProperty, new Binding(nameof(vm.IsDeleteAllVisible)) { Source = vm });
+        flyout.Items.Add(menuItemClear);
+
+        var menuItemTakeUsagesFrom = new MenuItem
+        {
+            Header = Se.Language.Assa.TakeUsagesFromDotDotDot,
+            DataContext = vm,
+            Command = vm.FileTakeUsagesFromCommand,
+        };
+        menuItemTakeUsagesFrom.Bind(MenuItem.IsVisibleProperty, new Binding(nameof(vm.IsTakeUsagesFromVisible)) { Source = vm });
+        flyout.Items.Add(menuItemTakeUsagesFrom);
+
+        var menuItemReplaceWith = new MenuItem
+        {
+            Header = Se.Language.Assa.ReplaceStyleWithDotDotDot,
+            DataContext = vm,
+            Command = vm.FileReplaceWithCommand,
+        };
+        menuItemReplaceWith.Bind(MenuItem.IsVisibleProperty, new Binding(nameof(vm.IsFileStyleSelected)) { Source = vm });
+        flyout.Items.Add(menuItemReplaceWith);
+
+        AddMoveMenuItems(flyout, vm);
+
+        var buttonNew = UiUtil.MakeButton(vm.FileNewCommand, IconNames.Plus, Se.Language.General.New);
+        var buttonRemove = UiUtil.MakeButton(vm.FileRemoveCommand, IconNames.Trash, Se.Language.General.Delete);
+        var buttonDuplicate = UiUtil.MakeButton(vm.FilesDuplicateCommand, IconNames.Duplicate, Se.Language.General.Duplicate);
+        var buttonImport = UiUtil.MakeButton(vm.FileImportCommand, IconNames.Import, Se.Language.General.Import);
+        var buttonExport = UiUtil.MakeButton(vm.FileExportCommand, IconNames.Export, Se.Language.General.Export);
+        var buttonCopyToStorage = UiUtil.MakeButton(Se.Language.Assa.CopyToStorageStyles, vm.FileCopyToStorageCommand).WithBindEnabled(nameof(vm.IsFileStyleSelected));
+        var panelButtons = UiUtil.MakeButtonBar(
+            buttonNew,
+            buttonDuplicate,
+            buttonRemove,
+            buttonImport,
+            buttonExport,
+            buttonCopyToStorage
+        ).WithAlignmentLeft();
+
+        grid.Add(label, 0, 0);
+        grid.Add(dataGrid, 1, 0);
+        grid.Add(panelButtons, 2, 0);
+
+        return UiUtil.MakeBorderForControl(grid).WithMarginBottom(5);
+    }
+
+    private static Border MakeStorageStyles(AssaStylesViewModel vm)
+    {
+        var grid = new Grid
+        {
+            RowDefinitions =
+            {
+                new RowDefinition { Height = new GridLength(2, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(2, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(2, GridUnitType.Star) },
+                new RowDefinition { Height = new GridLength(2, GridUnitType.Auto) },
+            },
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+            },
+            Width = double.NaN,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+
+        var label = UiUtil.MakeLabel(Se.Language.Assa.StylesSaved).WithBold();
+
+        var labelCategory = UiUtil.MakeLabel(Se.Language.General.Category);
+        var comboBoxCategory = UiUtil.MakeComboBox(vm.StorageCategories, vm, nameof(vm.SelectedStorageCategory)).WithMinWidth(160);
+        var buttonNewCategory = UiUtil.MakeButton(vm.NewCategoryCommand, IconNames.Plus, Se.Language.Assa.NewCategory);
+        var buttonRenameCategory = UiUtil.MakeButton(vm.RenameCategoryCommand, IconNames.Pencil, Se.Language.Assa.RenameCategory)
+            .WithBindIsVisible(nameof(vm.IsCategoryActionVisible));
+        var buttonDeleteCategory = UiUtil.MakeButton(vm.DeleteCategoryCommand, IconNames.Trash, Se.Language.Assa.DeleteCategory)
+            .WithBindIsVisible(nameof(vm.IsCategoryActionVisible));
+        var panelCategory = UiUtil.MakeHorizontalPanel(labelCategory, comboBoxCategory, buttonNewCategory, buttonRenameCategory, buttonDeleteCategory)
+            .WithAlignmentLeft();
+
+        // No header sorting: the storage style order is persisted to settings in
+        // list order on OK, so the collection order is not presentation-only.
+        var dataGrid = TableViewExtras.MakeTableView();
+        dataGrid.DataContext = vm;
+        dataGrid.ItemsSource = vm.StorageStylesView;
+
+        dataGrid.Columns.Add(new SeTableViewColumn
+        {
+            Header = Se.Language.General.Name,
+            CellTheme = UiUtil.TableViewCellTheme,
+            HeaderTheme = UiUtil.TableViewColumnHeaderTheme,
+            Binding = new Binding(nameof(StyleDisplay.Name)),
+            Width = new GridLength(1, GridUnitType.Star),
+        });
+        dataGrid.Columns.Add(new SeTableViewColumn
+        {
+            Header = Se.Language.General.Category,
+            CellTheme = UiUtil.TableViewCellTheme,
+            HeaderTheme = UiUtil.TableViewColumnHeaderTheme,
+            Binding = new Binding(nameof(StyleDisplay.Category)),
+            Width = new GridLength(120),
+        });
+        dataGrid.Columns.Add(new SeTableViewColumn
+        {
+            Header = Se.Language.General.FontName,
+            CellTheme = UiUtil.TableViewCellTheme,
+            HeaderTheme = UiUtil.TableViewColumnHeaderTheme,
+            Binding = new Binding(nameof(StyleDisplay.FontName)),
+            Width = new GridLength(150),
+        });
+        dataGrid.Columns.Add(new SeTableViewColumn
+        {
+            Header = Se.Language.General.FontSize,
+            CellTheme = UiUtil.TableViewCellTheme,
+            HeaderTheme = UiUtil.TableViewColumnHeaderTheme,
+            Binding = new Binding(nameof(StyleDisplay.FontSize)),
+            Width = new GridLength(90),
+        });
+        dataGrid.Columns.Add(new SeTableViewColumn
+        {
+            Header = Se.Language.General.IsDefault,
+            CellTheme = UiUtil.TableViewCellTheme,
+            HeaderTheme = UiUtil.TableViewColumnHeaderTheme,
+            Binding = new Binding(nameof(StyleDisplay.IsDefault)),
+            Width = new GridLength(90),
+        });
+
+        dataGrid.Bind(TableView.SelectedItemProperty, new Binding(nameof(vm.SelectedStorageStyle)) { Source = vm });
+        dataGrid.SelectionChanged += vm.StorageStylesChanged;
+        dataGrid.GotFocus += vm.StorageStylesGotFocus;
+        vm.StorageStyleGrid = dataGrid;
+
+        var flyout = new MenuFlyout();
+        flyout.Opening += vm.StoreContextMenuOpening;
+        dataGrid.ContextFlyout = flyout;
+        UiUtil.AttachMacContextFlyoutHandler(dataGrid);
+
+        var menuItemCopyToFileStyles = new MenuItem
+        {
+            Header = Se.Language.Assa.CopyToFileStyles,
+            DataContext = vm,
+            Command = vm.StorageCopyToFilesCommand,
+        };
+        menuItemCopyToFileStyles.Bind(MenuItem.IsVisibleProperty, new Binding(nameof(vm.IsCopyToFileStylesVisible)) { Source = vm });
+        flyout.Items.Add(menuItemCopyToFileStyles);
+
+        var menuItemDelete = new MenuItem
+        {
+            Header = Se.Language.General.Delete,
+            DataContext = vm,
+            Command = vm.StorageRemoveCommand,
+        };
+        menuItemDelete.Bind(MenuItem.IsVisibleProperty, new Binding(nameof(vm.IsDeleteVisible)) { Source = vm });
+        flyout.Items.Add(menuItemDelete);
+
+        var menuItemClear = new MenuItem
+        {
+            Header = Se.Language.General.Clear,
+            DataContext = vm,
+            Command = vm.StorageRemoveAllCommand,
+        };
+        menuItemClear.Bind(MenuItem.IsVisibleProperty, new Binding(nameof(vm.IsDeleteAllVisible)) { Source = vm });
+        flyout.Items.Add(menuItemClear);
+
+        var menuItemClearSetAsDefault = new MenuItem
+        {
+            Header = Se.Language.Assa.SetStyleAsDefault,
+            DataContext = vm,
+            Command = vm.StorageSetDefaultCommand,
+        };
+        menuItemClearSetAsDefault.Bind(MenuItem.IsVisibleProperty, new Binding(nameof(vm.IsSetStyleAsDefaultVisible)) { Source = vm });
+        flyout.Items.Add(menuItemClearSetAsDefault);
+
+        var menuItemMoveToCategory = new MenuItem
+        {
+            Header = Se.Language.Assa.MoveToCategoryDotDotDot,
+            DataContext = vm,
+            Command = vm.MoveToCategoryCommand,
+        };
+        menuItemMoveToCategory.Bind(MenuItem.IsVisibleProperty, new Binding(nameof(vm.IsStorageStyleSelected)) { Source = vm });
+        flyout.Items.Add(menuItemMoveToCategory);
+
+        var buttonNew = UiUtil.MakeButton(vm.StorageNewCommand, IconNames.Plus, Se.Language.General.New);
+        var buttonDuplicate = UiUtil.MakeButton(vm.StorageDuplicateCommand, IconNames.Duplicate, Se.Language.General.Duplicate);
+        var buttonRemove = UiUtil.MakeButton(vm.StorageRemoveCommand, IconNames.Trash, Se.Language.General.Delete);
+        var buttonImport = UiUtil.MakeButton(vm.StorageImportCommand, IconNames.Import, Se.Language.General.Import);
+        var buttonExport = UiUtil.MakeButton(vm.StorageExportCommand, IconNames.Export, Se.Language.General.Export);
+        var buttonSetDefault = UiUtil.MakeButton(vm.StorageSetDefaultCommand, IconNames.Check, Se.Language.Assa.SetStyleAsDefault);
+        var buttonCopyToFiles = UiUtil.MakeButton(Se.Language.Assa.CopyToFileStyles, vm.StorageCopyToFilesCommand).WithBindEnabled(nameof(vm.IsStorageStyleSelected));
+        var panelButtons = UiUtil.MakeButtonBar(
+            buttonNew,
+            buttonDuplicate,
+            buttonRemove,
+            buttonImport,
+            buttonExport,
+            buttonSetDefault,
+            buttonCopyToFiles
+        ).WithAlignmentLeft();
+
+        grid.Add(label, 0, 0);
+        grid.Add(panelCategory, 1, 0);
+        grid.Add(dataGrid, 2, 0);
+        grid.Add(panelButtons, 3, 0);
+
+        return UiUtil.MakeBorderForControl(grid);
+    }
+
+    private static Grid MakeRightView(AssaStylesViewModel vm)
+    {
+        var grid = new Grid
+        {
+            RowDefinitions =
+            {
+                new RowDefinition { Height = new GridLength(2, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Star) },
+            },
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+            },
+            Width = double.NaN,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+
+        grid.Add(MakeSelectedStyleView(vm), 0);
+        grid.Add(MakePreviewView(vm), 1);
+
+        return grid;
+    }
+
+    private static Border MakeSelectedStyleView(AssaStylesViewModel vm)
+    {
+        var grid = new Grid
+        {
+            RowDefinitions =
+            {
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+            },
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+            },
+            Width = double.NaN,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            ColumnSpacing = 5,
+            RowSpacing = 5,
+        };
+
+        var label = UiUtil.MakeLabel().WithBold().WithBindText(vm, nameof(vm.CurrentTitle));
+
+        var labelName = UiUtil.MakeLabel(Se.Language.General.Name);
+        var textBoxName = UiUtil.MakeTextBox(200, vm, nameof(vm.CurrentStyle) + "." + nameof(StyleDisplay.Name));
+        var panelName = UiUtil.MakeHorizontalPanel(labelName, textBoxName).WithMarginBottom(10);
+
+        var labelFontName = UiUtil.MakeLabel(Se.Language.General.FontName);
+        var comboBoxFontName = UiUtil.MakeComboBox(vm.Fonts, vm, nameof(vm.CurrentStyle) + "." + nameof(StyleDisplay.FontName)).WithMinWidth(150);
+        var buttonFontBrowse = UiUtil.MakeButtonBrowse(vm.PickFontNameCommand, null, Se.Language.Tools.PickFontNameTitle);
+        var buttonFontAttachments = UiUtil.MakeButton(vm.BrowseFontNameCommand, IconNames.Paperclip, Se.Language.Assa.Attachments);
+        var labelFontSize = UiUtil.MakeLabel(Se.Language.General.FontSize);
+        var numericUpDownFontSize = UiUtil.MakeNumericUpDownOneDecimal(1, 1000, 130, vm, nameof(vm.CurrentStyle) + "." + nameof(StyleDisplay.FontSize));
+        numericUpDownFontSize.Increment = 1;
+        var panelFont = UiUtil.MakeHorizontalPanel(labelFontName, comboBoxFontName, buttonFontBrowse, buttonFontAttachments, labelFontSize, numericUpDownFontSize);
+
+        var checkBoxBold = UiUtil.MakeCheckBox(Se.Language.General.Bold, vm, nameof(vm.CurrentStyle) + "." + nameof(StyleDisplay.Bold));
+        var checkBoxItalic = UiUtil.MakeCheckBox(Se.Language.General.Italic, vm, nameof(vm.CurrentStyle) + "." + nameof(StyleDisplay.Italic));
+        var checkBoxUnderline = UiUtil.MakeCheckBox(Se.Language.General.Underline, vm, nameof(vm.CurrentStyle) + "." + nameof(StyleDisplay.Underline));
+        var checkBoxStrikeout = UiUtil.MakeCheckBox(Se.Language.General.Strikeout, vm, nameof(vm.CurrentStyle) + "." + nameof(StyleDisplay.Strikeout));
+        var panelFontStyle = UiUtil.MakeHorizontalPanel(checkBoxBold, checkBoxItalic, checkBoxUnderline, checkBoxStrikeout).WithMarginBottom(10);
+
+        var labelScaleX = UiUtil.MakeLabel(Se.Language.Assa.ScaleX).WithMinWidth(60);
+        var numericUpDownScaleX = UiUtil.MakeNumericUpDownOneDecimal(1, 1000, 130, vm, nameof(vm.CurrentStyle) + "." + nameof(StyleDisplay.ScaleX));
+        numericUpDownScaleX.Increment = 1;
+        var labelScaleY = UiUtil.MakeLabel(Se.Language.Assa.ScaleY).WithMinWidth(60);
+        var numericUpDownScaleY = UiUtil.MakeNumericUpDownOneDecimal(1, 1000, 130, vm, nameof(vm.CurrentStyle) + "." + nameof(StyleDisplay.ScaleY));
+        numericUpDownScaleY.Increment = 1;
+        var panelTransform1 = UiUtil.MakeHorizontalPanel(labelScaleX, numericUpDownScaleX, labelScaleY, numericUpDownScaleY);
+
+        var labelSpacing = UiUtil.MakeLabel(Se.Language.Assa.Spacing).WithMinWidth(60);
+        var numericUpDownSpacing = UiUtil.MakeNumericUpDownOneDecimal(-100, 100, 130, vm, nameof(vm.CurrentStyle) + "." + nameof(StyleDisplay.Spacing));
+        numericUpDownSpacing.Increment = 1;
+        var labelAngle = UiUtil.MakeLabel(Se.Language.Assa.Angle).WithMinWidth(60);
+        var numericUpDownAngle = UiUtil.MakeNumericUpDownOneDecimal(-360, 360, 130, vm, nameof(vm.CurrentStyle) + "." + nameof(StyleDisplay.Angle));
+        numericUpDownAngle.Increment = 1;
+        var panelTransform2 = UiUtil.MakeHorizontalPanel(labelSpacing, numericUpDownSpacing, labelAngle, numericUpDownAngle).WithMarginBottom(10);
+
+        var labelColorPrimary = UiUtil.MakeLabel(Se.Language.Assa.Primary);
+        var colorPickerPrimary = MakeStyleColorPickerButton(vm, nameof(StyleDisplay.ColorPrimary));
+        var labelColorOutline = UiUtil.MakeLabel(Se.Language.General.Outline);
+        var colorPickerOutline = MakeStyleColorPickerButton(vm, nameof(StyleDisplay.ColorOutline));
+        var labelColorShadow = UiUtil.MakeLabel(Se.Language.General.Shadow);
+        var colorPickerShadow = MakeStyleColorPickerButton(vm, nameof(StyleDisplay.ColorShadow));
+        var labelColorSecondary = UiUtil.MakeLabel(Se.Language.Assa.Secondary);
+        var colorPickerSecondary = MakeStyleColorPickerButton(vm, nameof(StyleDisplay.ColorSecondary));
+        var panelColors = UiUtil.MakeHorizontalPanel(
+            labelColorPrimary,
+            colorPickerPrimary,
+            labelColorOutline,
+            colorPickerOutline,
+            labelColorShadow,
+            colorPickerShadow,
+            labelColorSecondary,
+            colorPickerSecondary
+        ).WithMarginBottom(10);
+
+        var alignmentView = MakeAlignmentView(vm);
+        var marginView = MakeMarginView(vm);
+        var borderView = MakeBorderView(vm);
+        var panelMore = UiUtil.MakeHorizontalPanel(alignmentView, marginView, borderView);
+
+        grid.Add(label, 0, 0);
+        grid.Add(panelName, 1, 0);
+        grid.Add(panelFont, 2, 0);
+        grid.Add(panelFontStyle, 3, 0);
+        grid.Add(panelTransform1, 4, 0);
+        grid.Add(panelTransform2, 5, 0);
+        grid.Add(panelColors, 6, 0);
+        grid.Add(panelMore, 7, 0);
+
+        return UiUtil.MakeBorderForControl(grid).WithMarginBottom(5);
+    }
+
+    private static Border MakeAlignmentView(AssaStylesViewModel vm)
+    {
+        var grid = new Grid
+        {
+            RowDefinitions =
+            {
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+            },
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) },
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) },
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) },
+            },
+            Width = double.NaN,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+
+        var label = UiUtil.MakeLabel(Se.Language.General.Alignment);
+
+        grid.Add(label, 0, 0, 1, 3);
+        grid.Add(UiUtil.MakeRadioButton(string.Empty, vm, nameof(vm.CurrentStyle) + "." + nameof(StyleDisplay.AlignmentAn7), "align"), 1, 0);
+        grid.Add(UiUtil.MakeRadioButton(string.Empty, vm, nameof(vm.CurrentStyle) + "." + nameof(StyleDisplay.AlignmentAn8), "align"), 1, 1);
+        grid.Add(UiUtil.MakeRadioButton(string.Empty, vm, nameof(vm.CurrentStyle) + "." + nameof(StyleDisplay.AlignmentAn9), "align"), 1, 2);
+        grid.Add(UiUtil.MakeRadioButton(string.Empty, vm, nameof(vm.CurrentStyle) + "." + nameof(StyleDisplay.AlignmentAn4), "align"), 2, 0);
+        grid.Add(UiUtil.MakeRadioButton(string.Empty, vm, nameof(vm.CurrentStyle) + "." + nameof(StyleDisplay.AlignmentAn5), "align"), 2, 1);
+        grid.Add(UiUtil.MakeRadioButton(string.Empty, vm, nameof(vm.CurrentStyle) + "." + nameof(StyleDisplay.AlignmentAn6), "align"), 2, 2);
+        grid.Add(UiUtil.MakeRadioButton(string.Empty, vm, nameof(vm.CurrentStyle) + "." + nameof(StyleDisplay.AlignmentAn1), "align"), 3, 0);
+        grid.Add(UiUtil.MakeRadioButton(string.Empty, vm, nameof(vm.CurrentStyle) + "." + nameof(StyleDisplay.AlignmentAn2), "align"), 3, 1);
+        grid.Add(UiUtil.MakeRadioButton(string.Empty, vm, nameof(vm.CurrentStyle) + "." + nameof(StyleDisplay.AlignmentAn3), "align"), 3, 2);
+
+        return UiUtil.MakeBorderForControl(grid);
+    }
+
+    private static Border MakeMarginView(AssaStylesViewModel vm)
+    {
+        var grid = new Grid
+        {
+            RowDefinitions =
+            {
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+            },
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+            },
+            Width = double.NaN,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            RowSpacing = 5,
+        };
+
+        var label = UiUtil.MakeLabel(Se.Language.General.Margin);
+        grid.Add(label, 0);
+
+        var labelMarginLeft = UiUtil.MakeLabel(Se.Language.General.Left);
+        var numericUpDownMarginLeft = UiUtil.MakeNumericUpDownInt(0, 1000, 10, 130, vm, nameof(vm.CurrentStyle) + "." + nameof(StyleDisplay.MarginLeft));
+        grid.Add(labelMarginLeft, 1, 0);
+        grid.Add(numericUpDownMarginLeft, 1, 1);
+
+        var labelMarginRight = UiUtil.MakeLabel(Se.Language.General.Right);
+        var numericUpDownMarginRight = UiUtil.MakeNumericUpDownInt(0, 1000, 10, 130, vm, nameof(vm.CurrentStyle) + "." + nameof(StyleDisplay.MarginRight));
+        grid.Add(labelMarginRight, 2, 0);
+        grid.Add(numericUpDownMarginRight, 2, 1);
+
+        var labelMarginVertical = UiUtil.MakeLabel(Se.Language.General.Vertical);
+        var numericUpDownMarginVertical = UiUtil.MakeNumericUpDownInt(0, 1000, 10, 130, vm, nameof(vm.CurrentStyle) + "." + nameof(StyleDisplay.MarginVertical));
+        grid.Add(labelMarginVertical, 3, 0);
+        grid.Add(numericUpDownMarginVertical, 3, 1);
+
+        return UiUtil.MakeBorderForControl(grid);
+    }
+
+    private static Border MakeBorderView(AssaStylesViewModel vm)
+    {
+        var grid = new Grid
+        {
+            RowDefinitions =
+            {
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+            },
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) },
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) },
+            },
+            Width = double.NaN,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            RowSpacing = 5,
+        };
+
+        var label = UiUtil.MakeLabel(Se.Language.General.BorderStyle);
+        grid.Add(label, 1, 0);
+
+        var comboBoxBorderType = UiUtil.MakeComboBox(vm.BorderTypes, vm, nameof(vm.SelectedBorderType));
+        comboBoxBorderType.SelectionChanged += vm.BorderTypeChanged;
+        grid.Add(comboBoxBorderType, 2, 0, 1, 2);
+
+        var labelOutlineWidth = UiUtil.MakeLabel(Se.Language.General.OutlineWidth);
+        var numericUpDownOutlineWidth = UiUtil.MakeNumericUpDownOneDecimal(0, 100, 130, vm, nameof(vm.CurrentStyle) + "." + nameof(StyleDisplay.OutlineWidth));
+        numericUpDownOutlineWidth.Increment = 0.5m;
+        grid.Add(labelOutlineWidth, 3, 0);
+        grid.Add(numericUpDownOutlineWidth, 3, 1);
+
+        var labelShadowWidth = UiUtil.MakeLabel(Se.Language.General.ShadowWidth);
+        var numericUpDownShadowWidth = UiUtil.MakeNumericUpDownOneDecimal(0, 100, 130, vm, nameof(vm.CurrentStyle) + "." + nameof(StyleDisplay.ShadowWidth));
+        numericUpDownShadowWidth.Increment = 0.5m;
+        grid.Add(labelShadowWidth, 4, 0);
+        grid.Add(numericUpDownShadowWidth, 4, 1);
+
+        return UiUtil.MakeBorderForControl(grid);
+    }
+
+    private static Border MakePreviewView(AssaStylesViewModel vm)
+    {
+        var grid = new Grid
+        {
+            RowDefinitions =
+            {
+                new RowDefinition { Height = new GridLength(2, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(2, GridUnitType.Star) },
+            },
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+            },
+            Width = double.NaN,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+
+        var label = UiUtil.MakeLabel(Se.Language.General.Preview).WithBold();
+
+        var image = new Image
+        {
+            [!Image.SourceProperty] = new Binding(nameof(vm.ImagePreview)),
+            DataContext = vm,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Top,
+            Stretch = Stretch.Uniform, // Scale the preview frame to fit while keeping aspect ratio
+            MinHeight = 150,
+            MaxHeight = 220,
+        };
+
+        grid.Add(label, 0);
+        grid.Add(image, 1);
+
+        return UiUtil.MakeBorderForControl(grid);
+    }
+
+    private static Button MakeStyleColorPickerButton(AssaStylesViewModel vm, string colorPropertyName)
+    {
+        var swatch = new Border
+        {
+            Width = 30,
+            Height = 20,
+            CornerRadius = new CornerRadius(3),
+            BorderThickness = new Thickness(1),
+            BorderBrush = new SolidColorBrush(Colors.Gray),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        swatch.Bind(Border.BackgroundProperty, new Binding(nameof(vm.CurrentStyle) + "." + colorPropertyName)
+        {
+            Source = vm,
+            Converter = new ColorToBrushConverter(),
+        });
+
+        var button = new Button
+        {
+            Content = swatch,
+            Padding = new Thickness(4, 2),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        button.Click += async (_, _) =>
+        {
+            if (TopLevel.GetTopLevel(button) is not Window window || vm.CurrentStyle is null)
+            {
+                return;
+            }
+
+            var propInfo = typeof(StyleDisplay).GetProperty(colorPropertyName);
+            var currentColor = propInfo?.GetValue(vm.CurrentStyle) is Color c ? c : Colors.White;
+
+            var pickerVm = new ColorPickerViewModel();
+            pickerVm.Initialize(currentColor);
+            var pickerWindow = new ColorPickerWindow(pickerVm);
+            await WindowService.ShowModalAsync(window, pickerWindow);
+
+            if (pickerVm.OkPressed)
+            {
+                propInfo?.SetValue(vm.CurrentStyle, pickerVm.SelectedColor);
+            }
+        };
+
+        return button;
+    }
+
+    /// <summary>
+    /// The "move up/down/to top/to bottom" block of the file styles context menu (#13056).
+    /// The styles are written to the file header in list order, so this is real reordering,
+    /// not a view sort.
+    /// </summary>
+    private static void AddMoveMenuItems(MenuFlyout flyout, AssaStylesViewModel vm)
+    {
+        var separator = new Separator();
+        separator.Bind(Separator.IsVisibleProperty, new Binding(nameof(vm.IsMoveVisible)) { Source = vm });
+        flyout.Items.Add(separator);
+
+        var items = new (string Header, ICommand Command, KeyGesture? Gesture)[]
+        {
+            (Se.Language.General.MoveUp, vm.FileMoveUpCommand, new KeyGesture(Key.Up, KeyModifiers.Control)),
+            (Se.Language.General.MoveDown, vm.FileMoveDownCommand, new KeyGesture(Key.Down, KeyModifiers.Control)),
+            (Se.Language.General.MoveToTop, vm.FileMoveToTopCommand, null),
+            (Se.Language.General.MoveToBottom, vm.FileMoveToBottomCommand, null),
+        };
+
+        foreach (var (header, command, gesture) in items)
+        {
+            var menuItem = new MenuItem
+            {
+                Header = header,
+                DataContext = vm,
+                Command = command,
+                InputGesture = gesture,
+            };
+            menuItem.Bind(MenuItem.IsVisibleProperty, new Binding(nameof(vm.IsMoveVisible)) { Source = vm });
+            flyout.Items.Add(menuItem);
+        }
+    }
+}

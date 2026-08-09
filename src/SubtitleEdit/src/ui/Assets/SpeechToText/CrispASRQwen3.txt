@@ -1,0 +1,6 @@
+﻿
+🧠 Qwen3
+
+Type: Whisper-style encoder + Qwen3 LLM decoder
+Focus: 🌍 Multilingual + robustness + modern “speech LLM”
+

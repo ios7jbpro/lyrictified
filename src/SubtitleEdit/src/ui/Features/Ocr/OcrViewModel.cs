@@ -1,0 +1,5444 @@
+using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Media;
+using Avalonia.Media.Imaging;
+using Avalonia.Threading;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using Nikse.SubtitleEdit.Core.BluRaySup;
+using Nikse.SubtitleEdit.Core.Common;
+using Nikse.SubtitleEdit.Core.ContainerFormats;
+using Nikse.SubtitleEdit.Core.ContainerFormats.Matroska;
+using Nikse.SubtitleEdit.Core.ContainerFormats.Mp4.Boxes;
+using Nikse.SubtitleEdit.Core.ContainerFormats.TransportStream;
+using Nikse.SubtitleEdit.Core.Interfaces;
+using Nikse.SubtitleEdit.Core.SubtitleFormats;
+using Nikse.SubtitleEdit.Core.VobSub;
+using Nikse.SubtitleEdit.UiLogic.Ocr.Service;
+using Nikse.SubtitleEdit.Features.Files.ImportImages;
+using Nikse.SubtitleEdit.Features.Main;
+using Nikse.SubtitleEdit.Features.Ocr.BinaryOcr;
+using Nikse.SubtitleEdit.Features.Ocr.Download;
+using Nikse.SubtitleEdit.Features.Ocr.Engines;
+using Nikse.SubtitleEdit.Features.Ocr.FallbackDatabase;
+using Nikse.SubtitleEdit.Features.Ocr.FixEngine;
+using Nikse.SubtitleEdit.Features.Ocr.NOcr;
+using Nikse.SubtitleEdit.Features.Ocr.OcrSubtitle;
+using Nikse.SubtitleEdit.Features.Shared;
+using Nikse.SubtitleEdit.Features.Shared.AddToNamesList;
+using Nikse.SubtitleEdit.Features.Shared.AddToOcrReplaceList;
+using Nikse.SubtitleEdit.Features.Shared.AddToUserDictionary;
+using Nikse.SubtitleEdit.Features.Shared.BinaryEdit;
+using Nikse.SubtitleEdit.Features.Shared.GoToLineNumber;
+using Nikse.SubtitleEdit.Features.Shared.PickFontName;
+using Nikse.SubtitleEdit.Features.Shared.ShowImage;
+using Nikse.SubtitleEdit.Features.Shared.TextBoxUtils;
+using Nikse.SubtitleEdit.Features.SpellCheck;
+using Nikse.SubtitleEdit.Features.SpellCheck.GetDictionaries;
+using Nikse.SubtitleEdit.Features.Translate;
+using Nikse.SubtitleEdit.Logic;
+using Nikse.SubtitleEdit.Logic.Config;
+using Nikse.SubtitleEdit.Logic.Dictionaries;
+using Nikse.SubtitleEdit.Logic.Download;
+using Nikse.SubtitleEdit.Logic.LlamaCpp;
+using Nikse.SubtitleEdit.Logic.Media;
+using Nikse.SubtitleEdit.Logic.Ocr;
+using Nikse.SubtitleEdit.Logic.Ocr.GoogleLens;
+using Nikse.SubtitleEdit.UiLogic.Ocr;
+using SkiaSharp;
+using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
+using Nikse.SubtitleEdit.UiLogic.LlamaCpp;
+using Nikse.SubtitleEdit.UiLogic.Ocr.FixEngine;
+using Nikse.SubtitleEdit.UiLogic.SpellCheck;
+using Nikse.SubtitleEdit.UiLogic.Common;
+
+namespace Nikse.SubtitleEdit.Features.Ocr;
+
+public partial class OcrViewModel : ObservableObject
+{
+    [ObservableProperty] private string _title;
+    [ObservableProperty] private ObservableCollection<OcrEngineItem> _ocrEngines;
+    [ObservableProperty] private OcrEngineItem? _selectedOcrEngine;
+    [ObservableProperty] private ObservableCollection<OcrSubtitleItem> _ocrSubtitleItems;
+    [ObservableProperty] private OcrSubtitleItem? _selectedOcrSubtitleItem;
+    [ObservableProperty] private ObservableCollection<string> _nOcrDatabases;
+    [ObservableProperty] private string? _selectedNOcrDatabase;
+    [ObservableProperty] private ObservableCollection<string> _imageCompareDatabases;
+    [ObservableProperty] private string? _selectedImageCompareDatabase;
+    [ObservableProperty] private ObservableCollection<int> _binaryOcrPixelsAreSpaceList;
+    [ObservableProperty] private int _selectedBinaryOcrPixelsAreSpace;
+    [ObservableProperty] private double _binaryOcrMaxErrorPercent;
+    [ObservableProperty] private ObservableCollection<int> _nOcrMaxWrongPixelsList;
+    [ObservableProperty] private int _selectedNOcrMaxWrongPixels;
+    [ObservableProperty] private ObservableCollection<int> _nOcrPixelsAreSpaceList;
+    [ObservableProperty] private int _selectedNOcrPixelsAreSpace;
+    [ObservableProperty] private ObservableCollection<string> _ollamaLanguages;
+    [ObservableProperty] private string? _selectedOllamaLanguage;
+    [ObservableProperty] private ObservableCollection<TesseractDictionary> _tesseractDictionaryItems;
+    [ObservableProperty] private TesseractDictionary? _selectedTesseractDictionaryItem;
+    [ObservableProperty] private ObservableCollection<TesseractEngineModeItem> _tesseractEngineModes;
+    [ObservableProperty] private TesseractEngineModeItem? _selectedTesseractEngineMode;
+    [ObservableProperty] private string _ollamaModel;
+    [ObservableProperty] private string _ollamaUrl;
+    [ObservableProperty] private string _llamaCppUrl;
+    [ObservableProperty] private ObservableCollection<LlamaCppModelDisplay> _llamaCppOcrModels;
+    [ObservableProperty] private LlamaCppModelDisplay? _selectedLlamaCppOcrModel;
+    [ObservableProperty] private string _llamaCppOcrServerButtonText;
+    [ObservableProperty] private ObservableCollection<CrispEmbedBackend> _crispEmbedBackends;
+    [ObservableProperty] private CrispEmbedBackend? _selectedCrispEmbedBackend;
+    [ObservableProperty] private ObservableCollection<CrispEmbedModelDisplay> _crispEmbedModels;
+    [ObservableProperty] private CrispEmbedModelDisplay? _selectedCrispEmbedModel;
+    [ObservableProperty] private string _progressText;
+    [ObservableProperty] private double _progressValue;
+    [ObservableProperty] private string _selectionStatus;
+    [ObservableProperty] private Bitmap? _currentImageSource;
+    [ObservableProperty] private string _currentBitmapInfo;
+    [ObservableProperty] private string _currentText;
+    [ObservableProperty] private bool _isOcrRunning;
+    [ObservableProperty] private bool _hasForcedSubtitles;
+    [ObservableProperty] private bool _showOnlyForced;
+    [ObservableProperty] private bool _isNOcrVisible;
+    [ObservableProperty] private bool _isOllamaVisible;
+    [ObservableProperty] private bool _isLlamaCppVisible;
+    [ObservableProperty] private bool _isCrispEmbedVisible;
+    [ObservableProperty] private bool _isTesseractVisible;
+    [ObservableProperty] private bool _isBinaryImageCompareVisible;
+    [ObservableProperty] private bool _isPaddleOcrVisible;
+    [ObservableProperty] private bool _isGoogleVisionVisible;
+    [ObservableProperty] private bool _isGoogleLensVisible;
+    [ObservableProperty] private bool _isMistralOcrVisible;
+    [ObservableProperty] private bool _isVobSubVisible;
+    [ObservableProperty] private bool _hasCustomVobSubColors;
+    [ObservableProperty] private bool _nOcrDrawUnknownText;
+    [ObservableProperty] private bool _isInspectLineVisible;
+    [ObservableProperty] private bool _isInspectAdditionsVisible;
+    [ObservableProperty] private string _googleVisionApiKey;
+    [ObservableProperty] private string _mistralApiKey;
+    [ObservableProperty] private ObservableCollection<OcrLanguage> _googleVisionLanguages;
+    [ObservableProperty] private OcrLanguage? _selectedGoogleVisionLanguage;
+    [ObservableProperty] private ObservableCollection<OcrLanguage2> _googleLensLanguages;
+    [ObservableProperty] private OcrLanguage2 _selectedGoogleLensLanguage;
+    [ObservableProperty] private ObservableCollection<OcrLanguage2> _paddleOcrLanguages;
+    [ObservableProperty] private OcrLanguage2? _selectedPaddleOcrLanguage;
+    [ObservableProperty] private bool _showContextMenu;
+    [ObservableProperty] private bool _hasMultipleLinesSelected;
+    [ObservableProperty] private ObservableCollection<SpellCheckDictionaryDisplay> _dictionaries;
+    [ObservableProperty] private SpellCheckDictionaryDisplay? _selectedDictionary;
+    [ObservableProperty] private bool _doFixOcrErrors;
+    [ObservableProperty] private bool _doPromptForUnknownWords;
+    [ObservableProperty] private bool _doTryToGuessUnknownWords;
+    [ObservableProperty] private bool _doAutoBreak;
+    [ObservableProperty] private bool _isDictionaryLoaded;
+    [ObservableProperty] private ObservableCollection<UnknownWordItem> _unknownWords;
+    [ObservableProperty] private UnknownWordItem? _selectedUnknownWord;
+    [ObservableProperty] private bool _isUnknownWordSelected;
+    [ObservableProperty] private ObservableCollection<ReplacementUsedItem> _allFixes;
+    [ObservableProperty] private ReplacementUsedItem? _selectedAllFix;
+    [ObservableProperty] private ObservableCollection<GuessUsedItem> _allGuesses;
+    [ObservableProperty] private GuessUsedItem? _selectedAllGuess;
+    [ObservableProperty] private bool _hasPreProcessingSettings;
+    [ObservableProperty] private bool _hasCaptureAlignment;
+    [ObservableProperty] private bool _hasFallbackDatabase;
+    [ObservableProperty] private bool _isFallbackDatabaseVisible;
+    [ObservableProperty] private string _nOcrBinaryOcrFallbackDatabase;
+    [ObservableProperty] private string _binaryOcrNOcrFallbackDatabase;
+    [ObservableProperty] private double _imageMaxHeight = 100;
+    [ObservableProperty] private double _imageMaxWidth = 200;
+    [ObservableProperty] private FontFamily _textBoxFontFamily;
+    [ObservableProperty] private decimal _textBoxFontSize;
+    [ObservableProperty] private FontWeight _textBoxFontWeight;
+    [ObservableProperty] string _unknownWordsRemoveCurrentText;
+
+    public Window? Window { get; set; }
+    public TableView SubtitleGrid { get; set; }
+
+    // Rebuild the combo row visuals after a download finishes so the install-status dots
+    // reflect the current on-disk state instead of the snapshot taken when first realised.
+    public Action? RefreshEngineCombo { get; set; }
+    public Action? RefreshCrispEmbedModelCombo { get; set; }
+
+    public MatroskaTrackInfo? SelectedMatroskaTrack { get; set; }
+    public bool OkPressed { get; private set; }
+
+    public readonly List<SubtitleLineViewModel> OcredSubtitle;
+
+    private IOcrSubtitle? _ocrSubtitle;
+    private List<OcrSubtitleItem> _allOcrSubtitleItems = new();
+    private string _sourceFileName = string.Empty;
+    private Iso639Dash2LanguageCode? _sourceLanguageIso;
+    private readonly INOcrCaseFixer _nOcrCaseFixer;
+    private readonly IWindowService _windowService;
+    private readonly IFileHelper _fileHelper;
+    private readonly ISpellCheckManager _spellCheckManager;
+    private readonly IOcrFixEngine _ocrFixEngine;
+    private readonly IBinaryOcrMatcher _binaryOcrMatcher;
+    private readonly IOcrImageSourceHolder _ocrImageSourceHolder;
+    private PreProcessingSettings? _preProcessingSettings;
+    private bool _isCtrlDown;
+    private bool _textBoxFontIsCustom;
+    // Saved font name kept so a custom font that is temporarily unresolvable
+    // (e.g. user uninstalled the font; FontFamily ctor throws on load) still
+    // round-trips on save instead of being clobbered by the default font name.
+    private string _textBoxFontNamePersisted = string.Empty;
+    private CancellationTokenSource _cancellationTokenSource;
+    private NOcrDb? _nOcrDb;
+    private BinaryOcrDb? _nOcrFallbackBinaryOcrDb;
+    private BinaryOcrMatcher? _nOcrFallbackBinaryOcrMatcher;
+    private NOcrDb? _binaryOcrFallbackNOcrDb;
+    private readonly List<SkipOnceChar> _runOnceChars;
+    private readonly List<SkipOnceChar> _skipOnceChars;
+    private readonly NOcrAddHistoryManager _nOcrAddHistoryManager;
+    private readonly BinaryOcrAddHistoryManager _binaryOcrAddHistoryManager;
+    private int _pendingScrollIndex = -1;
+    private readonly Lock _scrollLock = new();
+
+    public OcrViewModel(
+        INOcrCaseFixer nOcrCaseFixer,
+        IWindowService windowService,
+        IFileHelper fileHelper,
+        ISpellCheckManager spellCheckManager,
+        IOcrFixEngine ocrFixEngine,
+        IBinaryOcrMatcher binaryOcrMatcher,
+        IOcrImageSourceHolder ocrImageSourceHolder)
+    {
+        _nOcrCaseFixer = nOcrCaseFixer;
+        _windowService = windowService;
+        _fileHelper = fileHelper;
+        _spellCheckManager = spellCheckManager;
+        _ocrFixEngine = ocrFixEngine;
+        _binaryOcrMatcher = binaryOcrMatcher;
+        _ocrImageSourceHolder = ocrImageSourceHolder;
+
+        Title = Se.Language.Ocr.Ocr;
+        OcrEngines = new ObservableCollection<OcrEngineItem>(OcrEngineItem.GetOcrEngines());
+        OcrSubtitleItems = new ObservableCollection<OcrSubtitleItem>();
+        NOcrDatabases = new ObservableCollection<string>();
+        ImageCompareDatabases = new ObservableCollection<string>(BinaryOcrDb.GetDatabases(Se.OcrFolder));
+        SelectedImageCompareDatabase = ImageCompareDatabases.FirstOrDefault();
+        NOcrMaxWrongPixelsList = new ObservableCollection<int>(Enumerable.Range(0, 500));
+        NOcrPixelsAreSpaceList = new ObservableCollection<int>(Enumerable.Range(1, 50));
+        BinaryOcrPixelsAreSpaceList = new ObservableCollection<int>(Enumerable.Range(1, 50));
+        OllamaLanguages = new ObservableCollection<string>(Iso639Dash2LanguageCode.List
+            .Select(p => p.EnglishName)
+            .OrderBy(p => p));
+        SelectedOllamaLanguage = "English";
+        SubtitleGrid = new TableView();
+        CurrentBitmapInfo = string.Empty;
+        CurrentText = string.Empty;
+        ProgressText = string.Empty;
+        SelectionStatus = string.Empty;
+        OllamaModel = string.Empty;
+        OllamaUrl = string.Empty;
+        LlamaCppUrl = string.Empty;
+        LlamaCppOcrModels = new ObservableCollection<LlamaCppModelDisplay>();
+        LlamaCppOcrServerButtonText = Se.Language.General.StartServer;
+        CrispEmbedBackends = new ObservableCollection<CrispEmbedBackend>(CrispEmbedEngine.GetBackends());
+        CrispEmbedModels = new ObservableCollection<CrispEmbedModelDisplay>();
+        TesseractDictionaryItems = new ObservableCollection<TesseractDictionary>();
+        TesseractEngineModes = new ObservableCollection<TesseractEngineModeItem>(TesseractEngineModeItem.List());
+        SelectedTesseractEngineMode = TesseractEngineModes.FirstOrDefault(p => p.Oem == Se.Settings.Ocr.TesseractEngineMode)
+                                      ?? TesseractEngineModes.Last();
+        GoogleVisionApiKey = string.Empty;
+        MistralApiKey = string.Empty;
+        GoogleVisionLanguages = new ObservableCollection<OcrLanguage>(GoogleVisionOcr.GetLanguages().OrderBy(p => p.ToString()));
+        GoogleLensLanguages = new ObservableCollection<OcrLanguage2>(GoogleLensOcr.GetLanguages().OrderBy(p => p.ToString()));
+        SelectedGoogleLensLanguage = GoogleLensLanguages.FirstOrDefault(p => p.Code == "en") ?? GoogleLensLanguages.First();
+        PaddleOcrLanguages = new ObservableCollection<OcrLanguage2>(PaddleOcr.GetLanguages().OrderBy(p => p.ToString()));
+        OcredSubtitle = new List<SubtitleLineViewModel>();
+        Dictionaries = new ObservableCollection<SpellCheckDictionaryDisplay>();
+        UnknownWords = new ObservableCollection<UnknownWordItem>();
+        AllFixes = new ObservableCollection<ReplacementUsedItem>();
+        AllGuesses = new ObservableCollection<GuessUsedItem>();
+        _runOnceChars = new List<SkipOnceChar>();
+        _skipOnceChars = new List<SkipOnceChar>();
+        _nOcrAddHistoryManager = new NOcrAddHistoryManager();
+        _binaryOcrAddHistoryManager = new BinaryOcrAddHistoryManager();
+        _cancellationTokenSource = new CancellationTokenSource();
+        TextBoxFontFamily = !string.IsNullOrEmpty(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName)
+            ? new FontFamily(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName)
+            : FontFamily.Default;
+        TextBoxFontSize = (decimal)Se.Settings.Appearance.SubtitleTextBoxFontSize;
+        TextBoxFontWeight = Se.Settings.Appearance.SubtitleTextBoxFontBold ? FontWeight.Bold : FontWeight.Regular;
+        UnknownWordsRemoveCurrentText = string.Empty;
+        NOcrBinaryOcrFallbackDatabase = string.Empty;
+        BinaryOcrNOcrFallbackDatabase = string.Empty;
+        LoadSettings();
+        EngineSelectionChanged();
+        LoadDictionaries();
+    }
+
+    private void LoadSettings()
+    {
+        Dispatcher.UIThread.Invoke(() =>
+        {
+            var ocr = Se.Settings.Ocr;
+            if (!string.IsNullOrEmpty(ocr.Engine) && OcrEngines.Any(p => p.Name == ocr.Engine))
+            {
+                SelectedOcrEngine = OcrEngines.First(p => p.Name == ocr.Engine);
+            }
+
+            if (!string.IsNullOrEmpty(ocr.NOcrDatabase) && NOcrDatabases.Contains(ocr.NOcrDatabase))
+            {
+                SelectedNOcrDatabase = ocr.NOcrDatabase;
+            }
+
+            SelectedNOcrMaxWrongPixels = ocr.NOcrMaxWrongPixels;
+            NOcrDrawUnknownText = ocr.NOcrDrawUnknownText;
+            SelectedNOcrPixelsAreSpace = ocr.NOcrPixelsAreSpace;
+            SelectedBinaryOcrPixelsAreSpace = ocr.BinaryOcrPixelsAreSpace;
+            BinaryOcrMaxErrorPercent = ocr.BinaryOcrMaxErrorPercent;
+            OllamaModel = ocr.OllamaModel;
+            OllamaUrl = ocr.OllamaUrl;
+            LlamaCppUrl = ocr.LlamaCppUrl;
+            SelectedCrispEmbedBackend = CrispEmbedBackends.FirstOrDefault(p => p.Name == ocr.CrispEmbedBackend) ?? CrispEmbedBackends.FirstOrDefault();
+            SelectedOllamaLanguage = ocr.OllamaLanguage;
+            GoogleVisionApiKey = ocr.GoogleVisionApiKey;
+            MistralApiKey = ocr.MistralApiKey;
+            SelectedGoogleVisionLanguage = GoogleVisionLanguages.FirstOrDefault(p => p.Code == ocr.GoogleVisionLanguage);
+            var paddleOcrLastLanguage = PaddleOcr.NormalizeLanguageCode(Se.Settings.Ocr.PaddleOcrLastLanguage);
+            SelectedPaddleOcrLanguage = PaddleOcrLanguages.FirstOrDefault(p => p.Code == paddleOcrLastLanguage) ??
+                                        PaddleOcrLanguages.FirstOrDefault(p => p.Code == "en") ??
+                                        PaddleOcrLanguages.First();
+            SelectedGoogleLensLanguage = GoogleLensLanguages.FirstOrDefault(p => p.Code == Se.Settings.Ocr.GoogleLensOcrLastLanguage) ?? GoogleLensLanguages.First();
+            if (!string.IsNullOrEmpty(ocr.TextBoxFontName))
+            {
+                _textBoxFontIsCustom = true;
+                _textBoxFontNamePersisted = ocr.TextBoxFontName;
+                TextBoxFontSize = ocr.TextBoxFontSize;
+                TextBoxFontWeight = ocr.TextBoxFontBold ? FontWeight.Bold : FontWeight.Regular;
+                try { TextBoxFontFamily = new FontFamily(ocr.TextBoxFontName); }
+                catch { /* ignored */ }
+            }
+
+            DoFixOcrErrors = ocr.DoFixOcrErrors;
+            DoPromptForUnknownWords = ocr.DoPromptForUnknownWords;
+            DoTryToGuessUnknownWords = ocr.DoTryToGuessUnknownWords;
+            DoAutoBreak = ocr.DoAutoBreak;
+            HasCaptureAlignment = ocr.CaptureAssaPosition;
+            NOcrBinaryOcrFallbackDatabase = ocr.NOcrBinaryOcrFallbackDatabase ?? string.Empty;
+            BinaryOcrNOcrFallbackDatabase = ocr.BinaryOcrNOcrFallbackDatabase ?? string.Empty;
+        });
+    }
+
+    private void SaveSettings()
+    {
+        var ocr = Se.Settings.Ocr;
+        ocr.Engine = SelectedOcrEngine?.Name ?? "nOCR";
+        ocr.NOcrDatabase = SelectedNOcrDatabase ?? "Latin";
+        ocr.NOcrMaxWrongPixels = SelectedNOcrMaxWrongPixels;
+        ocr.NOcrDrawUnknownText = NOcrDrawUnknownText;
+        ocr.NOcrPixelsAreSpace = SelectedNOcrPixelsAreSpace;
+        ocr.BinaryOcrPixelsAreSpace = SelectedBinaryOcrPixelsAreSpace;
+        ocr.BinaryOcrMaxErrorPercent = BinaryOcrMaxErrorPercent;
+        ocr.OllamaModel = OllamaModel;
+        ocr.OllamaUrl = OllamaUrl;
+        ocr.OllamaLanguage = SelectedOllamaLanguage ?? "English";
+        ocr.LlamaCppUrl = LlamaCppUrl;
+        if (SelectedLlamaCppOcrModel != null)
+        {
+            ocr.LlamaCppOcrModel = LlamaCppServerManager.GetModelPath(SelectedLlamaCppOcrModel.Model.FileName);
+        }
+        ocr.CrispEmbedBackend = SelectedCrispEmbedBackend?.Name ?? ocr.CrispEmbedBackend;
+        ocr.CrispEmbedModel = SelectedCrispEmbedModel?.Model.Name ?? ocr.CrispEmbedModel;
+        ocr.GoogleVisionApiKey = GoogleVisionApiKey;
+        ocr.MistralApiKey = MistralApiKey;
+        ocr.GoogleVisionLanguage = SelectedGoogleVisionLanguage?.Code ?? "en";
+        ocr.TesseractLastLanguage = SelectedTesseractDictionaryItem?.Code ?? "eng";
+        ocr.TesseractEngineMode = SelectedTesseractEngineMode?.Oem ?? 3;
+        ocr.DoFixOcrErrors = DoFixOcrErrors;
+        ocr.DoPromptForUnknownWords = DoPromptForUnknownWords;
+        ocr.DoTryToGuessUnknownWords = DoTryToGuessUnknownWords;
+        ocr.DoAutoBreak = DoAutoBreak;
+        ocr.CaptureAssaPosition = HasCaptureAlignment;
+        ocr.NOcrBinaryOcrFallbackDatabase = NOcrBinaryOcrFallbackDatabase ?? string.Empty;
+        ocr.BinaryOcrNOcrFallbackDatabase = BinaryOcrNOcrFallbackDatabase ?? string.Empty;
+        if (_textBoxFontIsCustom)
+        {
+            ocr.TextBoxFontSize = TextBoxFontSize;
+            ocr.TextBoxFontBold = TextBoxFontWeight == FontWeight.Bold;
+            ocr.TextBoxFontName = string.IsNullOrEmpty(_textBoxFontNamePersisted)
+                ? TextBoxFontFamily.Name
+                : _textBoxFontNamePersisted;
+        }
+        else
+        {
+            ocr.TextBoxFontName = string.Empty;
+        }
+
+        if (SelectedDictionary != null)
+        {
+            Se.Settings.Ocr.LastLanguageDictionaryFile = SelectedDictionary.DictionaryFileName;
+        }
+
+        Se.SaveSettings();
+    }
+
+    private void LoadDictionaries()
+    {
+        var spellCheckLanguages = _spellCheckManager.GetDictionaryLanguages(Se.DictionariesFolder);
+        Dictionaries.Clear();
+        Dictionaries.Add(new SpellCheckDictionaryDisplay
+        {
+            Name = GetDictionaryNameNone(),
+            DictionaryFileName = string.Empty,
+        });
+        Dictionaries.AddRange(LanguageFavoritesHelper.Order(spellCheckLanguages, d => SpellCheckDictionaryDisplay.GetTwoLetterLanguageCode(d)));
+        if (Dictionaries.Count > 0)
+        {
+            if (!string.IsNullOrEmpty(Se.Settings.Ocr.LastLanguageDictionaryFile))
+            {
+                SelectedDictionary = Dictionaries.FirstOrDefault(l => l.DictionaryFileName == Se.Settings.Ocr.LastLanguageDictionaryFile);
+            }
+
+            if (SelectedDictionary == null)
+            {
+                SelectedDictionary = Dictionaries[0];
+            }
+
+            _spellCheckManager.Initialize(SelectedDictionary.DictionaryFileName, SpellCheckDictionaryDisplay.GetTwoLetterLanguageCode(SelectedDictionary));
+        }
+    }
+
+    private static string GetDictionaryNameNone()
+    {
+        return "[" + Se.Language.General.None + "]";
+    }
+
+    // When the OCR language changes, point the spell-check dictionary at the matching installed
+    // dictionary (SE4 parity, #11907). No-op if none is installed, so the user's choice is kept
+    // when there's nothing to switch to.
+    partial void OnSelectedTesseractDictionaryItemChanged(TesseractDictionary? value) => AutoSelectDictionaryForOcrLanguage(value?.Code);
+    partial void OnSelectedPaddleOcrLanguageChanged(OcrLanguage2? value) => AutoSelectDictionaryForOcrLanguage(value?.Code);
+    partial void OnSelectedGoogleLensLanguageChanged(OcrLanguage2 value) => AutoSelectDictionaryForOcrLanguage(value?.Code);
+    partial void OnSelectedGoogleVisionLanguageChanged(OcrLanguage? value) => AutoSelectDictionaryForOcrLanguage(value?.Code);
+    partial void OnSelectedOllamaLanguageChanged(string? value) => AutoSelectDictionaryForOcrLanguage(Iso639Dash2LanguageCode.GetTwoLetterCodeFromEnglishName(value ?? string.Empty));
+
+    private void AutoSelectDictionaryForOcrLanguage(string? languageCode)
+    {
+        // Dictionaries is null while the constructor is still running (the language combo boxes are
+        // populated before it is created), and the OCR-language setters fire this via OnChanged - so
+        // guard against null or it NREs in the ctor and the OCR window fails to open (#11907 follow-up).
+        if (string.IsNullOrEmpty(languageCode) || Dictionaries is null || Dictionaries.Count == 0)
+        {
+            return;
+        }
+
+        // Normalize Tesseract-style script suffixes ("chi_sim", "srp_latn") to the base code.
+        var code = languageCode;
+        var underscore = code.IndexOf('_');
+        if (underscore > 0)
+        {
+            code = code.Substring(0, underscore);
+        }
+
+        var threeLetter = code.Length == 3 ? code : Iso639Dash2LanguageCode.GetThreeLetterCodeFromTwoLetterCode(code);
+        var twoLetter = code.Length == 2 ? code : Iso639Dash2LanguageCode.GetTwoLetterCodeFromThreeLetterCode(code);
+
+        var match = Dictionaries.FirstOrDefault(d =>
+            d.Name != GetDictionaryNameNone() &&
+            ((!string.IsNullOrEmpty(threeLetter) && d.GetThreeLetterCode() == threeLetter) ||
+             (!string.IsNullOrEmpty(twoLetter) && SpellCheckDictionaryDisplay.GetTwoLetterLanguageCode(d) == twoLetter)));
+
+        if (match != null && !ReferenceEquals(match, SelectedDictionary))
+        {
+            SelectedDictionary = match;
+        }
+    }
+
+    /// <summary>
+    /// Pre-select the OCR language combo boxes (and via their change handlers, the spell-check
+    /// dictionary) from the source file's declared language: idx stream language, Matroska/mp4
+    /// track language, or a language tag in the file name (#13116). A detected language wins
+    /// over the last-used one; no-op when the source carries no language info.
+    /// </summary>
+    private void AutoDetectSourceLanguage(string? languageCode = null)
+    {
+        var iso = ResolveIsoLanguage(languageCode) ?? ResolveIsoLanguage(DetectLanguageCodeFromFileName(_sourceFileName));
+        if (iso == null)
+        {
+            return;
+        }
+
+        _sourceLanguageIso = iso;
+
+        var ollamaLanguage = OllamaLanguages.FirstOrDefault(p => p == iso.EnglishName);
+        if (ollamaLanguage != null)
+        {
+            SelectedOllamaLanguage = ollamaLanguage;
+        }
+
+        var paddleLanguage = PaddleOcrLanguages.FirstOrDefault(p => p.Code == iso.TwoLetterCode);
+        if (paddleLanguage != null)
+        {
+            SelectedPaddleOcrLanguage = paddleLanguage;
+        }
+
+        var lensLanguage = GoogleLensLanguages.FirstOrDefault(p => p.Code == iso.TwoLetterCode);
+        if (lensLanguage != null)
+        {
+            SelectedGoogleLensLanguage = lensLanguage;
+        }
+
+        var visionLanguage = GoogleVisionLanguages.FirstOrDefault(p => p.Code == iso.ThreeLetterCode || p.Code == iso.TwoLetterCode);
+        if (visionLanguage != null)
+        {
+            SelectedGoogleVisionLanguage = visionLanguage;
+        }
+
+        // The Tesseract list is only populated while the Tesseract engine is active;
+        // EngineSelectionChanged applies _sourceLanguageIso when it loads the list later.
+        var tesseractItem = TesseractDictionaryItems.FirstOrDefault(p => p.Code == iso.ThreeLetterCode);
+        if (tesseractItem != null)
+        {
+            SelectedTesseractDictionaryItem = tesseractItem;
+        }
+
+        // Also point the dictionary directly - the setters above only raise a change (and thereby
+        // auto-select the dictionary) when the combo value actually changes, e.g. not when the
+        // detected language equals the last-used one while the dictionary is something else.
+        AutoSelectDictionaryForOcrLanguage(iso.TwoLetterCode);
+    }
+
+    internal static Iso639Dash2LanguageCode? ResolveIsoLanguage(string? languageCode)
+    {
+        if (string.IsNullOrWhiteSpace(languageCode))
+        {
+            return null;
+        }
+
+        // Strip region subtags like "nl-NL" or "pt_BR".
+        var code = languageCode.Trim().ToLowerInvariant();
+        var separator = code.IndexOfAny(new[] { '-', '_' });
+        if (separator > 0)
+        {
+            code = code.Substring(0, separator);
+        }
+
+        if (code.Length == 2)
+        {
+            return Iso639Dash2LanguageCode.List.FirstOrDefault(p => p.TwoLetterCode == code);
+        }
+
+        if (code.Length == 3)
+        {
+            return Iso639Dash2LanguageCode.List.FirstOrDefault(p => p.ThreeLetterCode == code || p.BibliographicCode == code);
+        }
+
+        return null;
+    }
+
+    internal static string? DetectLanguageCodeFromFileName(string fileName)
+    {
+        if (string.IsNullOrEmpty(fileName))
+        {
+            return null;
+        }
+
+        var name = Path.GetFileNameWithoutExtension(fileName);
+
+        // SE's own Matroska track export names files "..._track3_[dut]" - use the last
+        // bracketed token that is a valid ISO 639 code.
+        var bracketMatches = Regex.Matches(name, @"\[([a-zA-Z]{2,3})\]");
+        for (var i = bracketMatches.Count - 1; i >= 0; i--)
+        {
+            var code = bracketMatches[i].Groups[1].Value;
+            if (ResolveIsoLanguage(code) != null)
+            {
+                return code;
+            }
+        }
+
+        // Trailing dot-separated language tag like "movie.nl.sub" or "movie.dut.forced.sub"
+        // (the extension is already removed). Walk backwards past common non-language subtitle
+        // markers; "hi" is treated as hearing-impaired, not Hindi, as that reading is far more
+        // common in subtitle file names. Three-letter tokens must be lowercase so capitalized
+        // title words ("Big.Ben") are not mistaken for language codes; only the last two
+        // candidate tokens are considered so tokens deep inside the title cannot match.
+        var tokens = name.Split('.');
+        var checkedTokens = 0;
+        for (var i = tokens.Length - 1; i > 0 && checkedTokens < 2; i--)
+        {
+            var token = tokens[i].Trim();
+            if (token.Length == 0 || token.ToLowerInvariant() is "hi" or "sdh" or "cc" or "forced")
+            {
+                continue;
+            }
+
+            checkedTokens++;
+            if (token.Length is not (2 or 3) || !token.All(char.IsLetter))
+            {
+                continue;
+            }
+
+            if (token.Length == 3 && token != token.ToLowerInvariant())
+            {
+                continue;
+            }
+
+            if (ResolveIsoLanguage(token) != null)
+            {
+                return token;
+            }
+        }
+
+        return null;
+    }
+
+    private string? GetNOcrLanguageFileName()
+    {
+        if (SelectedNOcrDatabase == null)
+        {
+            return null;
+        }
+
+        return Path.Combine(Se.OcrFolder, $"{SelectedNOcrDatabase}.nocr");
+    }
+
+    private void Close()
+    {
+        Dispatcher.UIThread.Post(() => { Window?.Close(); });
+    }
+
+    [RelayCommand]
+    private async Task PickFont()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var result = await _windowService.ShowDialogAsync<PickFontNameWindow, PickFontNameViewModel>(Window, vm =>
+        {
+            vm.Initialize(true, true);
+            vm.SelectedFontName = TextBoxFontFamily.Name;
+            vm.FontSize = TextBoxFontSize;
+            vm.IsFontBold = TextBoxFontWeight == FontWeight.Bold;
+        });
+
+        _isCtrlDown = false;
+
+        if (!result.OkPressed || result.SelectedFontName == null)
+        {
+            return;
+        }
+
+        _textBoxFontIsCustom = true;
+        _textBoxFontNamePersisted = result.SelectedFontName;
+        TextBoxFontFamily = new FontFamily(result.SelectedFontName);
+        TextBoxFontSize = result.FontSize;
+        TextBoxFontWeight = result.IsFontBold ? FontWeight.Bold : FontWeight.Regular;
+    }
+
+    [RelayCommand]
+    private async Task PickDictionary()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var result = await _windowService.ShowDialogAsync<GetDictionariesWindow, GetDictionariesViewModel>(Window!);
+        _isCtrlDown = false;
+        if (result.OkPressed && result.SelectedDictionary != null)
+        {
+            LoadDictionaries();
+
+            // Select the just-downloaded dictionary by its file name. Matching on the display name
+            // fails on non-English UIs, because the list shows the localized culture name (e.g.
+            // "slovensk") while the catalog entry carries the English/native name ("Slovenian").
+            var downloadedFileName = Path.GetFileName(result.SpellCheckDictionary?.DictionaryFileName ?? string.Empty);
+            SelectedDictionary =
+                (!string.IsNullOrEmpty(downloadedFileName)
+                    ? Dictionaries.FirstOrDefault(d => string.Equals(
+                        Path.GetFileName(d.DictionaryFileName),
+                        downloadedFileName,
+                        StringComparison.OrdinalIgnoreCase))
+                    : null)
+                ?? Dictionaries.FirstOrDefault(d =>
+                    d.Name.Contains(result.SelectedDictionary.EnglishName, StringComparison.OrdinalIgnoreCase) ||
+                    d.Name.Contains(result.SelectedDictionary.NativeName, StringComparison.OrdinalIgnoreCase))
+                ?? Dictionaries.FirstOrDefault();
+        }
+    }
+
+    [RelayCommand]
+    private void UnknownWordsClear()
+    {
+        UnknownWords.Clear();
+        IsUnknownWordSelected = false;
+    }
+
+    [RelayCommand]
+    private void UnknownWordsRemoveCurrent()
+    {
+        var word = SelectedUnknownWord?.Word.Word ?? string.Empty;
+        if (string.IsNullOrEmpty(word))
+        {
+            return;
+        }
+
+        var itemsToRemove = UnknownWords.Where(uw => uw.Word.Word.Equals(word, StringComparison.Ordinal)).ToList();
+        foreach (var item in itemsToRemove)
+        {
+            UnknownWords.Remove(item);
+        }
+
+        IsUnknownWordSelected = false;
+    }
+
+    [RelayCommand]
+    private void PauseOcr()
+    {
+        IsOcrRunning = false;
+        _cancellationTokenSource.Cancel();
+    }
+
+    private void UpdateOcrProgress(int currentItemNumber, int totalItems)
+    {
+        if (totalItems <= 0)
+        {
+            ProgressValue = 0;
+            ProgressText = Se.Language.Ocr.RunningOcrDotDotDot;
+            return;
+        }
+
+        var clampedItemNumber = Math.Clamp(currentItemNumber, 0, totalItems);
+        ProgressValue = clampedItemNumber * 100.0 / totalItems;
+        ProgressText = string.Format(Se.Language.Ocr.RunningOcrDotDotDotXY, clampedItemNumber, totalItems);
+    }
+
+    [RelayCommand]
+    private async Task AddUnknownWordToNames()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var selectedWord = SelectedUnknownWord;
+        if (selectedWord == null)
+        {
+            return;
+        }
+
+        var word = selectedWord.Word.Word;
+        var result = await _windowService.ShowDialogAsync<AddToNamesListWindow, AddToNamesListViewModel>(Window,
+            vm => { vm.Initialize(word, Dictionaries.ToList(), SelectedDictionary); });
+
+        if (result.OkPressed)
+        {
+            _ocrFixEngine.ReloadNames();
+        }
+
+        _isCtrlDown = false;
+    }
+
+    [RelayCommand]
+    private async Task AddUnknownWordToUserDictionary()
+    {
+        var selectedWord = SelectedUnknownWord;
+        if (selectedWord == null)
+        {
+            return;
+        }
+
+        var result = await _windowService.ShowDialogAsync<AddToUserDictionaryWindow, AddToUserDictionaryViewModel>(Window!,
+            vm => { vm.Initialize(selectedWord.Word.Word, Dictionaries.ToList(), SelectedDictionary); });
+
+        if (result.OkPressed)
+        {
+            _ocrFixEngine.ReloadNames();
+        }
+
+        _isCtrlDown = false;
+    }
+
+    [RelayCommand]
+    private async Task AddUnknownWordToOcrPair()
+    {
+        var selectedWord = SelectedUnknownWord;
+        if (selectedWord == null)
+        {
+            return;
+        }
+
+        var result = await _windowService.ShowDialogAsync<AddToOcrReplaceListWindow, AddToOcrReplaceListViewModel>(Window!,
+            vm => { vm.Initialize(selectedWord.Word.Word, Dictionaries.ToList(), SelectedDictionary); });
+
+        if (result.OkPressed)
+        {
+            _ocrFixEngine.ReloadNames();
+        }
+
+        _isCtrlDown = false;
+    }
+
+    [RelayCommand]
+    private async Task GoogleUnknowWord()
+    {
+        var selectedWord = SelectedUnknownWord;
+        if (selectedWord == null)
+        {
+            return;
+        }
+
+        await Window!.Launcher.LaunchUriAsync(new Uri("https://www.google.com/search?q=" + Utilities.UrlEncode(selectedWord.Word.Word)));
+    }
+
+
+    [RelayCommand]
+    private async Task EditExport()
+    {
+        if (Window == null || _ocrSubtitle == null || _ocrSubtitle.Count == 0)
+        {
+            return;
+        }
+
+        if (OcrSubtitleItems.Count > 0)
+        {
+            await _windowService.ShowDialogAsync<BinaryEditWindow, BinaryEditViewModel>(Window, vm => { vm.Initialize(OcrSubtitleItems.ToList(), _sourceFileName); });
+        }
+        else
+        {
+            await _windowService.ShowDialogAsync<BinaryEditWindow, BinaryEditViewModel>(Window, vm => { vm.Initialize(_sourceFileName, _ocrSubtitle); });
+        }
+        _isCtrlDown = false;
+    }
+
+    [RelayCommand]
+    private async Task ExportCurrentOcrItems()
+    {
+        if (Window == null || OcrSubtitleItems.Count == 0)
+        {
+            return;
+        }
+
+        var items = OcrSubtitleItems.ToList();
+        await _windowService.ShowDialogAsync<BinaryEditWindow, BinaryEditViewModel>(Window, vm => { vm.Initialize(items); });
+        _isCtrlDown = false;
+    }
+
+    [RelayCommand]
+    private async Task ImportTextFromSubtitle()
+    {
+        if (Window == null || OcrSubtitleItems.Count == 0)
+        {
+            return;
+        }
+
+        var fileName = await _fileHelper.PickOpenSubtitleFile(Window, Se.Language.General.OpenSubtitleFileTitle);
+        _isCtrlDown = false;
+        if (string.IsNullOrEmpty(fileName))
+        {
+            return;
+        }
+
+        var subtitle = Subtitle.Parse(fileName);
+        if (subtitle == null)
+        {
+            foreach (var f in SubtitleFormat.GetBinaryFormats(false))
+            {
+                if (f.IsMine(null, fileName))
+                {
+                    subtitle = new Subtitle();
+                    f.LoadSubtitle(subtitle, null, fileName);
+                    subtitle.OriginalFormat = f;
+                    break;
+                }
+            }
+        }
+
+        if (subtitle == null || subtitle.Paragraphs.Count == 0)
+        {
+            await MessageBox.Show(Window, Se.Language.General.Error, Se.Language.General.UnknownSubtitleFormat);
+            return;
+        }
+
+        var hasExistingText = OcrSubtitleItems.Any(p => !string.IsNullOrEmpty(p.Text));
+        var overwrite = true;
+        if (hasExistingText)
+        {
+            var promptResult = await MessageBox.Show(
+                Window,
+                Se.Language.General.OverwriteQuestion,
+                Se.Language.Ocr.ImportTextFromSubtitleOverwritePrompt,
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+
+            if (promptResult != MessageBoxResult.Yes)
+            {
+                overwrite = false;
+            }
+        }
+
+        const double toleranceMs = 500.0;
+        var imported = 0;
+        foreach (var item in OcrSubtitleItems)
+        {
+            if (!overwrite && !string.IsNullOrEmpty(item.Text))
+            {
+                continue;
+            }
+
+            var itemStartMs = item.StartTime.TotalMilliseconds;
+            var itemEndMs = item.EndTime.TotalMilliseconds;
+            Paragraph? bestMatch = null;
+            var bestDelta = double.MaxValue;
+            foreach (var p in subtitle.Paragraphs)
+            {
+                var overlaps = p.StartTime.TotalMilliseconds <= itemEndMs && p.EndTime.TotalMilliseconds >= itemStartMs;
+                var delta = Math.Abs(p.StartTime.TotalMilliseconds - itemStartMs);
+                if ((overlaps || delta <= toleranceMs) && delta < bestDelta)
+                {
+                    bestDelta = delta;
+                    bestMatch = p;
+                }
+            }
+
+            if (bestMatch != null)
+            {
+                item.Text = bestMatch.Text;
+                imported++;
+            }
+        }
+
+        if (imported == 0)
+        {
+            await MessageBox.Show(
+                Window,
+                Se.Language.General.Information,
+                Se.Language.Ocr.ImportTextFromSubtitleNoMatchesFound,
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            return;
+        }
+
+        ProgressText = string.Format(Se.Language.Ocr.ImportTextFromSubtitleXLinesImported, imported);
+    }
+
+    [RelayCommand]
+    private async Task ExportTextAsSubtitle()
+    {
+        if (Window == null || OcrSubtitleItems.Count == 0)
+        {
+            return;
+        }
+
+        if (OcrSubtitleItems.All(p => string.IsNullOrWhiteSpace(p.Text)))
+        {
+            await MessageBox.Show(
+                Window,
+                Se.Language.General.Information,
+                Se.Language.Ocr.ExportTextAsSubtitleNoText,
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            return;
+        }
+
+        var format = new SubRip();
+        var saveAsResult = await _fileHelper.PickSaveSubtitleFileAs(
+            Window,
+            format,
+            "OcrText" + format.Extension,
+            Se.Language.Ocr.ExportTextAsSubtitleDotDotDot);
+
+        _isCtrlDown = false;
+        if (saveAsResult == null || string.IsNullOrEmpty(saveAsResult.FileName))
+        {
+            return;
+        }
+
+        var subtitle = new Subtitle();
+        foreach (var item in OcrSubtitleItems)
+        {
+            subtitle.Paragraphs.Add(new Paragraph(
+                item.Text ?? string.Empty,
+                item.StartTime.TotalMilliseconds,
+                item.EndTime.TotalMilliseconds));
+        }
+
+        // SubRip.ToText writes p.Number verbatim, and the Paragraph constructor leaves it at 0
+        // (so without this every line was numbered "0").
+        subtitle.Renumber();
+
+        try
+        {
+            var targetFormat = saveAsResult.SubtitleFormat ?? format;
+            var text = targetFormat.ToText(subtitle, Path.GetFileNameWithoutExtension(saveAsResult.FileName));
+            await File.WriteAllTextAsync(saveAsResult.FileName, text);
+        }
+        catch (Exception ex)
+        {
+            await MessageBox.Show(
+                Window,
+                Se.Language.General.Error,
+                ex.Message,
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+        }
+    }
+
+    [RelayCommand]
+    private async Task InspectLine()
+    {
+        var item = SelectedOcrSubtitleItem;
+        var engine = SelectedOcrEngine;
+        if (item == null || engine == null)
+        {
+            return;
+        }
+
+        if (engine.EngineType == OcrEngineType.nOcr)
+        {
+            await InspectLineNOcr(item);
+        }
+
+        if (engine.EngineType == OcrEngineType.BinaryImageCompare)
+        {
+            await InspectLineBinaryImageCompareOcr(item);
+        }
+    }
+
+    private async Task InspectLineNOcr(OcrSubtitleItem item)
+    {
+        if (!InitNOcrDb())
+        {
+            return;
+        }
+
+        var bitmap = item.GetSkBitmap();
+        var nBmp = new NikseBitmap2(bitmap);
+        nBmp.MakeTwoColor(200);
+        nBmp.CropTop(0, new SKColor(0, 0, 0, 0));
+        var letters =
+            NikseBitmapImageSplitter2.SplitBitmapToLettersNew(nBmp, SelectedNOcrPixelsAreSpace, false, true, 20, true);
+        var matches = new List<NOcrChar?>(new NOcrChar?[letters.Count]);
+        var idx = 0;
+        while (idx < letters.Count)
+        {
+            var splitterItem = letters[idx];
+            if (splitterItem.NikseBitmap == null)
+            {
+                matches[idx] = new NOcrChar { Text = splitterItem.SpecialCharacter ?? string.Empty };
+                idx++;
+                continue;
+            }
+
+            var match = _nOcrDb!.GetMatch(nBmp, letters, splitterItem, splitterItem.Top, true,
+                SelectedNOcrMaxWrongPixels);
+            matches[idx] = match;
+
+            if (match is { ExpandCount: > 1 })
+            {
+                for (var j = 1; j < match.ExpandCount && idx + j < matches.Count; j++)
+                {
+                    matches[idx + j] = match;
+                }
+                idx += match.ExpandCount;
+            }
+            else
+            {
+                idx++;
+            }
+        }
+
+        await _windowService.ShowDialogAsync<NOcrInspectWindow, NOcrInspectViewModel>(Window!,
+            vm =>
+            {
+                vm.Initialize(nBmp.GetBitmap(), nBmp, item, _nOcrDb, SelectedNOcrMaxWrongPixels, letters,
+                    matches, _nOcrAddHistoryManager);
+            });
+        _isCtrlDown = false;
+    }
+
+    private async Task InspectLineBinaryImageCompareOcr(OcrSubtitleItem item)
+    {
+        var db = InitImageComparOcrDb();
+        if (db == null)
+        {
+            return;
+        }
+
+        var bitmap = item.GetSkBitmap();
+        var nBmp = new NikseBitmap2(bitmap);
+        nBmp.MakeTwoColor(200);
+        nBmp.CropTop(0, new SKColor(0, 0, 0, 0));
+        var letters =
+            NikseBitmapImageSplitter2.SplitBitmapToLettersNew(nBmp, SelectedNOcrPixelsAreSpace, false, true, 20, true);
+        var matches = new List<BinaryOcrMatcher.CompareMatch?>();
+        foreach (var splitterItem in letters)
+        {
+            if (splitterItem.NikseBitmap == null)
+            {
+                var match = new BinaryOcrMatcher.CompareMatch(splitterItem.SpecialCharacter ?? string.Empty, false, 0, nameof(splitterItem.SpecialCharacter));
+                matches.Add(match);
+            }
+            else
+            {
+                var match = _binaryOcrMatcher.GetCompareMatch(splitterItem, out _, letters, letters.IndexOf(splitterItem), db, BinaryOcrMaxErrorPercent);
+                matches.Add(match);
+            }
+        }
+
+        var result = await _windowService.ShowDialogAsync<BinaryOcrInspectWindow, BinaryOcrInspectViewModel>(Window!,
+            vm =>
+            {
+                vm.Initialize(nBmp.GetBitmap(), nBmp, SelectedOcrSubtitleItem, db, BinaryOcrMaxErrorPercent,
+                    SelectedNOcrMaxWrongPixels, _binaryOcrAddHistoryManager, letters, matches);
+            });
+
+        _isCtrlDown = false;
+    }
+
+    [RelayCommand]
+    private async Task InspectAdditions()
+    {
+        var item = SelectedOcrSubtitleItem;
+        var engine = SelectedOcrEngine;
+        if (item == null || engine == null)
+        {
+            return;
+        }
+
+        if (engine.EngineType == OcrEngineType.nOcr)
+        {
+            await _windowService.ShowDialogAsync<NOcrCharacterHistoryWindow, NOcrCharacterHistoryViewModel>(Window!,
+                vm => { vm.Initialize(_nOcrDb!, _nOcrAddHistoryManager); });
+
+            _isCtrlDown = false;
+        }
+
+        if (engine.EngineType == OcrEngineType.BinaryImageCompare)
+        {
+            var db = InitImageComparOcrDb();
+            if (db == null)
+            {
+                return;
+            }
+
+            await _windowService.ShowDialogAsync<BinaryOcrCharacterHistoryWindow, BinaryOcrCharacterHistoryViewModel>(Window!,
+                vm => { vm.Initialize(db, _binaryOcrAddHistoryManager); });
+
+            _isCtrlDown = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task ViewSelectedImage()
+    {
+        var item = SelectedOcrSubtitleItem;
+        if (item == null)
+        {
+            return;
+        }
+
+        var result = await _windowService.ShowDialogAsync<ShowImageWindow, ShowImageViewModel>(Window!, vm => { vm.Initialize(Se.Language.Ocr.OcrImage, item.GetBitmapCropped(), item.Text); });
+        _isCtrlDown = false;
+
+        if (result.LeftPressed)
+        {
+            var idx = OcrSubtitleItems.IndexOf(item);
+            var prevIdx = idx - 1;
+            if (prevIdx >= 0)
+            {
+                SelectedOcrSubtitleItem = OcrSubtitleItems[prevIdx];
+                await ViewSelectedImage();
+            }
+        }
+        else if (result.RightPressed)
+        {
+            var idx = OcrSubtitleItems.IndexOf(item);
+            var nextIdx = idx + 1;
+            if (nextIdx < OcrSubtitleItems.Count)
+            {
+                SelectedOcrSubtitleItem = OcrSubtitleItems[nextIdx];
+                await ViewSelectedImage();
+            }
+        }
+    }
+
+    [RelayCommand]
+    private async Task SaveImageAs()
+    {
+        var item = SelectedOcrSubtitleItem;
+        if (item == null)
+        {
+            return;
+        }
+
+        var imageIndex = OcrSubtitleItems.IndexOf(item) + 1;
+        var fileName = await _fileHelper.PickSaveSubtitleFile(Window!, ".png", $"image{imageIndex}", Se.Language.General.SaveImageAs);
+        _isCtrlDown = false;
+        if (string.IsNullOrEmpty(fileName))
+        {
+            return;
+        }
+
+        var bitmap = item.GetBitmap();
+        bitmap.Save(fileName, PngBitmapEncoderOptions.Default);
+    }
+
+    [RelayCommand]
+    private async Task CopyImageToClipboard()
+    {
+        var item = SelectedOcrSubtitleItem;
+        if (item == null || Window == null || Window.Clipboard == null)
+        {
+            return;
+        }
+
+        await ClipboardHelper.CopyImageToClipboard(item.GetBitmap());
+    }
+
+    [RelayCommand]
+    private async Task PickOllamaModel()
+    {
+        var result = await _windowService.ShowDialogAsync<PickOllamaModelWindow, PickOllamaModelViewModel>(Window!,
+            vm => { vm.Initialize(Se.Language.General.PickOllamaModel, OllamaModel, OllamaUrl, visionOnly: true); });
+
+        _isCtrlDown = false;
+
+        if (result.OkPressed && result.SelectedModel != null)
+        {
+            OllamaModel = result.SelectedModel;
+        }
+    }
+
+    partial void OnSelectedLlamaCppOcrModelChanged(LlamaCppModelDisplay? value)
+    {
+        if (value == null)
+        {
+            return;
+        }
+
+        Se.Settings.Ocr.LlamaCppOcrModel = LlamaCppServerManager.GetModelPath(value.Model.FileName);
+    }
+
+    partial void OnSelectedCrispEmbedBackendChanged(CrispEmbedBackend? value)
+    {
+        CrispEmbedModels.Clear();
+        if (value == null)
+        {
+            SelectedCrispEmbedModel = null;
+            return;
+        }
+
+        Se.Settings.Ocr.CrispEmbedBackend = value.Name;
+
+        foreach (var model in value.Models)
+        {
+            CrispEmbedModels.Add(new CrispEmbedModelDisplay { Backend = value, Model = model });
+        }
+
+        SelectedCrispEmbedModel = CrispEmbedModels.FirstOrDefault(p => p.Model.Name == Se.Settings.Ocr.CrispEmbedModel)
+                                  ?? CrispEmbedModels.FirstOrDefault(p => value.IsModelInstalled(p.Model))
+                                  ?? CrispEmbedModels.FirstOrDefault();
+    }
+
+    partial void OnSelectedCrispEmbedModelChanged(CrispEmbedModelDisplay? value)
+    {
+        if (value == null)
+        {
+            return;
+        }
+
+        Se.Settings.Ocr.CrispEmbedModel = value.Model.Name;
+    }
+
+    [RelayCommand]
+    private async Task DownloadCrispEmbed()
+    {
+        if (Window == null || SelectedCrispEmbedBackend is not { } backend || SelectedCrispEmbedModel is not { } model)
+        {
+            return;
+        }
+
+        if (backend.IsModelInstalled(model.Model))
+        {
+            var answer = await MessageBox.Show(
+                Window,
+                Se.Language.General.Download,
+                string.Format(Se.Language.Translate.XIsAlreadyDownloadedReDownload, model.Model.Name),
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+
+            if (answer != MessageBoxResult.Yes)
+            {
+                return;
+            }
+        }
+
+        await EnsureCrispEmbedReady(forceModelDownload: true);
+    }
+
+    /// <summary>
+    /// Re-downloads the CrispEmbed engine binaries, re-asking which hardware build to use. The
+    /// CPU/Vulkan/CUDA choice is otherwise only offered on first install, which left anyone who
+    /// picked CPU with no way back to a GPU build (issue #13400). Downloaded models are kept.
+    /// </summary>
+    [RelayCommand]
+    private async Task ReDownloadCrispEmbedEngine()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        await CrispEmbedDownloadHelper.DownloadEngineAsync(
+            Window, _windowService,
+            onEngineDownloadClosed: () =>
+            {
+                _isCtrlDown = false;
+                RefreshEngineCombo?.Invoke();
+            });
+    }
+
+    /// <summary>
+    /// Makes sure the CrispEmbed engine binaries and the selected model are on disk, offering
+    /// downloads for anything missing - the OCR-side analog of the CrispASR engine/model
+    /// download flow in the speech-to-text window.
+    /// </summary>
+    private async Task<bool> EnsureCrispEmbedReady(bool forceModelDownload = false)
+    {
+        if (Window == null || SelectedCrispEmbedBackend is not { } backend || SelectedCrispEmbedModel is not { } model)
+        {
+            return false;
+        }
+
+        return await CrispEmbedDownloadHelper.EnsureReadyAsync(
+            Window, _windowService, backend, model.Model, forceModelDownload,
+            onEngineDownloadClosed: () =>
+            {
+                _isCtrlDown = false;
+                RefreshEngineCombo?.Invoke();
+            },
+            onModelDownloadClosed: () =>
+            {
+                _isCtrlDown = false;
+                RefreshCrispEmbedModelCombo?.Invoke();
+            });
+    }
+
+    [RelayCommand]
+    private async Task ShowLlamaCppOcrSettings()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var result = await _windowService.ShowDialogAsync<LlamaCppOcrSettingsWindow, LlamaCppOcrSettingsViewModel>(Window, vm => vm.Initialize());
+        if (result.OkPressed)
+        {
+            LlamaCppUrl = Se.Settings.Ocr.LlamaCppUrl;
+        }
+    }
+
+    private void UpdateLlamaCppOcrServerButtonText()
+    {
+        LlamaCppOcrServerButtonText = LlamaCppServerManager.IsServerRunning ? Se.Language.General.StopServer : Se.Language.General.StartServer;
+    }
+
+    [RelayCommand]
+    private async Task DownloadLlamaCppOcr()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var model = SelectedLlamaCppOcrModel?.Model;
+        var forceModelDownload = false;
+        if (model != null && LlamaCppServerManager.IsModelInstalled(model))
+        {
+            var answer = await MessageBox.Show(
+                Window,
+                Se.Language.General.Download,
+                string.Format(Se.Language.Translate.XIsAlreadyDownloadedReDownload, model.DisplayName),
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+
+            if (answer != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            forceModelDownload = true;
+        }
+
+        var downloaded = await LlamaCppDownloadHelper.DownloadAsync(Window, _windowService, model, forceModelDownload: forceModelDownload);
+        if (downloaded != null)
+        {
+            var selectName = string.IsNullOrEmpty(downloaded) ? model?.FileName : downloaded;
+            SelectedLlamaCppOcrModel = LlamaCppDownloadHelper.PopulateModels(LlamaCppOcrModels, LlamaCppServerManager.OcrModels, selectName);
+        }
+    }
+
+    [RelayCommand]
+    private async Task ToggleLlamaCppOcrServer()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        if (LlamaCppServerManager.IsServerRunning)
+        {
+            LlamaCppServerManager.StopServer();
+            UpdateLlamaCppOcrServerButtonText();
+            return;
+        }
+
+        await EnsureLlamaCppOcrReady();
+        UpdateLlamaCppOcrServerButtonText();
+    }
+
+    private async Task<bool> EnsureLlamaCppOcrReady()
+    {
+        if (Window == null)
+        {
+            return false;
+        }
+
+        var model = SelectedLlamaCppOcrModel?.Model;
+        if (model == null)
+        {
+            return false;
+        }
+
+        var engineInstalled = LlamaCppServerManager.IsEngineInstalled();
+        var modelInstalled = LlamaCppServerManager.IsModelInstalled(model);
+        if (!engineInstalled || !modelInstalled)
+        {
+            string message;
+            if (!engineInstalled && !modelInstalled)
+            {
+                message = Se.Language.Ocr.LlamaCppDownloadEngineAndModelPrompt;
+            }
+            else if (!engineInstalled)
+            {
+                message = Se.Language.Ocr.LlamaCppDownloadEnginePrompt;
+            }
+            else
+            {
+                message = Se.Language.Ocr.LlamaCppDownloadModelPrompt;
+            }
+
+            var answer = await MessageBox.Show(
+                Window,
+                Se.Language.General.Download,
+                message,
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+
+            if (answer != MessageBoxResult.Yes)
+            {
+                return false;
+            }
+
+            await LlamaCppDownloadHelper.DownloadAsync(Window, _windowService, model);
+            if (!LlamaCppServerManager.IsEngineInstalled() || !LlamaCppServerManager.IsModelInstalled(model))
+            {
+                return false;
+            }
+        }
+
+        SelectedLlamaCppOcrModel = LlamaCppDownloadHelper.PopulateModels(LlamaCppOcrModels, LlamaCppServerManager.OcrModels, model.FileName);
+
+        try
+        {
+            await LlamaCppServerManager.EnsureServerRunningAsync(model, _cancellationTokenSource.Token);
+        }
+        catch (Exception ex)
+        {
+            await MessageBox.Show(
+                Window,
+                Se.Language.General.Error,
+                ex.Message,
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+            return false;
+        }
+
+        UpdateLlamaCppOcrServerButtonText();
+        return true;
+    }
+
+    [RelayCommand]
+    private async Task ShowNOcrSettings()
+    {
+        InitNOcrDb();
+        var result =
+            await _windowService.ShowDialogAsync<NOcrSettingsWindow, NOcrSettingsViewModel>(Window!,
+                vm => { vm.Initialize(_nOcrDb!); });
+
+        _isCtrlDown = false;
+
+        if (result.EditPressed)
+        {
+            await _windowService.ShowDialogAsync<NOcrDbEditWindow, NOcrDbEditViewModel>(Window!,
+                vm => { vm.Initialize(_nOcrDb!); });
+
+            _isCtrlDown = false;
+
+            return;
+        }
+
+        if (result.DeletePressed)
+        {
+            try
+            {
+                File.Delete(_nOcrDb!.FileName);
+                NOcrDatabases.Remove(SelectedNOcrDatabase!);
+                SelectedNOcrDatabase = NOcrDatabases.FirstOrDefault();
+
+                if (SelectedNOcrDatabase == null)
+                {
+                    _nOcrDb = new NOcrDb(Path.Combine(Se.OcrFolder, "Default.nocr"));
+                    _nOcrDb.Save();
+                    NOcrDatabases.Add("Default");
+                    SelectedNOcrDatabase = NOcrDatabases.FirstOrDefault();
+                }
+            }
+            catch
+            {
+                await MessageBox.Show(
+                    Window!,
+                    "Error deleting file",
+                    $"Could not delete the file {_nOcrDb!.FileName}.",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+
+            return;
+        }
+
+        if (result.NewPressed)
+        {
+            var newResult = await _windowService.ShowDialogAsync<NOcrDbNewWindow, NOcrDbNewViewModel>(Window!,
+                vm => { vm.Initialize(Se.Language.Ocr.NewNOcrDatabase, string.Empty); });
+            _isCtrlDown = false;
+            if (newResult.OkPressed)
+            {
+                if (!Directory.Exists(Se.OcrFolder))
+                {
+                    Directory.CreateDirectory(Se.OcrFolder);
+                }
+
+                var newFileName = Path.Combine(Se.OcrFolder, newResult.DatabaseName + ".nocr");
+                if (File.Exists(newFileName))
+                {
+                    await MessageBox.Show(
+                        Window!,
+                        Se.Language.General.FileAlreadyExists,
+                        string.Format(Se.Language.General.FileXAlreadyExists, newFileName),
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                    return;
+                }
+
+                _nOcrDb = new NOcrDb(newFileName);
+                _nOcrDb.Save();
+                NOcrDatabases.Add(newResult.DatabaseName);
+                var sortedList = NOcrDatabases.OrderBy(p => p).ToList();
+                NOcrDatabases.Clear();
+                NOcrDatabases.AddRange(sortedList);
+                SelectedNOcrDatabase = newResult.DatabaseName;
+            }
+
+            return;
+        }
+
+        if (result.TrainPressed)
+        {
+            var trainResult = await _windowService.ShowDialogAsync<NOcrTrainWindow, NOcrTrainViewModel>(Window!, _ => { });
+            _isCtrlDown = false;
+            if (trainResult.TrainedDatabaseName != null)
+            {
+                NOcrDatabases.Clear();
+                foreach (var s in NOcrDb.GetDatabases(Se.OcrFolder).OrderBy(p => p))
+                {
+                    NOcrDatabases.Add(s);
+                }
+
+                SelectedNOcrDatabase = trainResult.TrainedDatabaseName;
+            }
+
+            return;
+        }
+
+        if (result.RenamePressed)
+        {
+            var newResult = await _windowService.ShowDialogAsync<NOcrDbNewWindow, NOcrDbNewViewModel>(Window!,
+                vm =>
+                {
+                    vm.Initialize(Se.Language.Ocr.RenameNOcrDatabase,
+                        Path.GetFileNameWithoutExtension(_nOcrDb!.FileName));
+                });
+            _isCtrlDown = false;
+            if (newResult.OkPressed)
+            {
+                if (!Directory.Exists(Se.OcrFolder))
+                {
+                    Directory.CreateDirectory(Se.OcrFolder);
+                }
+
+                var newFileName = Path.Combine(Se.OcrFolder, newResult.DatabaseName + ".nocr");
+                if (File.Exists(newFileName))
+                {
+                    await MessageBox.Show(
+                        Window!,
+                        Se.Language.General.FileAlreadyExists,
+                        string.Format(Se.Language.General.FileXAlreadyExists, newFileName),
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                    return;
+                }
+
+                File.Move(_nOcrDb!.FileName, newFileName);
+                NOcrDatabases.Clear();
+                foreach (var s in NOcrDb.GetDatabases(Se.OcrFolder).OrderBy(p => p))
+                {
+                    NOcrDatabases.Add(s);
+                }
+
+                SelectedNOcrDatabase = newResult.DatabaseName;
+            }
+        }
+    }
+
+    [RelayCommand]
+    private async Task ShowBinaryOcrSettings()
+    {
+        var dbName = SelectedImageCompareDatabase;
+        if (string.IsNullOrEmpty(dbName))
+        {
+            return;
+        }
+
+        var result =
+            await _windowService.ShowDialogAsync<BinaryOcrSettingsWindow, BinaryOcrSettingsViewModel>(Window!,
+                vm => { vm.Initialize(dbName); });
+
+        _isCtrlDown = false;
+
+        if (result.EditPressed)
+        {
+            await _windowService.ShowDialogAsync<BinaryOcrDbEditWindow, BinaryOcrDbEditViewModel>(Window!,
+                vm => { vm.Initialize(SelectedImageCompareDatabase!); });
+
+            _isCtrlDown = false;
+
+            return;
+        }
+
+        if (result.DeletePressed)
+        {
+            try
+            {
+                var fileName = Path.Combine(Se.OcrFolder, dbName + BinaryOcrDb.Extension);
+                File.Delete(fileName);
+
+                ImageCompareDatabases.Clear();
+                foreach (var db in BinaryOcrDb.GetDatabases(Se.OcrFolder))
+                {
+                    ImageCompareDatabases.Add(db);
+                }
+                SelectedImageCompareDatabase = ImageCompareDatabases.FirstOrDefault();
+                if (SelectedImageCompareDatabase == null)
+                {
+                    var binaryOcrDb = new BinaryOcrDb(Path.Combine(Se.OcrFolder, "Latin" + BinaryOcrDb.Extension));
+                    binaryOcrDb.Save();
+                    ImageCompareDatabases.Add("Latin");
+                    SelectedImageCompareDatabase = ImageCompareDatabases.FirstOrDefault();
+                }
+            }
+            catch
+            {
+                await MessageBox.Show(
+                    Window!,
+                    "Error deleting file",
+                    $"Could not delete the file {Path.Combine(Se.OcrFolder, dbName + BinaryOcrDb.Extension)}.",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+
+            return;
+        }
+
+        if (result.NewPressed)
+        {
+            var newResult = await _windowService.ShowDialogAsync<BinaryOcrDbNewWindow, BinaryOcrDbNewViewModel>(Window!,
+                vm => { vm.Initialize(Se.Language.Ocr.NewBinaryImageCompareDatabase, string.Empty); });
+            if (newResult.OkPressed)
+            {
+                if (!Directory.Exists(Se.OcrFolder))
+                {
+                    Directory.CreateDirectory(Se.OcrFolder);
+                }
+
+                var newFileName = Path.Combine(Se.OcrFolder, newResult.DatabaseName + BinaryOcrDb.Extension);
+                if (File.Exists(newFileName))
+                {
+                    await MessageBox.Show(
+                        Window!,
+                        Se.Language.General.FileAlreadyExists,
+                        string.Format(Se.Language.General.FileXAlreadyExists, newFileName),
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                    return;
+                }
+
+                var binaryOcrDb = new BinaryOcrDb(newFileName);
+                binaryOcrDb.Save();
+                ImageCompareDatabases.Add(newResult.DatabaseName);
+                var sortedList = ImageCompareDatabases.OrderBy(p => p).ToList();
+                ImageCompareDatabases.Clear();
+                ImageCompareDatabases.AddRange(sortedList);
+                SelectedImageCompareDatabase = newResult.DatabaseName;
+            }
+
+            return;
+        }
+
+        if (result.RenamePressed)
+        {
+            var newResult = await _windowService.ShowDialogAsync<BinaryOcrDbNewWindow, BinaryOcrDbNewViewModel>(Window!,
+            vm =>
+            {
+                vm.Initialize(Se.Language.Ocr.RenameBinaryImageCompareDatabase, result.BinaryOcrDatabaseName);
+            });
+
+            _isCtrlDown = false;
+
+            if (newResult.OkPressed)
+            {
+                var newFileName = Path.Combine(Se.OcrFolder, newResult.DatabaseName + BinaryOcrDb.Extension);
+                if (File.Exists(newFileName))
+                {
+                    await MessageBox.Show(
+                        Window!,
+                        Se.Language.General.FileAlreadyExists,
+                        string.Format(Se.Language.General.FileXAlreadyExists, newFileName),
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                    return;
+                }
+
+                var oldFileName = Path.Combine(Se.OcrFolder, dbName + BinaryOcrDb.Extension);
+                File.Move(oldFileName, newFileName);
+                ImageCompareDatabases.Clear();
+                foreach (var s in BinaryOcrDb.GetDatabases(Se.OcrFolder).OrderBy(p => p))
+                {
+                    ImageCompareDatabases.Add(s);
+                }
+
+                SelectedImageCompareDatabase = newResult.DatabaseName;
+            }
+        }
+    }
+
+    [RelayCommand]
+    private async Task PickTesseractModel()
+    {
+        await TesseractModelDownload();
+    }
+
+    [RelayCommand]
+    private void ToggleItalic()
+    {
+        var selectedItems = SubtitleGrid.SelectedItems;
+        if (selectedItems == null || selectedItems.Count == 0)
+        {
+            return;
+        }
+
+        var first = true;
+        var makeItalic = true;
+        foreach (var item in selectedItems)
+        {
+            if (item is OcrSubtitleItem ocrItem)
+            {
+                if (first)
+                {
+                    first = false;
+                    makeItalic = !ocrItem.Text.Contains("<i>");
+                }
+
+                ocrItem.Text = ocrItem.Text.Replace("<i>", string.Empty).Replace("</i>", string.Empty);
+                ocrItem.Text = ocrItem.Text.Replace("<I>", string.Empty).Replace("</I>", string.Empty);
+                if (makeItalic)
+                {
+                    if (!string.IsNullOrEmpty(ocrItem.Text))
+                    {
+                        ocrItem.Text = $"<i>{ocrItem.Text}</i>";
+                    }
+                }
+
+                var idx = OcrSubtitleItems.IndexOf(ocrItem);
+                if (_ocrFixEngine.IsLoaded())
+                {
+                    ocrItem.FixResult = new OcrFixLineResult
+                    {
+                        LineIndex = idx,
+
+                        //TODO: spell check
+                        Words = new List<OcrFixLinePartResult> { new() { Word = ocrItem.Text, IsSpellCheckedOk = null } },
+                    };
+                }
+                else
+                {
+                    ocrItem.FixResult = new OcrFixLineResult(idx, ocrItem.Text);
+                }
+            }
+        }
+    }
+
+    [RelayCommand]
+    private async Task PickFallbackDatabase()
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        var et = SelectedOcrEngine?.EngineType;
+        if (et != OcrEngineType.nOcr && et != OcrEngineType.BinaryImageCompare)
+        {
+            return;
+        }
+
+        string label;
+        List<string> databases;
+        string? selected;
+
+        if (et == OcrEngineType.nOcr)
+        {
+            label = Se.Language.Ocr.NOcrBinaryOcrFallbackDatabase;
+            databases = new List<string> { Se.Language.Ocr.NOcrBinaryOcrFallbackNone };
+            databases.AddRange(BinaryOcrDb.GetDatabases(Se.OcrFolder).OrderBy(p => p));
+            selected = string.IsNullOrEmpty(NOcrBinaryOcrFallbackDatabase)
+                ? Se.Language.Ocr.NOcrBinaryOcrFallbackNone
+                : NOcrBinaryOcrFallbackDatabase;
+        }
+        else
+        {
+            label = Se.Language.Ocr.BinaryOcrNOcrFallbackDatabase;
+            databases = new List<string> { Se.Language.Ocr.NOcrBinaryOcrFallbackNone };
+            databases.AddRange(NOcrDb.GetDatabases(Se.OcrFolder).OrderBy(p => p));
+            selected = string.IsNullOrEmpty(BinaryOcrNOcrFallbackDatabase)
+                ? Se.Language.Ocr.NOcrBinaryOcrFallbackNone
+                : BinaryOcrNOcrFallbackDatabase;
+        }
+
+        var result = await _windowService.ShowDialogAsync<OcrFallbackDatabaseWindow, OcrFallbackDatabaseViewModel>(
+            Window,
+            vm => vm.Initialize(label, databases, selected));
+
+        if (result.OkPressed)
+        {
+            var picked = result.SelectedDatabase;
+            var value = string.IsNullOrEmpty(picked) || picked == Se.Language.Ocr.NOcrBinaryOcrFallbackNone
+                ? string.Empty
+                : picked;
+
+            if (et == OcrEngineType.nOcr)
+            {
+                NOcrBinaryOcrFallbackDatabase = value;
+            }
+            else
+            {
+                BinaryOcrNOcrFallbackDatabase = value;
+            }
+        }
+
+        // ToggleButton's TwoWay IsChecked binding flips HasFallbackDatabase on click; recompute
+        // unconditionally so the checked state always reflects the underlying setting.
+        UpdateHasFallbackDatabase();
+    }
+
+    private void UpdateHasFallbackDatabase()
+    {
+        var et = SelectedOcrEngine?.EngineType;
+        if (et == OcrEngineType.nOcr)
+        {
+            HasFallbackDatabase = !string.IsNullOrEmpty(NOcrBinaryOcrFallbackDatabase);
+        }
+        else if (et == OcrEngineType.BinaryImageCompare)
+        {
+            HasFallbackDatabase = !string.IsNullOrEmpty(BinaryOcrNOcrFallbackDatabase);
+        }
+        else
+        {
+            HasFallbackDatabase = false;
+        }
+    }
+
+    partial void OnNOcrBinaryOcrFallbackDatabaseChanged(string value)
+    {
+        UpdateHasFallbackDatabase();
+    }
+
+    partial void OnBinaryOcrNOcrFallbackDatabaseChanged(string value)
+    {
+        UpdateHasFallbackDatabase();
+    }
+
+    [RelayCommand]
+    private async Task ShowPreProcessing()
+    {
+        if (Window == null)
+        {
+            UpdateImagePreProcessingStatus();
+            return;
+        }
+
+        var selectedItem = SelectedOcrSubtitleItem;
+        if (selectedItem == null)
+        {
+            UpdateImagePreProcessingStatus();
+            return;
+        }
+
+        var result = await _windowService
+            .ShowDialogAsync<PreProcessingWindow, PreProcessingViewModel>(Window, vm => { vm.Initialize(_preProcessingSettings, selectedItem.GetSkBitmapClean()); });
+
+        _isCtrlDown = false;
+
+        if (result.OkPressed)
+        {
+            _preProcessingSettings = result.PreProcessingSettings;
+            foreach (var item in _allOcrSubtitleItems) // not OcrSubtitleItems - it may be filtered to forced-only
+            {
+                item.PreProcessingSettings = _preProcessingSettings;
+            }
+
+            var tempIdx = OcrSubtitleItems.IndexOf(selectedItem);
+            var temp = OcrSubtitleItems.ToList();
+            OcrSubtitleItems.Clear();
+            OcrSubtitleItems.AddRange(temp);
+            SelectAndScrollToRow(tempIdx);
+        }
+
+        UpdateImagePreProcessingStatus();
+    }
+
+    private void UpdateImagePreProcessingStatus()
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_preProcessingSettings == null)
+            {
+                HasPreProcessingSettings = false;
+                return;
+            }
+
+            HasPreProcessingSettings =
+                _preProcessingSettings.CropTransparentColors ||
+                _preProcessingSettings.InverseColors ||
+                _preProcessingSettings.Binarize ||
+                _preProcessingSettings.RemoveBorders ||
+                _preProcessingSettings.ToOneColor;
+        });
+    }
+
+    [RelayCommand]
+    private async Task PickVobSubColors()
+    {
+        if (Window == null || _ocrSubtitle is not OcrSubtitleVobSub vobSub)
+        {
+            return;
+        }
+
+        var previewSubPicture = vobSub.GetSubPicture(SelectedOcrSubtitleItem?.SourceIndex ?? 0);
+
+        var result = await _windowService.ShowDialogAsync<VobSubColorChooser.VobSubColorChooserWindow, VobSubColorChooser.VobSubColorChooserViewModel>(
+            Window,
+            vm => vm.Initialize(previewSubPicture, vobSub.GetPalette(), vobSub.Background, vobSub.Pattern, vobSub.Emphasis1, vobSub.Emphasis2));
+
+        _isCtrlDown = false;
+
+        if (!result.OkPressed)
+        {
+            return;
+        }
+
+        vobSub.Background = result.Background;
+        vobSub.Pattern = result.Pattern;
+        vobSub.Emphasis1 = result.Emphasis1;
+        vobSub.Emphasis2 = result.Emphasis2;
+        vobSub.UseCustomColors = !AreDefaultVobSubColors(vobSub);
+
+        HasCustomVobSubColors = vobSub.UseCustomColors;
+        SaveVobSubColors();
+        RefreshOcrSubtitleItemBitmaps();
+    }
+
+    private static bool AreDefaultVobSubColors(OcrSubtitleVobSub vobSub)
+    {
+        return vobSub.Background == SkiaSharp.SKColors.Transparent
+               && vobSub.Pattern == SkiaSharp.SKColors.Black
+               && vobSub.Emphasis1 == SkiaSharp.SKColors.White
+               && vobSub.Emphasis2 == SkiaSharp.SKColors.Black;
+    }
+
+    private void RefreshOcrSubtitleItemBitmaps()
+    {
+        var selectedIndex = SelectedOcrSubtitleItem != null
+            ? OcrSubtitleItems.IndexOf(SelectedOcrSubtitleItem)
+            : -1;
+
+        foreach (var item in _allOcrSubtitleItems) // not OcrSubtitleItems - it may be filtered to forced-only
+        {
+            item.InvalidateBitmap();
+        }
+
+        var temp = OcrSubtitleItems.ToList();
+        OcrSubtitleItems.Clear();
+        OcrSubtitleItems.AddRange(temp);
+
+        if (selectedIndex >= 0)
+        {
+            SelectAndScrollToRow(selectedIndex);
+        }
+    }
+
+    private void ApplyStoredVobSubColors()
+    {
+        if (_ocrSubtitle is not OcrSubtitleVobSub vobSub)
+        {
+            return;
+        }
+
+        var ocr = Se.Settings.Ocr;
+        if (!ocr.VobSubUseCustomColors)
+        {
+            HasCustomVobSubColors = false;
+            return;
+        }
+
+        try
+        {
+            vobSub.Background = ocr.VobSubColorBackground.FromHex();
+            vobSub.Pattern = ocr.VobSubColorPattern.FromHex();
+            vobSub.Emphasis1 = ocr.VobSubColorEmphasis1.FromHex();
+            vobSub.Emphasis2 = ocr.VobSubColorEmphasis2.FromHex();
+            vobSub.UseCustomColors = !AreDefaultVobSubColors(vobSub);
+            HasCustomVobSubColors = vobSub.UseCustomColors;
+        }
+        catch
+        {
+            HasCustomVobSubColors = false;
+        }
+    }
+
+    private void SaveVobSubColors()
+    {
+        if (_ocrSubtitle is not OcrSubtitleVobSub vobSub)
+        {
+            return;
+        }
+
+        var ocr = Se.Settings.Ocr;
+        ocr.VobSubUseCustomColors = vobSub.UseCustomColors;
+        ocr.VobSubColorBackground = vobSub.Background.ToHex();
+        ocr.VobSubColorPattern = vobSub.Pattern.ToHex();
+        ocr.VobSubColorEmphasis1 = vobSub.Emphasis1.ToHex();
+        ocr.VobSubColorEmphasis2 = vobSub.Emphasis2.ToHex();
+        Se.SaveSettings();
+    }
+
+    [RelayCommand]
+    private void ToggleBold()
+    {
+        var selectedItems = SubtitleGrid.SelectedItems;
+        if (selectedItems == null || selectedItems.Count == 0)
+        {
+            return;
+        }
+
+        var first = true;
+        var makeBold = true;
+        foreach (var item in selectedItems)
+        {
+            if (item is OcrSubtitleItem ocrItem)
+            {
+                if (first)
+                {
+                    first = false;
+                    makeBold = !ocrItem.Text.Contains("<b>");
+                }
+
+                ocrItem.Text = ocrItem.Text.Replace("<b>", string.Empty).Replace("</b>", string.Empty);
+                ocrItem.Text = ocrItem.Text.Replace("<B>", string.Empty).Replace("</B>", string.Empty);
+                if (makeBold)
+                {
+                    if (!string.IsNullOrEmpty(ocrItem.Text))
+                    {
+                        ocrItem.Text = $"<b>{ocrItem.Text}</b>";
+                    }
+                }
+
+                var idx = OcrSubtitleItems.IndexOf(ocrItem);
+                if (_ocrFixEngine.IsLoaded())
+                {
+                    ocrItem.FixResult = new OcrFixLineResult
+                    {
+                        LineIndex = idx,
+                        // TODO: spell check
+                        Words = new List<OcrFixLinePartResult> { new() { Word = ocrItem.Text, IsSpellCheckedOk = null } },
+                    };
+                }
+                else
+                {
+                    ocrItem.FixResult = new OcrFixLineResult(idx, ocrItem.Text);
+                }
+            }
+        }
+    }
+
+    [RelayCommand]
+    private void Ok()
+    {
+        OkPressed = true;
+
+        // Remember the image source so spell check can show the original images (#11719)
+        _ocrImageSourceHolder.Source = _ocrSubtitle;
+        _ocrImageSourceHolder.FileName = _sourceFileName;
+
+        OcredSubtitle.Clear();
+        var number = 1;
+        for (var i = 0; i < OcrSubtitleItems.Count; i++)
+        {
+            var item = OcrSubtitleItems[i];
+            foreach (var groupText in SplitTextByAlignmentGroups(item.Text))
+            {
+                OcredSubtitle.Add(new SubtitleLineViewModel
+                {
+                    Number = number++,
+                    Text = groupText,
+                    StartTime = item.StartTime,
+                    EndTime = item.EndTime,
+                });
+            }
+        }
+
+        Close();
+    }
+
+    private static readonly Regex AlignmentTagRegex = new(@"^\{\\an[1-9]\}", RegexOptions.Compiled);
+
+    // Splits text into groups of lines sharing the same leading {\anN} alignment tag.
+    // A line without a tag continues the current group. Returns the original text as a single
+    // group when fewer than two distinct alignments are present.
+    private static List<string> SplitTextByAlignmentGroups(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return new List<string> { text };
+        }
+
+        var lines = text.SplitToLines();
+        var groups = new List<List<string>>();
+        var currentTag = string.Empty;
+        var currentLines = new List<string>();
+
+        foreach (var line in lines)
+        {
+            var match = AlignmentTagRegex.Match(line);
+            var tag = match.Success ? match.Value : string.Empty;
+
+            if (currentLines.Count == 0)
+            {
+                currentTag = tag;
+                currentLines.Add(line);
+            }
+            else if (tag.Length > 0 && tag != currentTag)
+            {
+                groups.Add(currentLines);
+                currentTag = tag;
+                currentLines = new List<string> { line };
+            }
+            else
+            {
+                currentLines.Add(line);
+            }
+        }
+
+        if (currentLines.Count > 0)
+        {
+            groups.Add(currentLines);
+        }
+
+        if (groups.Count <= 1)
+        {
+            return new List<string> { text };
+        }
+
+        return groups.Select(g => string.Join("\n", g)).ToList();
+    }
+
+    [RelayCommand]
+    private void Cancel()
+    {
+        _cancellationTokenSource.Cancel();
+        Close();
+    }
+
+    [RelayCommand]
+    private void DeleteSelectedLines()
+    {
+        if (IsOcrRunning)
+        {
+            return; // the OCR loops hold indices into OcrSubtitleItems - deleting mid-run shifts them
+        }
+
+        var selectedItems = SubtitleGrid.SelectedItems;
+        if (selectedItems == null || selectedItems.Count == 0)
+        {
+            return;
+        }
+
+        var selectedIndices = new List<int>();
+        foreach (var selectedItem in selectedItems)
+        {
+            if (selectedItem is OcrSubtitleItem item)
+            {
+                var idx = OcrSubtitleItems.IndexOf(item);
+                if (idx >= 0)
+                {
+                    selectedIndices.Add(idx);
+
+                    var remov = UnknownWords.Where(uw => uw.Item == item).ToList();
+                    foreach (var unknownWord in remov)
+                    {
+                        UnknownWords.Remove(unknownWord);
+                    }
+                }
+            }
+        }
+
+        var itemsToRemove = selectedIndices
+            .Select(idx => OcrSubtitleItems[idx])
+            .ToList();
+
+        foreach (var item in itemsToRemove)
+        {
+            OcrSubtitleItems.Remove(item);
+            _allOcrSubtitleItems.Remove(item);
+        }
+
+        //foreach (var index in selectedIndices.OrderByDescending(p => p))
+        //{
+        //    _ocrSubtitle?.Delete(index);
+        //}
+
+        Renumber();
+
+        var toRemove = new List<UnknownWordItem>();
+        foreach (var unknownWord in UnknownWords)
+        {
+            if (!_allOcrSubtitleItems.Contains(unknownWord.Item)) // OcrSubtitleItems may be filtered to forced-only
+            {
+                toRemove.Add(unknownWord);
+            }
+        }
+
+        foreach (var item in toRemove)
+        {
+            UnknownWords.Remove(item);
+        }
+    }
+
+    private void Renumber()
+    {
+        // Renumber against the full list so numbers stay stable when the
+        // forced-only filter is active (filtered rows keep their track position).
+        for (var i = 0; i < _allOcrSubtitleItems.Count; i++)
+        {
+            _allOcrSubtitleItems[i].Number = i + 1;
+        }
+    }
+
+    [RelayCommand]
+    private async Task StartOcrSelectedLines()
+    {
+        var selectedItems = SubtitleGrid.SelectedItems;
+        if (selectedItems == null || selectedItems.Count == 0)
+        {
+            return;
+        }
+
+        var selectedIndices = new List<int>();
+        foreach (var selectedItem in selectedItems)
+        {
+            if (selectedItem is OcrSubtitleItem item)
+            {
+                var index = OcrSubtitleItems.IndexOf(item);
+                if (index >= 0 && !selectedIndices.Contains(index))
+                {
+                    selectedIndices.Add(index);
+                }
+            }
+        }
+
+        await StartOcr(selectedIndices);
+    }
+
+    [RelayCommand]
+    private async Task StartOcr(List<int>? selectedIndices)
+    {
+        if (IsOcrRunning || Window == null)
+        {
+            return;
+        }
+
+        if (!(SelectedOcrEngine is { } ocrEngine))
+        {
+            return;
+        }
+
+        if (ocrEngine.EngineType == OcrEngineType.Tesseract)
+        {
+            var tesseractOk = await CheckAndDownloadTesseract();
+            if (!tesseractOk)
+            {
+                return;
+            }
+
+            if (SelectedTesseractDictionaryItem == null)
+            {
+                var tesseractModelOk = await TesseractModelDownload();
+                if (!tesseractModelOk)
+                {
+                    return;
+                }
+            }
+        }
+
+        if (SelectedDictionary != null && DoFixOcrErrors && SelectedDictionary.Name != GetDictionaryNameNone())
+        {
+            var threeLetterCode = SelectedDictionary.GetThreeLetterCode();
+            var fixSubtitle = new Subtitle();
+            foreach (var ocrItem in OcrSubtitleItems)
+            {
+                fixSubtitle.Paragraphs.Add(new Paragraph(new TimeCode(ocrItem.StartTime), new TimeCode(ocrItem.EndTime), ocrItem.Text));
+            }
+
+            _ocrFixEngine.Initialize(fixSubtitle, threeLetterCode, SelectedDictionary);
+        }
+        else
+        {
+            _ocrFixEngine.Unload();
+        }
+
+        SaveSettings();
+        _cancellationTokenSource = new CancellationTokenSource();
+        IsOcrRunning = true;
+        UnknownWords.Clear();
+
+        var startFromIndex = SelectedOcrSubtitleItem == null ? 0 : OcrSubtitleItems.IndexOf(SelectedOcrSubtitleItem);
+        if (selectedIndices == null)
+        {
+            selectedIndices = new List<int>();
+            for (var i = startFromIndex; i < OcrSubtitleItems.Count; i++)
+            {
+                selectedIndices.Add(i);
+            }
+        }
+
+        ProgressText = Se.Language.Ocr.RunningOcrDotDotDot;
+        ProgressValue = 0d;
+
+        if (ocrEngine.EngineType == OcrEngineType.nOcr)
+        {
+            RunNOcr(selectedIndices, _cancellationTokenSource.Token);
+        }
+        else if (ocrEngine.EngineType == OcrEngineType.BinaryImageCompare)
+        {
+            RunBinaryImageCompareOcr(selectedIndices, _cancellationTokenSource.Token);
+        }
+        else if (ocrEngine.EngineType == OcrEngineType.Tesseract)
+        {
+            RunTesseractOcr(selectedIndices, _cancellationTokenSource.Token);
+        }
+        else if (ocrEngine.EngineType == OcrEngineType.PaddleOcrStandalone)
+        {
+            if (Configuration.IsRunningOnWindows && !File.Exists(Path.Combine(Se.PaddleOcrFolder, "paddleocr.exe")))
+            {
+                var answer = await MessageBox.Show(
+                    Window!,
+                    "Download Paddle OCR?",
+                    $"{Environment.NewLine}\"Paddle OCR\" requires downloading Paddle OCR.{Environment.NewLine}{Environment.NewLine}Download and use Paddle OCR?",
+                    MessageBoxButtons.Cancel,
+                    MessageBoxIcon.Question,
+                    "CPU",
+                    "GPU CUDA 11",
+                    "GPU CUDA 12");
+
+                if (answer == MessageBoxResult.Cancel)
+                {
+                    PauseOcr();
+                    return;
+                }
+
+                var result = await _windowService.ShowDialogAsync<DownloadPaddleOcrWindow, DownloadPaddleOcrViewModel>(Window!,
+                    vm =>
+                    {
+                        var engine = PaddleOcrDownloadType.EngineCpu;
+                        if (answer == MessageBoxResult.Custom1)
+                        {
+                            engine = PaddleOcrDownloadType.EngineCpu;
+                        }
+                        else if (answer == MessageBoxResult.Custom2)
+                        {
+                            engine = PaddleOcrDownloadType.EngineGpu11;
+                        }
+                        else if (answer == MessageBoxResult.Custom3)
+                        {
+                            engine = PaddleOcrDownloadType.EngineGpu12;
+                        }
+
+                        vm.Initialize(engine);
+                    });
+
+                _isCtrlDown = false;
+
+                if (!result.OkPressed)
+                {
+                    PauseOcr();
+                    return;
+                }
+            }
+            else if (Configuration.IsRunningOnLinux && !File.Exists(Path.Combine(Se.PaddleOcrFolder, "paddleocr.bin")))
+            {
+                var answer = await MessageBox.Show(
+                    Window!,
+                    "Download Paddle OCR?",
+                    $"{Environment.NewLine}\"Paddle OCR\" requires downloading Paddle OCR.{Environment.NewLine}{Environment.NewLine}Download and use Paddle OCR?",
+                    MessageBoxButtons.Cancel,
+                    MessageBoxIcon.Question,
+                    "CPU",
+                    "GPU CUDA");
+
+                if (answer == MessageBoxResult.Cancel)
+                {
+                    PauseOcr();
+                    return;
+                }
+
+                var result = await _windowService.ShowDialogAsync<DownloadPaddleOcrWindow, DownloadPaddleOcrViewModel>(Window!,
+                    vm =>
+                    {
+                        vm.Initialize(answer == MessageBoxResult.Custom1
+                            ? PaddleOcrDownloadType.EngineCpuLinux
+                            : PaddleOcrDownloadType.EngineGpuLinux);
+                    });
+
+                _isCtrlDown = false;
+
+                if (!result.OkPressed)
+                {
+                    PauseOcr();
+                    return;
+                }
+            }
+
+            var modelsDirectory = Se.PaddleOcrModelsFolder;
+            if (!Directory.Exists(modelsDirectory))
+            {
+                var result = await _windowService.ShowDialogAsync<DownloadPaddleOcrWindow, DownloadPaddleOcrViewModel>(Window!,
+                    vm => { vm.Initialize(PaddleOcrDownloadType.Models); });
+
+                _isCtrlDown = false;
+
+                if (!result.OkPressed)
+                {
+                    PauseOcr();
+                    return;
+                }
+            }
+
+            RunPaddleOcr(selectedIndices, ocrEngine.EngineType, _cancellationTokenSource.Token);
+        }
+        else if (ocrEngine.EngineType == OcrEngineType.PaddleOcrPython)
+        {
+            var modelsDirectory = Se.PaddleOcrModelsFolder;
+            if (!Directory.Exists(modelsDirectory))
+            {
+                var result = await _windowService.ShowDialogAsync<DownloadPaddleOcrWindow, DownloadPaddleOcrViewModel>(Window!,
+                    vm => { vm.Initialize(PaddleOcrDownloadType.Models); });
+
+                _isCtrlDown = false;
+
+                if (!result.OkPressed)
+                {
+                    PauseOcr();
+                    return;
+                }
+            }
+
+            RunPaddleOcr(selectedIndices, ocrEngine.EngineType, _cancellationTokenSource.Token);
+        }
+        else if (ocrEngine.EngineType == OcrEngineType.Ollama)
+        {
+            RunOllamaOcr(selectedIndices, _cancellationTokenSource.Token);
+        }
+        else if (ocrEngine.EngineType == OcrEngineType.LlamaCpp)
+        {
+            RunLlamaCppOcr(selectedIndices, _cancellationTokenSource.Token);
+        }
+        else if (ocrEngine.EngineType == OcrEngineType.CrispEmbed)
+        {
+            var ready = await EnsureCrispEmbedReady();
+            if (!ready)
+            {
+                PauseOcr();
+                return;
+            }
+
+            RunCrispEmbedOcr(selectedIndices, _cancellationTokenSource.Token);
+        }
+        else if (ocrEngine.EngineType == OcrEngineType.Mistral)
+        {
+            if (string.IsNullOrEmpty(MistralApiKey))
+            {
+                await MessageBox.Show(
+                    Window!,
+                    "Mistral API key missing",
+                    $"You must enter a valid Mistral API key.{Environment.NewLine}{Environment.NewLine}Get your API key from https://mistral.ai/",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+                IsOcrRunning = false;
+                return;
+            }
+
+            RunMistralOcr(selectedIndices, _cancellationTokenSource.Token);
+        }
+        else if (ocrEngine.EngineType == OcrEngineType.GoogleVision)
+        {
+            RunGoogleVisionOcr(selectedIndices, _cancellationTokenSource.Token);
+        }
+        else if (ocrEngine.EngineType == OcrEngineType.GoogleLens)
+        {
+            if (Configuration.IsRunningOnWindows && !File.Exists(Path.Combine(Se.GoogleLensOcrFolder, GoogleLensOcr.ExeFileName)))
+            {
+                var answer = await MessageBox.Show(
+                    Window!,
+                    "Download Google Lens OCR?",
+                    $"{Environment.NewLine}\"Google Lens OCR\" requires downloading Google Lens OCR standalone.{Environment.NewLine}{Environment.NewLine}Download and use Google Lens OCR?",
+                    MessageBoxButtons.YesNoCancel,
+                    MessageBoxIcon.Question);
+
+                if (answer != MessageBoxResult.Yes)
+                {
+                    PauseOcr();
+                    return;
+                }
+
+                var result = await _windowService.ShowDialogAsync<DownloadGoogleLensOcrWindow, DownloadGoogleLensOcrViewModel>(Window);
+                _isCtrlDown = false;
+                if (!result.OkPressed)
+                {
+                    PauseOcr();
+                    return;
+                }
+            }
+
+            RunGoogleLensOcr(selectedIndices, _cancellationTokenSource.Token);
+        }
+        else if (ocrEngine.EngineType == OcrEngineType.GoogleLensSharp)
+        {
+            RunGoogleLensOcrSharp(selectedIndices, _cancellationTokenSource.Token);
+        }
+    }
+
+    private readonly Lock BatchLock = new Lock();
+
+    private void RunPaddleOcr(List<int> selectedIndices, OcrEngineType engineType, CancellationToken cancellationToken)
+    {
+        var numberOfImages = selectedIndices.Count;
+        var selectedLineOrdinals = selectedIndices
+            .Select((lineIndex, ordinal) => new { lineIndex, ordinal })
+            .ToDictionary(p => p.lineIndex, p => p.ordinal + 1);
+        var maxShownProgress = 0;
+        var ocrEngine = new PaddleOcr();
+        var language = SelectedPaddleOcrLanguage?.Code ?? "en";
+        var mode = Se.Settings.Ocr.PaddleOcrMode;
+        Se.Settings.Ocr.PaddleOcrLastLanguage = language;
+
+        var batchImages = new List<PaddleOcrBatchInput>(numberOfImages);
+        var count = 0;
+        ProgressText = $"Initializing Paddle OCR...";
+        foreach (var i in selectedIndices)
+        {
+            count++;
+            var ocrItem = OcrSubtitleItems[i];
+            batchImages.Add(new PaddleOcrBatchInput
+            {
+                Bitmap = ocrItem.GetSkBitmap(),
+                Index = i,
+                Text = $"{count} / {numberOfImages}: {ocrItem.StartTime} - {ocrItem.EndTime}"
+            });
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                IsOcrRunning = false;
+                return;
+            }
+        }
+
+        var uiStopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var ocrProgress = new Progress<PaddleOcrBatchProgress>(p =>
+        {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            lock (BatchLock)
+            {
+                var number = p.Index;
+                if (!selectedLineOrdinals.TryGetValue(number, out var currentItemNumber))
+                {
+                    return;
+                }
+
+                maxShownProgress = Math.Max(maxShownProgress, currentItemNumber);
+                UpdateOcrProgress(maxShownProgress, numberOfImages);
+
+                var item = p.Item;
+                if (item == null)
+                {
+                    item = OcrSubtitleItems[p.Index];
+                }
+
+                item.Text = p.Text;
+                var fixStart = uiStopwatch.Elapsed;
+                OcrFixLineAndSetText(number, item);
+                Se.WriteToolsLog(
+                    $"Paddle OCR UI line {currentItemNumber} (index {number}) shown at {uiStopwatch.Elapsed.TotalSeconds:F1}s, fix took {(uiStopwatch.Elapsed - fixStart).TotalMilliseconds:F0} ms");
+            }
+        });
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await ocrEngine.OcrBatch(engineType, batchImages, language, mode, ocrProgress, cancellationToken);
+
+                if (!string.IsNullOrEmpty(ocrEngine.Error) && !cancellationToken.IsCancellationRequested)
+                {
+                    ShowPaddleOcrError(engineType, ocrEngine.Error);
+                }
+            }
+            catch (Exception exception)
+            {
+                Se.LogError(exception, "Error running Paddle OCR");
+            }
+            finally
+            {
+                IsOcrRunning = false;
+            }
+        });
+    }
+
+    private void ShowPaddleOcrError(OcrEngineType engineType, string error)
+    {
+        var message = error;
+
+        // The "paddleocr" pip package needs the "paddlepaddle" backend installed separately.
+        if (engineType == OcrEngineType.PaddleOcrPython &&
+            error.Contains("No module named 'paddle'", StringComparison.OrdinalIgnoreCase))
+        {
+            message = "Paddle OCR Python is missing the \"paddlepaddle\" backend." + Environment.NewLine +
+                      Environment.NewLine +
+                      "Install it into the SAME Python that has \"paddleocr\":" + Environment.NewLine +
+                      "    python -m pip install --upgrade paddlepaddle" + Environment.NewLine +
+                      Environment.NewLine +
+                      "Note: paddlepaddle may not have a wheel for the very latest Python yet" + Environment.NewLine +
+                      "(e.g. 3.14) - if the install fails, use a Python 3.11/3.12/3.13 environment." + Environment.NewLine +
+                      "For a CUDA GPU build, see https://www.paddlepaddle.org.cn/en/install" + Environment.NewLine +
+                      Environment.NewLine +
+                      "Details:" + Environment.NewLine +
+                      error;
+        }
+
+        Dispatcher.UIThread.Post(async void () =>
+        {
+            await MessageBox.Show(
+                Window!,
+                Se.Language.General.Error,
+                message,
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+        });
+    }
+
+    private void RunGoogleLensOcr(List<int> selectedIndices, CancellationToken cancellationToken)
+    {
+        var numberOfImages = selectedIndices.Count;
+        var selectedLineOrdinals = selectedIndices
+            .Select((lineIndex, ordinal) => new { lineIndex, ordinal })
+            .ToDictionary(p => p.lineIndex, p => p.ordinal + 1);
+        var maxShownProgress = 0;
+        var ocrEngine = new GoogleLensOcr();
+        var language = SelectedGoogleLensLanguage?.Code ?? "en";
+        Se.Settings.Ocr.GoogleLensOcrLastLanguage = language;
+
+        var batchImages = new List<PaddleOcrBatchInput>(numberOfImages);
+        var count = 0;
+        ProgressText = $"Initializing Google Lens OCR...";
+        foreach (var i in selectedIndices)
+        {
+            count++;
+            var ocrItem = OcrSubtitleItems[i];
+            batchImages.Add(new PaddleOcrBatchInput
+            {
+                Bitmap = ocrItem.GetSkBitmap(),
+                Index = i,
+                Text = $"{count} / {numberOfImages}: {ocrItem.StartTime} - {ocrItem.EndTime}"
+            });
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                IsOcrRunning = false;
+                return;
+            }
+        }
+
+        var ocrProgress = new Progress<PaddleOcrBatchProgress>(p =>
+        {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            lock (BatchLock)
+            {
+                var number = p.Index;
+                if (!selectedLineOrdinals.TryGetValue(number, out var currentItemNumber))
+                {
+                    return;
+                }
+
+                maxShownProgress = Math.Max(maxShownProgress, currentItemNumber);
+                UpdateOcrProgress(maxShownProgress, numberOfImages);
+
+                var item = p.Item;
+                if (item == null)
+                {
+                    item = OcrSubtitleItems[p.Index];
+                }
+
+                var lines = p.Text.Trim().SplitToLines();
+                if (lines.Count > 1 && p.Text.Length < 40)
+                {
+                    using var bmp = item.GetSkBitmapClean(); // fresh bitmap each call; dispose to avoid a native leak
+                    var nbmp = new NikseBitmap2(bmp);
+                    nbmp.MakeOneColor(SKColors.White);
+                    var lineImages = NikseBitmapImageSplitter2.SplitToLinesTransparentOrBlack(nbmp);
+                    var lineImages2 = NikseBitmapImageSplitter2.SplitToLines(nbmp, 20);
+                    if (lineImages.Count == 1 && lineImages2.Count == 1 && bmp.Height > 2)
+                    {
+                        p.Text = Utilities.UnbreakLine(p.Text);
+                    }
+                }
+
+                item.Text = p.Text;
+                OcrFixLineAndSetText(number, item);
+            }
+        });
+
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                ocrEngine.OcrBatch(batchImages, language, ocrProgress, cancellationToken);
+            }
+            catch (Exception exception)
+            {
+                Se.LogError(exception, "Error running Google Lens OCR");
+            }
+            finally
+            {
+                IsOcrRunning = false;
+            }
+        });
+    }
+
+    private void RunGoogleLensOcrSharp(List<int> selectedIndices, CancellationToken cancellationToken)
+    {
+        var numberOfImages = selectedIndices.Count;
+        var selectedLineOrdinals = selectedIndices
+            .Select((lineIndex, ordinal) => new { lineIndex, ordinal })
+            .ToDictionary(p => p.lineIndex, p => p.ordinal + 1);
+        var maxShownProgress = 0;
+        var ocrEngine = new GoogleLensOcrSharp(new Lens());
+        var language = SelectedGoogleLensLanguage?.Code ?? "en";
+        Se.Settings.Ocr.GoogleLensOcrLastLanguage = language;
+
+        var batchImages = new List<PaddleOcrBatchInput>(numberOfImages);
+        var count = 0;
+        ProgressText = $"Initializing Google Lens OCR...";
+        foreach (var i in selectedIndices)
+        {
+            count++;
+            var ocrItem = OcrSubtitleItems[i];
+            batchImages.Add(new PaddleOcrBatchInput
+            {
+                Bitmap = ocrItem.GetSkBitmap(),
+                Index = i,
+                Text = $"{count} / {numberOfImages}: {ocrItem.StartTime} - {ocrItem.EndTime}"
+            });
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                IsOcrRunning = false;
+                return;
+            }
+        }
+
+        var ocrProgress = new Progress<PaddleOcrBatchProgress>(p =>
+        {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            lock (BatchLock)
+            {
+                var number = p.Index;
+                if (!selectedLineOrdinals.TryGetValue(number, out var currentItemNumber))
+                {
+                    return;
+                }
+
+                maxShownProgress = Math.Max(maxShownProgress, currentItemNumber);
+                UpdateOcrProgress(maxShownProgress, numberOfImages);
+
+                var item = p.Item;
+                if (item == null)
+                {
+                    item = OcrSubtitleItems[p.Index];
+                }
+
+                var lines = p.Text.Trim().SplitToLines();
+                if (lines.Count > 1 && p.Text.Length < 40)
+                {
+                    using var bmp = item.GetSkBitmapClean(); // fresh bitmap each call; dispose to avoid a native leak
+                    var nbmp = new NikseBitmap2(bmp);
+                    nbmp.MakeOneColor(SKColors.White);
+                    var lineImages = NikseBitmapImageSplitter2.SplitToLinesTransparentOrBlack(nbmp);
+                    var lineImages2 = NikseBitmapImageSplitter2.SplitToLines(nbmp, 20);
+                    if (lineImages.Count == 1 && lineImages2.Count == 1 && bmp.Height > 2)
+                    {
+                        p.Text = Utilities.UnbreakLine(p.Text);
+                    }
+                }
+
+                item.Text = p.Text;
+
+                OcrFixLineAndSetText(number, item);
+            }
+        });
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await ocrEngine.OcrBatch(batchImages, language, ocrProgress, cancellationToken);
+            }
+            catch (Exception exception)
+            {
+                Se.LogError(exception, "Error running Google Lens OCR");
+            }
+            finally
+            {
+                IsOcrRunning = false;
+            }
+        });
+    }
+
+    private void RunNOcr(List<int> selectedIndices, CancellationToken cancellationToken)
+    {
+        if (!InitNOcrDb())
+        {
+            return;
+        }
+
+        InitNOcrFallbackBinaryOcrDb();
+
+        if (!_nOcrCaseFixer.HasWarmedUp)
+        {
+            NOcrWarmUp();
+            _nOcrCaseFixer.HasWarmedUp = true;
+        }
+
+        _skipOnceChars.Clear();
+        _ = Task.Run(() => RunNOcrLoop(selectedIndices, cancellationToken));
+    }
+
+    private void InitNOcrFallbackBinaryOcrDb()
+    {
+        var name = NOcrBinaryOcrFallbackDatabase;
+        if (string.IsNullOrEmpty(name))
+        {
+            _nOcrFallbackBinaryOcrDb = null;
+            _nOcrFallbackBinaryOcrMatcher = null;
+            return;
+        }
+
+        var path = Path.Combine(Se.OcrFolder, name + BinaryOcrDb.Extension);
+        if (!File.Exists(path))
+        {
+            _nOcrFallbackBinaryOcrDb = null;
+            _nOcrFallbackBinaryOcrMatcher = null;
+            return;
+        }
+
+        if (_nOcrFallbackBinaryOcrDb == null || _nOcrFallbackBinaryOcrDb.FileName != path)
+        {
+            _nOcrFallbackBinaryOcrDb = new BinaryOcrDb(path, true);
+            _nOcrFallbackBinaryOcrMatcher = new BinaryOcrMatcher
+            {
+                IsLatinDb = name.Contains("Latin", StringComparison.OrdinalIgnoreCase),
+            };
+        }
+    }
+
+    private void InitBinaryOcrFallbackNOcrDb()
+    {
+        var name = BinaryOcrNOcrFallbackDatabase;
+        if (string.IsNullOrEmpty(name))
+        {
+            _binaryOcrFallbackNOcrDb = null;
+            return;
+        }
+
+        var path = Path.Combine(Se.OcrFolder, name + ".nocr");
+        if (!File.Exists(path))
+        {
+            _binaryOcrFallbackNOcrDb = null;
+            return;
+        }
+
+        if (_binaryOcrFallbackNOcrDb == null || _binaryOcrFallbackNOcrDb.FileName != path)
+        {
+            _binaryOcrFallbackNOcrDb = new NOcrDb(path);
+        }
+    }
+
+    private void NOcrWarmUp()
+    {
+        for (var i = 0; i < Math.Min(10, OcrSubtitleItems.Count); i++)
+        {
+            var item = OcrSubtitleItems[i];
+            var bitmap = item.GetSkBitmap();
+            var parentBitmap = new NikseBitmap2(bitmap);
+            parentBitmap.MakeTwoColor(200);
+            parentBitmap.CropTop(0, new SKColor(0, 0, 0, 0));
+            var letters = NikseBitmapImageSplitter2.SplitBitmapToLettersNew(parentBitmap, SelectedNOcrPixelsAreSpace,
+                false, true, 20, true);
+            var index = 0;
+            while (index < letters.Count)
+            {
+                var splitterItem = letters[index];
+                if (splitterItem.NikseBitmap != null)
+                {
+                    var match = _nOcrDb!.GetMatch(parentBitmap, letters, splitterItem, splitterItem.Top, true, SelectedNOcrMaxWrongPixels);
+                    if (match != null)
+                    {
+                        _nOcrCaseFixer.FixUppercaseLowercaseIssues(splitterItem, match);
+                    }
+                }
+
+                index++;
+            }
+        }
+    }
+
+    private async Task RunNOcrLoop(List<int> selectedIndices, CancellationToken cancellationToken)
+    {
+        for (var processedIndex = 0; processedIndex < selectedIndices.Count; processedIndex++)
+        {
+            var i = selectedIndices[processedIndex];
+            if (cancellationToken.IsCancellationRequested)
+            {
+                IsOcrRunning = false;
+                return;
+            }
+
+            UpdateOcrProgress(processedIndex + 1, selectedIndices.Count);
+
+            var item = OcrSubtitleItems[i];
+            var bitmap = item.GetSkBitmap();
+            var parentBitmap = new NikseBitmap2(bitmap);
+            parentBitmap.MakeTwoColor(200);
+            parentBitmap.CropTop(0, new SKColor(0, 0, 0, 0));
+            var letters = NikseBitmapImageSplitter2.SplitBitmapToLettersNew(parentBitmap, SelectedNOcrPixelsAreSpace,
+                false, true, 20, true);
+            SelectedOcrSubtitleItem = item;
+            var index = 0;
+            var matches = new List<NOcrChar>();
+            while (index < letters.Count)
+            {
+                var splitterItem = letters[index];
+                if (splitterItem.NikseBitmap == null)
+                {
+                    if (splitterItem.SpecialCharacter != null)
+                    {
+                        matches.Add(new NOcrChar { Text = splitterItem.SpecialCharacter, ImageSplitterItem = splitterItem });
+                    }
+                }
+                else
+                {
+                    var match = _nOcrDb!.GetMatch(parentBitmap, letters, splitterItem, splitterItem.Top, true,
+                        SelectedNOcrMaxWrongPixels);
+
+                    if (match == null && _nOcrFallbackBinaryOcrDb != null && _nOcrFallbackBinaryOcrMatcher != null)
+                    {
+                        var compare = _nOcrFallbackBinaryOcrMatcher.GetCompareMatch(splitterItem, out _, letters, index, _nOcrFallbackBinaryOcrDb, BinaryOcrMaxErrorPercent);
+                        if (compare != null && !string.IsNullOrEmpty(compare.Text))
+                        {
+                            if (compare.ExpandCount > 0)
+                            {
+                                index += compare.ExpandCount - 1;
+                            }
+
+                            matches.Add(new NOcrChar
+                            {
+                                Text = compare.Text,
+                                Italic = compare.Italic,
+                                ExpandCount = compare.ExpandCount,
+                                ImageSplitterItem = splitterItem,
+                            });
+                            index++;
+                            continue;
+                        }
+                    }
+
+                    if (NOcrDrawUnknownText && match == null)
+                    {
+                        var letterIndex = letters.IndexOf(splitterItem);
+
+                        if (_skipOnceChars.Any(p => p.LetterIndex == letterIndex && p.LineIndex == i))
+                        {
+                            matches.Add(new NOcrChar { Text = "*", ImageSplitterItem = splitterItem });
+                            index++;
+                            continue;
+                        }
+
+                        var runOnceChar =
+                            _runOnceChars.FirstOrDefault(p => p.LetterIndex == letterIndex && p.LineIndex == i);
+                        if (runOnceChar != null)
+                        {
+                            matches.Add(new NOcrChar { Text = runOnceChar.Text, ImageSplitterItem = splitterItem });
+                            index++;
+                            continue;
+                        }
+
+                        Dispatcher.UIThread.Post(async void () =>
+                        {
+                            var result =
+                                await _windowService.ShowDialogAsync<NOcrCharacterAddWindow, NOcr.NOcrCharacterAddViewModel>(
+                                    Window!,
+                                    vm =>
+                                    {
+                                        vm.Initialize(parentBitmap, item, letters, letterIndex, _nOcrDb,
+                                            SelectedNOcrMaxWrongPixels, _nOcrAddHistoryManager, true, true);
+                                    });
+
+                            _isCtrlDown = false;
+
+                            if (result.OkPressed)
+                            {
+                                var previewBitmap = result.PreviewBitmap ?? letters[letterIndex].NikseBitmap;
+                                _nOcrAddHistoryManager.Add(result.NOcrChar, previewBitmap,
+                                    OcrSubtitleItems.IndexOf(item));
+                                IsInspectAdditionsVisible = true;
+                                _nOcrDb.Add(result.NOcrChar);
+                                var nOcrDbToSave = _nOcrDb;
+                                _ = Task.Run(() => nOcrDbToSave!.Save())
+                                    .ContinueWith(
+                                        t => Se.LogError(t.Exception!, $"Failed to save nOCR database '{nOcrDbToSave!.FileName}'"),
+                                        TaskContinuationOptions.OnlyOnFaulted);
+                                _ = Task.Run(() => RunNOcrLoop(selectedIndices.Where(p => p >= i).ToList(), cancellationToken));
+                            }
+                            else if (result.AbortPressed)
+                            {
+                                IsOcrRunning = false;
+                            }
+                            else if (result.UseOncePressed)
+                            {
+                                _runOnceChars.Add(new SkipOnceChar(i, letterIndex, result.NewText));
+                                _ = Task.Run(() => RunNOcrLoop(selectedIndices.Where(p => p >= i).ToList(), cancellationToken));
+                            }
+                            else if (result.SkipPressed)
+                            {
+                                _skipOnceChars.Add(new SkipOnceChar(i, letterIndex));
+                                _ = Task.Run(() => RunNOcrLoop(selectedIndices.Where(p => p >= i).ToList(), cancellationToken));
+                            }
+                            else if (result.InspectHistoryPressed)
+                            {
+                                IsOcrRunning = false;
+                                await _windowService
+                                    .ShowDialogAsync<NOcrCharacterHistoryWindow, NOcrCharacterHistoryViewModel>(Window!,
+                                        vm => { vm.Initialize(_nOcrDb!, _nOcrAddHistoryManager); });
+
+                                _isCtrlDown = false;
+                            }
+                        });
+
+                        return;
+                    }
+
+                    if (match is { ExpandCount: > 0 })
+                    {
+                        index += match.ExpandCount - 1;
+                    }
+
+                    if (match == null)
+                    {
+                        matches.Add(new NOcrChar { Text = "*", ImageSplitterItem = splitterItem });
+                    }
+                    else
+                    {
+                        var inspectMatch = new NOcrChar(match)
+                        {
+                            Text = _nOcrCaseFixer.FixUppercaseLowercaseIssues(splitterItem, match),
+                            ExpandCount = match.ExpandCount,
+                            ImageSplitterItem = splitterItem,
+                        };
+                        matches.Add(inspectMatch);
+                    }
+                }
+
+                index++;
+            }
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                IsOcrRunning = false;
+                return;
+            }
+
+            matches = RemoveSpacesAfter1(matches, SelectedNOcrPixelsAreSpace);
+
+            item.Text = ItalicTextMerger.MergeWithItalicTags(matches).Trim();
+            var ocrFixResultTemp = OcrFixLine(i, item);
+            if (ocrFixResultTemp.UnknownWords.Count > 0 && item.Text.Contains("<i>", StringComparison.Ordinal))
+            {
+                var unItalicFactor = 0.33;
+                var text = GetTextWithMoreSpacesInItalic(ocrFixResultTemp.UnknownWords, matches, letters, parentBitmap, unItalicFactor, SelectedNOcrPixelsAreSpace);
+                var unItalicItem = new OcrSubtitleItem(item, text);
+                var unItalicResultTemp = OcrFixLine(i, unItalicItem);
+                if (ocrFixResultTemp.UnknownWords.Count > unItalicResultTemp.UnknownWords.Count)
+                {
+                    item.Text = unItalicItem.Text;
+                    item.FixResult = unItalicItem.FixResult;
+                    ocrFixResultTemp = unItalicResultTemp;
+                }
+            }
+
+            SetText(i, item, ocrFixResultTemp);
+
+            _runOnceChars.Clear();
+            _skipOnceChars.Clear();
+
+            if (DoPromptForUnknownWords && ocrFixResultTemp.UnknownWords.Count > 0)
+            {
+                var keepRunning = await PromptForUnknownWordsAsync(i, item);
+                if (!keepRunning)
+                {
+                    _isCtrlDown = false;
+                    return;
+                }
+            }
+        }
+
+        _isCtrlDown = false;
+        IsOcrRunning = false;
+    }
+
+    private static List<NOcrChar> RemoveSpacesAfter1(List<NOcrChar> matches, int pixelsAreSpace)
+    {
+        var deleteItems = new List<NOcrChar>();
+        for (var i = 0; i < matches.Count - 1; i++)
+        {
+            var match = matches[i];
+            if (match.Text.EndsWith('1') && !match.Italic)
+            {
+                var pixelsLess = 0;
+                if (pixelsAreSpace > 7)
+                {
+                    pixelsLess = (int)Math.Round(pixelsAreSpace * 0.3m, MidpointRounding.AwayFromZero);
+                }
+
+                var nextMatch = matches[i + 1];
+                if (nextMatch.ImageSplitterItem != null &&
+                    nextMatch.ImageSplitterItem.SpecialCharacter == " " &&
+                    nextMatch.ImageSplitterItem.SpacePixels - pixelsLess < pixelsAreSpace)
+                {
+                    deleteItems.Add(nextMatch);
+                }
+            }
+        }
+
+        foreach (var deleteItem in deleteItems)
+        {
+            matches.Remove(deleteItem);
+        }
+
+        return matches;
+    }
+
+    private static string GetTextWithMoreSpacesInItalic(
+        List<UnknownWordItem> unknownWords,
+        List<NOcrChar> matches,
+        List<ImageSplitterItem2> letters,
+        NikseBitmap2 parentBitmap,
+        double unItalicFactor,
+        int pixelsIsSpace)
+    {
+        // Clear all CouldBeSpaceBefore flags
+        foreach (var letter in letters)
+        {
+            letter.CouldBeSpaceBefore = false;
+        }
+
+        // Check for potential spaces in italic text
+        for (var i = 0; i < matches.Count - 1; i++)
+        {
+            var match = matches[i];
+            var matchNext = matches[i + 1];
+            if (!match.Italic || matchNext.Text == "," ||
+                string.IsNullOrWhiteSpace(match.Text) || string.IsNullOrWhiteSpace(matchNext.Text) ||
+                match.ImageSplitterItem == null || matchNext.ImageSplitterItem == null)
+            {
+                continue;
+            }
+
+            var blankVerticalLines = IsVerticalAngledLineTransparent(parentBitmap, match.ImageSplitterItem, matchNext.ImageSplitterItem, unItalicFactor);
+            if (match.Text == "f" || match.Text == "," || matchNext.Text.StartsWith('y') || matchNext.Text.StartsWith('j'))
+            {
+                blankVerticalLines++;
+            }
+
+            if (blankVerticalLines >= pixelsIsSpace)
+            {
+                matchNext.ImageSplitterItem.CouldBeSpaceBefore = true;
+            }
+        }
+
+        // Insert spaces where CouldBeSpaceBefore is true and previous match is italic
+        var j = 1;
+        while (j < matches.Count)
+        {
+            var match = matches[j];
+            var prevMatch = matches[j - 1];
+            if (match.ImageSplitterItem?.CouldBeSpaceBefore == true)
+            {
+                match.ImageSplitterItem.CouldBeSpaceBefore = false;
+                if (prevMatch.Italic)
+                {
+                    matches.Insert(j, new NOcrChar(" "));
+                    j++; // Skip the inserted space
+                }
+            }
+
+            j++;
+        }
+
+        return ItalicTextMerger.MergeWithItalicTags(matches).Trim();
+    }
+
+    private static int IsVerticalAngledLineTransparent(NikseBitmap2 parentBitmap, ImageSplitterItem2 match, ImageSplitterItem2 next, double unItalicFactor)
+    {
+        if (match.NikseBitmap == null || next.NikseBitmap == null)
+        {
+            return 0;
+        }
+
+        var blanks = 0;
+        var min = match.X + match.NikseBitmap.Width;
+        var max = next.X + next.NikseBitmap.Width / 2;
+        for (var startX = min; startX < max; startX++)
+        {
+            var lineBlank = true;
+            for (var y = match.Y; y < match.Y + match.NikseBitmap.Height; y++)
+            {
+                var x = startX - (y - match.Y) * unItalicFactor;
+                if (x >= 0 && x < parentBitmap.Width && y < parentBitmap.Height)
+                {
+                    var color = parentBitmap.GetPixel((int)Math.Round(x), y);
+                    if (color.Alpha != 0)
+                    {
+                        lineBlank = false;
+                        if (blanks > 0)
+                        {
+                            return blanks;
+                        }
+                    }
+                }
+            }
+
+            if (lineBlank)
+            {
+                blanks++;
+            }
+        }
+
+        return blanks;
+    }
+
+    private void RunBinaryImageCompareOcr(List<int> selectedIndices, CancellationToken cancellationToken)
+    {
+        var db = InitImageComparOcrDb();
+        if (db == null)
+        {
+            return;
+        }
+
+        InitBinaryOcrFallbackNOcrDb();
+
+        _skipOnceChars.Clear();
+        _ = Task.Run(() => RunBinaryImageCompareOcrLoop(db, selectedIndices, cancellationToken));
+    }
+
+    private BinaryOcrDb? InitImageComparOcrDb()
+    {
+        if (SelectedImageCompareDatabase == null)
+        {
+            return null;
+        }
+
+        var fileName = Path.Combine(Se.OcrFolder, SelectedImageCompareDatabase + BinaryOcrDb.Extension);
+        if (!File.Exists(fileName))
+        {
+            return null;
+        }
+
+        _binaryOcrMatcher.IsLatinDb = SelectedImageCompareDatabase.Contains("Latin", StringComparison.OrdinalIgnoreCase);
+        return new BinaryOcrDb(fileName, true);
+    }
+
+    private async Task RunBinaryImageCompareOcrLoop(BinaryOcrDb db, List<int> selectedIndices, CancellationToken cancellationToken)
+    {
+        for (var processedIndex = 0; processedIndex < selectedIndices.Count; processedIndex++)
+        {
+            var i = selectedIndices[processedIndex];
+            if (cancellationToken.IsCancellationRequested)
+            {
+                IsOcrRunning = false;
+                return;
+            }
+
+            UpdateOcrProgress(processedIndex + 1, selectedIndices.Count);
+
+            var item = OcrSubtitleItems[i];
+            var bitmap = item.GetSkBitmap();
+            var parentBitmap = new NikseBitmap2(bitmap);
+            parentBitmap.MakeTwoColor(200);
+            parentBitmap.CropTop(0, new SKColor(0, 0, 0, 0));
+            var letters = NikseBitmapImageSplitter2.SplitBitmapToLettersNew(parentBitmap, SelectedBinaryOcrPixelsAreSpace, false, true, 20, true);
+            SelectedOcrSubtitleItem = item;
+            var index = 0;
+            var matches = new List<BinaryOcrMatcher.CompareMatch>();
+            while (index < letters.Count)
+            {
+                var splitterItem = letters[index];
+                if (splitterItem.NikseBitmap == null)
+                {
+                    if (splitterItem.SpecialCharacter != null)
+                    {
+                        // space or special character
+                        matches.Add(new BinaryOcrMatcher.CompareMatch(splitterItem.SpecialCharacter, false, 0, nameof(splitterItem.SpecialCharacter)));
+                    }
+                }
+                else
+                {
+                    var match = _binaryOcrMatcher.GetCompareMatch(splitterItem, out var secondBestMatch, letters, index, db, BinaryOcrMaxErrorPercent);
+
+                    if (match == null && _binaryOcrFallbackNOcrDb != null)
+                    {
+                        var nMatch = _binaryOcrFallbackNOcrDb.GetMatch(parentBitmap, letters, splitterItem, splitterItem.Top, true, SelectedNOcrMaxWrongPixels, lastDitch: true);
+                        if (nMatch != null && !string.IsNullOrEmpty(nMatch.Text))
+                        {
+                            if (nMatch.ExpandCount > 0)
+                            {
+                                index += nMatch.ExpandCount - 1;
+                            }
+
+                            var text = _nOcrCaseFixer.FixUppercaseLowercaseIssues(splitterItem, nMatch);
+                            matches.Add(new BinaryOcrMatcher.CompareMatch(text, nMatch.Italic, nMatch.ExpandCount, "nOcrFallback"));
+                            index++;
+                            continue;
+                        }
+                    }
+
+                    if (match == null)
+                    {
+                        var letterIndex = letters.IndexOf(splitterItem);
+
+                        if (_skipOnceChars.Any(p => p.LetterIndex == letterIndex && p.LineIndex == i))
+                        {
+                            matches.Add(new BinaryOcrMatcher.CompareMatch("*", false, 0, null));
+                            index++;
+                            continue;
+                        }
+
+                        var runOnceChar =
+                            _runOnceChars.FirstOrDefault(p => p.LetterIndex == letterIndex && p.LineIndex == i);
+                        if (runOnceChar != null)
+                        {
+                            matches.Add(new BinaryOcrMatcher.CompareMatch(runOnceChar.Text, false, 0, null));
+                            index++;
+                            continue;
+                        }
+
+                        Dispatcher.UIThread.Post(async void () =>
+                        {
+                            var result =
+                                await _windowService.ShowDialogAsync<BinaryOcrCharacterAddWindow, BinaryOcrCharacterAddViewModel>(
+                                    Window!,
+                                    vm =>
+                                    {
+                                        vm.Initialize(parentBitmap, item, letters, letterIndex, db,
+                                            SelectedNOcrMaxWrongPixels, _binaryOcrAddHistoryManager, true, true);
+                                    });
+
+                            if (result.OkPressed)
+                            {
+                                if (result.BinaryOcrBitmap != null)
+                                {
+                                    var previewBitmap = result.PreviewBitmap ?? letters[letterIndex].NikseBitmap;
+                                    _binaryOcrAddHistoryManager.Add(result.BinaryOcrBitmap, previewBitmap, result.PreviewTopMargin,
+                                        OcrSubtitleItems.IndexOf(item));
+                                    IsInspectAdditionsVisible = true;
+
+                                    db.Add(result.BinaryOcrBitmap);
+                                    _ = Task.Run(() => db.Save());
+                                }
+
+                                _ = Task.Run(() => RunBinaryImageCompareOcrLoop(db, selectedIndices.Where(p => p >= i).ToList(), cancellationToken));
+                            }
+                            else if (result.AbortPressed)
+                            {
+                                IsOcrRunning = false;
+                            }
+                            else if (result.UseOncePressed)
+                            {
+                                _runOnceChars.Add(new SkipOnceChar(i, letterIndex, result.NewText));
+                                _ = Task.Run(() => RunBinaryImageCompareOcrLoop(db, selectedIndices.Where(p => p >= i).ToList(), cancellationToken));
+                            }
+                            else if (result.SkipPressed)
+                            {
+                                _skipOnceChars.Add(new SkipOnceChar(i, letterIndex));
+                                _ = Task.Run(() => RunBinaryImageCompareOcrLoop(db, selectedIndices.Where(p => p >= i).ToList(), cancellationToken));
+                            }
+                            else if (result.InspectHistoryPressed)
+                            {
+                                IsOcrRunning = false;
+                                await _windowService
+                                    .ShowDialogAsync<BinaryOcrCharacterHistoryWindow, BinaryOcrCharacterHistoryViewModel>(Window!,
+                                        vm => { vm.Initialize(db, _binaryOcrAddHistoryManager); });
+                            }
+                        });
+                        return;
+                    }
+
+                    if (match is { ExpandCount: > 0 })
+                    {
+                        index += match.ExpandCount - 1;
+                    }
+
+                    if (match == null)
+                    {
+                        matches.Add(new BinaryOcrMatcher.CompareMatch("*", false, 0, null));
+                    }
+                    else
+                    {
+                        matches.Add(new BinaryOcrMatcher.CompareMatch(match.Text, match.Italic, match.ExpandCount, match.Name));
+                    }
+                }
+
+                index++;
+            }
+
+            item.Text = ItalicTextMerger.MergeWithItalicTags(matches).Trim();
+            var unknownWords = OcrFixLineAndSetText(i, item);
+
+            _runOnceChars.Clear();
+            _skipOnceChars.Clear();
+
+            if (DoPromptForUnknownWords && unknownWords.Count > 0)
+            {
+                var keepRunning = await PromptForUnknownWordsAsync(i, item);
+                if (!keepRunning)
+                {
+                    return;
+                }
+            }
+        }
+
+        IsOcrRunning = false;
+    }
+
+    private void RefreshSpellCheckColoring(int lineIndex, OcrSubtitleItem item)
+    {
+        if (!_ocrFixEngine.IsLoaded() || SelectedDictionary == null || SelectedDictionary.Name == GetDictionaryNameNone())
+        {
+            return;
+        }
+
+        var updatedResult = _ocrFixEngine.FixOcrErrors(lineIndex, item.Text, DoTryToGuessUnknownWords);
+        item.FixResult = updatedResult;
+    }
+
+    private List<UnknownWordItem> GetUnknownWordItems(OcrSubtitleItem item, OcrFixLineResult result)
+    {
+        var unknownWords = new List<UnknownWordItem>();
+        foreach (var word in result.Words)
+        {
+            if (word.IsSpellCheckedOk == false)
+            {
+                unknownWords.Add(new UnknownWordItem(item, result, word));
+            }
+        }
+
+        return unknownWords;
+    }
+
+    private UnknownWordItem? GetNextUnknownWord(int lineIndex, OcrSubtitleItem item, HashSet<string> skipOnceWords, HashSet<string> skipAllWords)
+    {
+        if (!_ocrFixEngine.IsLoaded() ||
+            SelectedDictionary == null ||
+            SelectedDictionary.Name == GetDictionaryNameNone() ||
+            !DoFixOcrErrors)
+        {
+            return null;
+        }
+
+        var updatedResult = _ocrFixEngine.FixOcrErrors(lineIndex, item.Text, DoTryToGuessUnknownWords);
+        item.FixResult = updatedResult;
+
+        foreach (var unknownWord in GetUnknownWordItems(item, updatedResult))
+        {
+            if (!skipOnceWords.Contains(GetUnknownWordKey(unknownWord)) &&
+                !GetUnknownWordSkipForms(unknownWord).Any(skipAllWords.Contains))
+            {
+                return unknownWord;
+            }
+        }
+
+        return null;
+    }
+
+    private static string GetUnknownWordKey(UnknownWordItem unknownWord)
+    {
+        return $"{unknownWord.Word.WordIndex}|{unknownWord.Word.Word}|{unknownWord.Word.FixedWord}";
+    }
+
+    private static List<string> GetUnknownWordSkipForms(UnknownWordItem unknownWord)
+    {
+        var words = new HashSet<string>(StringComparer.Ordinal);
+
+        AddSkipForm(words, unknownWord.Word.Word);
+        AddSkipForm(words, unknownWord.Word.FixedWord);
+
+        return words.ToList();
+    }
+
+    private static void AddSkipForm(HashSet<string> words, string? word)
+    {
+        if (string.IsNullOrWhiteSpace(word))
+        {
+            return;
+        }
+
+        words.Add(word);
+
+        var trimmedQuotes = word.Trim('\'');
+        if (!string.IsNullOrWhiteSpace(trimmedQuotes))
+        {
+            words.Add(trimmedQuotes);
+        }
+
+        var trimmedHyphen = word.Trim('-');
+        if (!string.IsNullOrWhiteSpace(trimmedHyphen))
+        {
+            words.Add(trimmedHyphen);
+        }
+
+        var trimmed = word.Trim('\'', '"', '-');
+        if (!string.IsNullOrWhiteSpace(trimmed))
+        {
+            words.Add(trimmed);
+        }
+    }
+
+    private async Task<bool> PromptForUnknownWordsAsync(int lineIndex, OcrSubtitleItem item)
+    {
+        var tcs = new TaskCompletionSource<bool>();
+        Dispatcher.UIThread.Post(async () =>
+        {
+            try
+            {
+                var skipOnceWords = new HashSet<string>();
+                var skipAllWords = new HashSet<string>(StringComparer.Ordinal);
+
+                while (true)
+                {
+                    var unknownWord = GetNextUnknownWord(lineIndex, item, skipOnceWords, skipAllWords);
+                    if (unknownWord == null)
+                    {
+                        break;
+                    }
+
+                    var suggestions = _ocrFixEngine.GetSpellCheckSuggestions(unknownWord.Word.FixedWord);
+                    var result = await _windowService.ShowDialogAsync<PromptUnknownWordWindow, PromptUnknownWordViewModel>(Window!,
+                        vm => { vm.Initialize(item.GetBitmapCropped(), item.Text, unknownWord, suggestions); });
+
+                    if (result.ChangeWholeTextPressed)
+                    {
+                        item.Text = result.WholeText;
+                        break;
+                    }
+
+                    if (result.ChangeOncePressed)
+                    {
+                        ChangeWord(item, unknownWord, result.Word);
+                        continue;
+                    }
+
+                    if (result.ChangeAllPressed)
+                    {
+                        ChangeWord(item, unknownWord, result.Word);
+                        _ocrFixEngine.ChangeAll(unknownWord.Word.Word, result.Word);
+                        continue;
+                    }
+
+                    if (result.SkipOncePressed)
+                    {
+                        skipOnceWords.Add(GetUnknownWordKey(unknownWord));
+                        continue;
+                    }
+
+                    if (result.SkipAllPressed)
+                    {
+                        foreach (var word in GetUnknownWordSkipForms(unknownWord))
+                        {
+                            skipAllWords.Add(word);
+                            _ocrFixEngine.SkipAll(word);
+                        }
+
+                        continue;
+                    }
+
+                    if (result.AddToNamesListPressed)
+                    {
+                        _ocrFixEngine.AddName(result.Word);
+                        continue;
+                    }
+
+                    if (result.AddToUserDictionaryPressed)
+                    {
+                        if (SelectedDictionary != null)
+                        {
+                            UserWordsHelper.AddToUserDictionary(result.Word, SelectedDictionary.GetFiveLetterLanguageName() ?? "en_US");
+                        }
+
+                        _ocrFixEngine.ReloadNames();
+                        continue;
+                    }
+
+                    await _cancellationTokenSource.CancelAsync();
+                    IsOcrRunning = false;
+                    break;
+                }
+
+                RefreshSpellCheckColoring(lineIndex, item);
+                tcs.SetResult(true);
+            }
+            catch (Exception ex)
+            {
+                tcs.SetException(ex);
+            }
+        });
+
+        await tcs.Task;
+        return IsOcrRunning;
+    }
+
+    private static void ChangeWord(OcrSubtitleItem item, UnknownWordItem unknownWord, string word)
+    {
+        if (unknownWord.Word.FixedWord == word)
+        {
+            return;
+        }
+
+        var idx = unknownWord.Word.WordIndex;
+        if (item.Text.Substring(idx).StartsWith(unknownWord.Word.FixedWord))
+        {
+            item.Text = item.Text.Remove(idx, unknownWord.Word.FixedWord.Length).Insert(idx, word);
+        }
+        else if (idx + 1 < item.Text.Length && item.Text.Substring(idx + 1).StartsWith(unknownWord.Word.FixedWord))
+        {
+            item.Text = item.Text.Remove(idx + 1, unknownWord.Word.FixedWord.Length).Insert(idx + 1, word);
+        }
+        else if (idx - 1 >= 0 && item.Text.Substring(idx - 1).StartsWith(unknownWord.Word.FixedWord))
+        {
+            item.Text = item.Text.Remove(idx - 1, unknownWord.Word.FixedWord.Length).Insert(idx - 1, word);
+        }
+        else
+        {
+            // fallback, try to find the word in text using regex using word boundary 
+            var regex = new Regex(RegexUtils.BuildWholeWordPattern(unknownWord.Word.FixedWord));
+            var match = regex.Match(item.Text);
+            if (match.Success)
+            {
+                item.Text = item.Text.Remove(match.Index, unknownWord.Word.FixedWord.Length).Insert(match.Index, word);
+            }
+            else
+            {
+                Se.LogError($"OCR-replace: Could not find word '{unknownWord.Word.FixedWord}' in text '{item.Text}' to replace with '{word}' at index {unknownWord.Word.WordIndex}");
+            }
+        }
+    }
+
+    public class OcrFixLineResultTemp
+    {
+        public List<UnknownWordItem> UnknownWords { get; set; } = new List<UnknownWordItem>();
+        public List<ReplacementUsedItem> Fixes { get; set; } = new List<ReplacementUsedItem>();
+        public List<GuessUsedItem> Guesses { get; set; } = new List<GuessUsedItem>();
+        public string ResultText { get; set; } = string.Empty;
+        public OcrFixLineResult OcrFixLineResult { get; set; } = new OcrFixLineResult();
+    }
+
+    // The auto-break language comes from the selected spell check dictionary (used for the
+    // do-not-break-after list). Mapping dictionary name to a two-letter code involves culture
+    // lookups, so memoize it - OcrFixLine runs once per OCR'ed line.
+    private SpellCheckDictionaryDisplay? _autoBreakLanguageSource;
+    private string _autoBreakLanguage = string.Empty;
+
+    private string GetAutoBreakLanguage()
+    {
+        var dictionary = SelectedDictionary;
+        if (dictionary == null || dictionary.Name == GetDictionaryNameNone())
+        {
+            return string.Empty;
+        }
+
+        if (!ReferenceEquals(dictionary, _autoBreakLanguageSource))
+        {
+            _autoBreakLanguageSource = dictionary;
+            _autoBreakLanguage = SpellCheckDictionaryDisplay.GetTwoLetterLanguageCode(dictionary);
+        }
+
+        return _autoBreakLanguage;
+    }
+
+    private OcrFixLineResultTemp OcrFixLine(int i, OcrSubtitleItem item)
+    {
+        var result = new OcrFixLineResultTemp();
+
+        // The checkbox promises "auto-break if more than X lines", so leave shorter results alone.
+        if (DoAutoBreak && Utilities.GetNumberOfLines(item.Text) > Se.Settings.General.MaxNumberOfLines)
+        {
+            item.Text = Utilities.AutoBreakLine(item.Text, GetAutoBreakLanguage());
+        }
+
+        if (SelectedDictionary != null &&
+            SelectedDictionary.Name != GetDictionaryNameNone() &&
+            _ocrFixEngine.IsLoaded() && DoFixOcrErrors)
+        {
+            result.OcrFixLineResult = _ocrFixEngine.FixOcrErrors(i, item.Text, DoTryToGuessUnknownWords);
+            var correctedText = result.OcrFixLineResult.GetText();
+            var alignment = GetAlignment(item, correctedText);
+            result.ResultText = alignment.AlignmentAdded ? alignment.Text : correctedText;
+
+            if (!string.IsNullOrEmpty(result.OcrFixLineResult.ReplacementUsed.From))
+            {
+                result.Fixes.Add(result.OcrFixLineResult.ReplacementUsed);
+            }
+
+            foreach (var word in result.OcrFixLineResult.Words)
+            {
+                if (!string.IsNullOrEmpty(word.ReplacementUsed.From))
+                {
+                    result.Fixes.Add(word.ReplacementUsed);
+                }
+
+                if (word.GuessUsed)
+                {
+                    result.Guesses.Add(new GuessUsedItem(word.Word, word.FixedWord, i));
+                }
+            }
+
+            foreach (var unknownWordItem in GetUnknownWordItems(item, result.OcrFixLineResult))
+            {
+                result.UnknownWords.Add(unknownWordItem);
+            }
+        }
+
+        return result;
+    }
+
+    private void SetText(int i, OcrSubtitleItem item, OcrFixLineResultTemp resultTemp)
+    {
+        if (SelectedDictionary != null &&
+            SelectedDictionary.Name != GetDictionaryNameNone() &&
+            _ocrFixEngine.IsLoaded() && DoFixOcrErrors)
+        {
+            var text = resultTemp.ResultText;
+
+            Dispatcher.UIThread.Post(() =>
+            {
+                CurrentText = text;
+                item.Text = text;
+                item.FixResult = resultTemp.OcrFixLineResult;
+            });
+        }
+        else
+        {
+            var alignment = GetAlignment(item);
+            var text = alignment.Text;
+
+            Dispatcher.UIThread.Post(() =>
+            {
+                item.Text = text;
+                CurrentText = text;
+                item.FixResult = new OcrFixLineResult
+                {
+                    LineIndex = i,
+                    Words = new List<OcrFixLinePartResult> { new() { Word = item.Text, IsSpellCheckedOk = null } },
+                };
+            });
+        }
+
+        SelectAndScrollToRow(i);
+
+        foreach (var unknownWord in resultTemp.UnknownWords)
+        {
+            UnknownWords.Add(unknownWord);
+        }
+        foreach (var guess in resultTemp.Guesses)
+        {
+            AllGuesses.Add(guess);
+        }
+        foreach (var fix in resultTemp.Fixes)
+        {
+            AllFixes.Add(fix);
+        }
+    }
+
+    private List<UnknownWordItem> OcrFixLineAndSetText(int i, OcrSubtitleItem item)
+    {
+        // The checkbox promises "auto-break if more than X lines", so leave shorter results alone.
+        if (DoAutoBreak && Utilities.GetNumberOfLines(item.Text) > Se.Settings.General.MaxNumberOfLines)
+        {
+            item.Text = Utilities.AutoBreakLine(item.Text, GetAutoBreakLanguage());
+        }
+
+        var unknownWords = new List<UnknownWordItem>();
+        if (SelectedDictionary != null &&
+            SelectedDictionary.Name != GetDictionaryNameNone() &&
+            _ocrFixEngine.IsLoaded() && DoFixOcrErrors)
+        {
+            var result = _ocrFixEngine.FixOcrErrors(i, item.Text, DoTryToGuessUnknownWords);
+            var correctedText = result.GetText();
+            var alignment = GetAlignment(item, correctedText);
+            var resultText = alignment.AlignmentAdded ? alignment.Text : correctedText;
+
+            Dispatcher.UIThread.Post(() =>
+            {
+                CurrentText = resultText;
+                item.Text = resultText;
+                item.FixResult = result;
+            });
+
+            if (!string.IsNullOrEmpty(result.ReplacementUsed.From))
+            {
+                AllFixes.Add(result.ReplacementUsed);
+            }
+
+            foreach (var word in result.Words)
+            {
+                if (!string.IsNullOrEmpty(word.ReplacementUsed.From))
+                {
+                    AllFixes.Add(word.ReplacementUsed);
+                }
+
+                if (word.GuessUsed)
+                {
+                    AllGuesses.Add(new GuessUsedItem(word.Word, word.FixedWord, i));
+                }
+
+            }
+
+            foreach (var unknownWordItem in GetUnknownWordItems(item, result))
+            {
+                UnknownWords.Add(unknownWordItem);
+                unknownWords.Add(unknownWordItem);
+            }
+        }
+        else
+        {
+            var alignment = GetAlignment(item);
+            Dispatcher.UIThread.Post(() =>
+            {
+                item.Text = alignment.Text;
+                CurrentText = item.Text;
+                item.FixResult = new OcrFixLineResult
+                {
+                    LineIndex = i,
+                    Words = new List<OcrFixLinePartResult> { new() { Word = item.Text, IsSpellCheckedOk = null } },
+                };
+            });
+        }
+
+        SelectAndScrollToRow(i);
+        return unknownWords;
+    }
+
+
+    private bool InitNOcrDb()
+    {
+        var fileName = GetNOcrLanguageFileName();
+        if (_nOcrDb != null && _nOcrDb.FileName == fileName)
+        {
+            return true;
+        }
+
+        if (fileName == null)
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrEmpty(fileName) && (_nOcrDb == null || _nOcrDb.FileName != fileName))
+        {
+            _nOcrDb = new NOcrDb(fileName);
+        }
+
+        return true;
+    }
+
+    private void RunTesseractOcr(List<int> selectedIndices, CancellationToken cancellationToken)
+    {
+        var tesseractOcr = new TesseractOcr();
+        var language = SelectedTesseractDictionaryItem?.Code ?? "eng";
+        var tessDataFolder = Se.TesseractModelFolder;
+        var engineMode = SelectedTesseractEngineMode?.Oem ?? 3;
+
+        _ = Task.Run(async () =>
+        {
+            var processedCount = 0;
+            var producedAnyText = false;
+            try
+            {
+                for (var processedIndex = 0; processedIndex < selectedIndices.Count; processedIndex++)
+                {
+                    var i = selectedIndices[processedIndex];
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        return;
+                    }
+
+                    UpdateOcrProgress(processedIndex + 1, selectedIndices.Count);
+
+                    var item = OcrSubtitleItems[i];
+                    var bitmap = item.GetSkBitmap();
+
+                    var text = await tesseractOcr.Ocr(bitmap, language, tessDataFolder, cancellationToken, engineMode);
+
+                    // Surface a real Tesseract failure instead of silently filling the grid with blank lines.
+                    if (string.IsNullOrEmpty(text) && !string.IsNullOrEmpty(tesseractOcr.Error))
+                    {
+                        await ShowTesseractErrorAsync(tesseractOcr.Error);
+                        return;
+                    }
+
+                    processedCount++;
+                    if (!string.IsNullOrWhiteSpace(text))
+                    {
+                        producedAnyText = true;
+                    }
+
+                    item.Text = text;
+
+                    var unknownWords = OcrFixLineAndSetText(i, item);
+
+                    if (DoPromptForUnknownWords && unknownWords.Count > 0)
+                    {
+                        var keepRunning = await PromptForUnknownWordsAsync(i, item);
+                        if (!keepRunning)
+                        {
+                            return;
+                        }
+                    }
+                }
+
+                // Tesseract exited cleanly but every line came back empty — that is almost never the
+                // intent, so tell the user instead of leaving a grid full of blank lines.
+                if (processedCount >= 1 && !producedAnyText && !cancellationToken.IsCancellationRequested)
+                {
+                    await ShowTesseractErrorAsync(
+                        "Tesseract returned no text for " +
+                        (processedCount == 1 ? "the line." : "any of the " + processedCount + " lines.") + Environment.NewLine +
+                        "The subtitle images may not suit Tesseract (e.g. coloured text), or the selected language (" +
+                        language + ") may be wrong. Try another OCR engine or language." + Environment.NewLine +
+                        "Enable Options > Tools > write tools log for details.");
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Cancelled by the user.
+            }
+            catch (Exception ex)
+            {
+                SeLogger.Error(ex, "Error running Tesseract OCR");
+                await ShowTesseractErrorAsync(tesseractOcr.Error is { Length: > 0 } e ? e : ex.Message);
+            }
+            finally
+            {
+                PauseOcr();
+            }
+        });
+    }
+
+    private async Task ShowTesseractErrorAsync(string error)
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        await Dispatcher.UIThread.InvokeAsync(async () =>
+            await MessageBox.Show(
+                Window!,
+                Se.Language.General.Error,
+                "Tesseract OCR failed:" + Environment.NewLine + Environment.NewLine + error,
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error));
+    }
+
+    private void RunOllamaOcr(List<int> selectedIndices, CancellationToken cancellationToken)
+    {
+        var ollamaOcr = new OllamaOcr(Se.Settings.Ocr.OllamaOcrTimeoutMinutes);
+        var url = OllamaUrl;
+        var model = OllamaModel;
+
+        _ = Task.Run(async () =>
+        {
+            var processedCount = 0;
+            var producedAnyText = false;
+            try
+            {
+                for (var processedIndex = 0; processedIndex < selectedIndices.Count; processedIndex++)
+                {
+                    var i = selectedIndices[processedIndex];
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        return;
+                    }
+
+                    UpdateOcrProgress(processedIndex + 1, selectedIndices.Count);
+
+                    var item = OcrSubtitleItems[i];
+                    var bitmap = item.GetSkBitmap();
+
+                    SelectAndScrollToRow(i);
+
+                    var text = await ollamaOcr.Ocr(bitmap, url, model, SelectedOllamaLanguage ?? "English", cancellationToken);
+
+                    // Surface a real failure (Ollama not running, model not pulled, out of memory)
+                    // instead of silently filling the grid with blank lines.
+                    if (string.IsNullOrEmpty(text) && !string.IsNullOrEmpty(ollamaOcr.Error))
+                    {
+                        await ShowOllamaErrorAsync(ollamaOcr.Error, url, model);
+                        return;
+                    }
+
+                    processedCount++;
+                    if (!string.IsNullOrWhiteSpace(text))
+                    {
+                        producedAnyText = true;
+                    }
+
+                    item.Text = text;
+
+                    OcrFixLineAndSetText(i, item);
+                }
+
+                if (processedCount >= 1 && !producedAnyText && !cancellationToken.IsCancellationRequested)
+                {
+                    await ShowOllamaErrorAsync(
+                        "Ollama returned no text for " +
+                        (processedCount == 1 ? "the line." : "any of the " + processedCount + " lines.") + Environment.NewLine +
+                        "The model may not suit subtitle images, or the selected language may be wrong.",
+                        url, model);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                SeLogger.Error(ex, "Error running Ollama OCR");
+                await ShowOllamaErrorAsync(ollamaOcr.Error is { Length: > 0 } e ? e : ex.Message, url, model);
+            }
+            finally
+            {
+                PauseOcr();
+            }
+        });
+    }
+
+    private async Task ShowOllamaErrorAsync(string error, string url, string model)
+    {
+        if (Window == null)
+        {
+            return;
+        }
+
+        await Dispatcher.UIThread.InvokeAsync(async () =>
+            await MessageBox.Show(
+                Window!,
+                Se.Language.General.Error,
+                "Ollama OCR failed (model \"" + model + "\" at " + url + "):" + Environment.NewLine + Environment.NewLine + error,
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error));
+    }
+
+    private void RunLlamaCppOcr(List<int> selectedIndices, CancellationToken cancellationToken)
+    {
+        var engine = new LlamaCppOcr(Se.Settings.Ocr.LlamaCppOcrTimeoutMinutes);
+        var selectedModel = SelectedLlamaCppOcrModel?.Model;
+        var prompt = Se.Settings.Ocr.LlamaCppOcrPrompt;
+
+        _ = Task.Run(async () =>
+        {
+            string url;
+            string modelName;
+            if (selectedModel != null)
+            {
+                var ready = await Dispatcher.UIThread.InvokeAsync(EnsureLlamaCppOcrReady);
+                if (!ready)
+                {
+                    PauseOcr();
+                    return;
+                }
+
+                url = LlamaCppServerManager.ApiUrl;
+                modelName = Path.GetFileNameWithoutExtension(selectedModel.FileName);
+            }
+            else
+            {
+                url = LlamaCppUrl;
+                modelName = "glmocr";
+            }
+
+            try
+            {
+                for (var processedIndex = 0; processedIndex < selectedIndices.Count; processedIndex++)
+                {
+                    var i = selectedIndices[processedIndex];
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        return;
+                    }
+
+                    UpdateOcrProgress(processedIndex + 1, selectedIndices.Count);
+
+                    var item = OcrSubtitleItems[i];
+                    var bitmap = item.GetSkBitmap();
+
+                    SelectAndScrollToRow(i);
+
+                    var text = await engine.Ocr(bitmap, url, modelName, SelectedOllamaLanguage ?? "English", prompt, cancellationToken);
+                    item.Text = text;
+
+                    OcrFixLineAndSetText(i, item);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            finally
+            {
+                PauseOcr();
+            }
+        });
+    }
+
+    private void RunCrispEmbedOcr(List<int> selectedIndices, CancellationToken cancellationToken)
+    {
+        if (SelectedCrispEmbedBackend is not { } backend || SelectedCrispEmbedModel is not { } model)
+        {
+            PauseOcr();
+            return;
+        }
+
+        var engine = new CrispEmbedOcr(Se.Settings.Ocr.CrispEmbedOcrTimeoutMinutes);
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                ProgressText = "Loading CrispEmbed model...";
+
+                // PP-OCRv6 is a detector+recognizer pair driven through the CLI; the VLM backends
+                // load once into crispembed-server.
+                var started = backend.UsesTextDetector
+                    ? engine.StartCliPipeline(
+                        CrispEmbedEngine.GetCliExecutable(),
+                        backend.GetModelPath(model.Model),
+                        backend.GetDetectorPath(model.Model))
+                    : await engine.StartServerAsync(
+                        CrispEmbedEngine.GetServerExecutable(),
+                        backend.GetModelPath(model.Model),
+                        cancellationToken);
+
+                if (!started)
+                {
+                    var error = engine.Error;
+                    SeLogger.Error("CrispEmbed failed to start: " + error);
+                    await Dispatcher.UIThread.InvokeAsync(async () =>
+                    {
+                        await MessageBox.Show(
+                            Window!,
+                            "CrispEmbed error",
+                            $"CrispEmbed could not be started:{Environment.NewLine}{Environment.NewLine}{error}",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Error);
+                    });
+                    return;
+                }
+
+                for (var processedIndex = 0; processedIndex < selectedIndices.Count; processedIndex++)
+                {
+                    var i = selectedIndices[processedIndex];
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        return;
+                    }
+
+                    UpdateOcrProgress(processedIndex + 1, selectedIndices.Count);
+
+                    var item = OcrSubtitleItems[i];
+                    var bitmap = item.GetSkBitmap();
+
+                    SelectAndScrollToRow(i);
+
+                    var text = await engine.Ocr(bitmap, cancellationToken);
+                    item.Text = text;
+
+                    OcrFixLineAndSetText(i, item);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            finally
+            {
+                engine.Dispose();
+                PauseOcr();
+            }
+        });
+    }
+
+    private void RunMistralOcr(List<int> selectedIndices, CancellationToken cancellationToken)
+    {
+        var mistralOcr = new MistralOcr(MistralApiKey);
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                for (var processedIndex = 0; processedIndex < selectedIndices.Count; processedIndex++)
+                {
+                    var i = selectedIndices[processedIndex];
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        return;
+                    }
+
+                    UpdateOcrProgress(processedIndex + 1, selectedIndices.Count);
+
+                    var item = OcrSubtitleItems[i];
+                    var bitmap = item.GetSkBitmap();
+
+                    SelectAndScrollToRow(i);
+
+                    var text = await mistralOcr.Ocr(bitmap, SelectedOllamaLanguage ?? "English", cancellationToken);
+                    item.Text = text;
+
+                    OcrFixLineAndSetText(i, item);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            finally
+            {
+                PauseOcr();
+            }
+        });
+    }
+
+    private void RunGoogleVisionOcr(List<int> selectedIndices, CancellationToken cancellationToken)
+    {
+        var engine = new GoogleVisionOcr();
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                for (var processedIndex = 0; processedIndex < selectedIndices.Count; processedIndex++)
+                {
+                    var i = selectedIndices[processedIndex];
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        return;
+                    }
+
+                    UpdateOcrProgress(processedIndex + 1, selectedIndices.Count);
+
+                    var item = OcrSubtitleItems[i];
+                    var bitmap = item.GetSkBitmap();
+
+                    SelectAndScrollToRow(i);
+
+                    var text = await engine.Ocr(bitmap, GoogleVisionApiKey, SelectedGoogleVisionLanguage?.Code ?? "en", cancellationToken);
+                    item.Text = text;
+
+                    OcrFixLineAndSetText(i, item);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            finally
+            {
+                PauseOcr();
+            }
+        });
+    }
+
+    private async Task<bool> CheckAndDownloadTesseract()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            var tesseractExe = Path.Combine(Se.TesseractFolder, "tesseract.exe");
+            if (File.Exists(tesseractExe))
+            {
+                return true;
+            }
+
+            var answer = await MessageBox.Show(
+                Window!,
+                "Download Tesseract OCR?",
+                $"{Environment.NewLine}\"Tesseract\" requires downloading Tesseract OCR.{Environment.NewLine}{Environment.NewLine}Download and use Tesseract OCR?",
+                MessageBoxButtons.YesNoCancel,
+                MessageBoxIcon.Question);
+
+            if (answer != MessageBoxResult.Yes)
+            {
+                return false;
+            }
+
+            await _windowService.ShowDialogAsync<DownloadTesseractWindow, DownloadTesseractViewModel>(Window!);
+
+            return File.Exists(tesseractExe);
+        }
+
+        try
+        {
+            var fileName = TesseractOcr.GetExecutablePath();
+            var process = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = fileName,
+                    Arguments = "--version",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                }
+            };
+
+            process.Start();
+            process.WaitForExit(2000); // Wait max 2 seconds
+
+            if (process.ExitCode == 0)
+            {
+                return true;
+            }
+        }
+        catch
+        {
+            // ignore
+        }
+
+        if (OperatingSystem.IsMacOS())
+        {
+            await MessageBox.Show(
+                Window!,
+                "Please install Tesseract",
+                $"{Environment.NewLine}\"Tesseract\" was not detected. Please install Tesseract." +
+                Environment.NewLine + "" +
+                "E.g. ´brew install tesseract´.",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        }
+
+        if (OperatingSystem.IsLinux())
+        {
+            await MessageBox.Show(
+                Window!,
+                "Please install Tesseract",
+                $"{Environment.NewLine}\"Tesseract\" was not detected. Please install Tesseract." +
+                Environment.NewLine +
+                $"E.g. ´sudo apt install tesseract-ocr´ or ´sudo pacman -S tesseract´.",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        }
+
+        return false;
+    }
+
+    private async Task<bool> TesseractModelDownload()
+    {
+        var result =
+            await _windowService.ShowDialogAsync<DownloadTesseractModelWindow, DownloadTesseractModelViewModel>(Window!);
+
+        LoadActiveTesseractDictionaries();
+        if (result.OkPressed)
+        {
+            var item = TesseractDictionaryItems.FirstOrDefault(p =>
+                p.Code == result.SelectedTesseractDictionaryItem?.Code);
+            SelectedTesseractDictionaryItem = item ?? TesseractDictionaryItems.FirstOrDefault();
+            return true;
+        }
+
+        return false;
+    }
+
+    private void LoadActiveTesseractDictionaries()
+    {
+        TesseractDictionaryItems.Clear();
+
+        var folder = Se.TesseractModelFolder;
+        if (!Directory.Exists(folder))
+        {
+            return;
+        }
+
+        var allDictionaries = TesseractDictionary.List();
+        var items = new List<TesseractDictionary>();
+        foreach (var file in Directory.GetFiles(folder, "*.traineddata"))
+        {
+            var name = Path.GetFileNameWithoutExtension(file);
+            if (name == "osd")
+            {
+                continue;
+            }
+
+            var dictionary = allDictionaries.FirstOrDefault(p => p.Code == name);
+            items.Add(dictionary ?? new TesseractDictionary { Code = name, Name = name, Url = string.Empty });
+        }
+
+        TesseractDictionaryItems.AddRange(items.OrderBy(p => p.ToString()));
+    }
+
+    internal void SubtitleGridKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.I && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            ToggleItalic();
+            e.Handled = true; // prevent further handling if needed
+        }
+        else if (e.Key == Key.P && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            e.Handled = true; // prevent further handling if needed
+            Dispatcher.UIThread.Post(async void () => { await ViewSelectedImage(); });
+        }
+        else if (e.Key == Key.Delete)
+        {
+            e.Handled = true; // prevent further handling if needed
+            DeleteSelectedLines();
+        }
+        else if (e.Key == Key.I && e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift))
+        {
+            e.Handled = true;
+            CommandInspectLine();
+        }
+    }
+
+    internal void TextBoxKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.I && e.KeyModifiers == KeyModifiers.Control && sender is TextBox textBox)
+        {
+            e.Handled = true;
+            TextBoxTagToggler.ToggleTag(new TextBoxWrapper(textBox), "i", isAssa: false);
+        }
+    }
+
+    internal void SubtitleGridDoubleTapped()
+    {
+        CommandInspectLine();
+    }
+
+    private bool CommandInspectLine()
+    {
+        var engine = SelectedOcrEngine;
+        if (engine == null)
+        {
+            return false;
+        }
+
+        if (engine.EngineType == OcrEngineType.nOcr || engine.EngineType == OcrEngineType.BinaryImageCompare)
+        {
+            Dispatcher.UIThread.Post(async void () => { await InspectLine(); });
+        }
+
+        return true;
+    }
+
+    internal void OnKeyDown(KeyEventArgs e)
+    {
+        _isCtrlDown = e.KeyModifiers.HasFlag(KeyModifiers.Control);
+
+        if (e.Key == Key.Escape)
+        {
+            e.Handled = true;
+            Cancel();
+        }
+        else if (e.Key == Key.G && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            e.Handled = true; // prevent further handling if needed
+            Dispatcher.UIThread.Post(async void () => { await ShowGoToLine(); });
+        }
+        else if ((e.Key == Key.Add || e.Key == Key.OemPlus) && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            e.Handled = true;
+            if (ImageMaxHeight < 300)
+            {
+                // TableView rows auto-size to their content, so changing the bound
+                // Image Max sizes re-measures the rows - no explicit RowHeight needed.
+                ImageMaxHeight *= 1.1;
+                ImageMaxWidth *= 1.1;
+            }
+        }
+        else if ((e.Key == Key.Subtract || e.Key == Key.OemMinus) && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            e.Handled = true;
+            if (ImageMaxHeight > 50)
+            {
+                ImageMaxHeight *= 0.9;
+                ImageMaxWidth *= 0.9;
+            }
+        }
+        else if (e.Key == Key.V && e.KeyModifiers.HasFlag(KeyModifiers.Control) && e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+        {
+            if (SubtitleGrid?.SelectedItems?.Count > 1)
+            {
+                e.Handled = true;
+                Dispatcher.UIThread.Post(async void () => { await FillSelectedLinesWithClipboard(); });
+            }
+        }
+        else if (UiUtil.IsHelp(e))
+        {
+            e.Handled = true;
+            UiUtil.ShowHelp("features/ocr");
+        }
+    }
+
+    internal void DataGridTracksSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        var flowControl = TrackChanged();
+        if (!flowControl)
+        {
+            return;
+        }
+    }
+
+    private bool TrackChanged()
+    {
+        return true;
+    }
+
+    public static Bitmap ConvertSkBitmapToAvaloniaBitmap(SKBitmap skBitmap)
+    {
+        using var image = SKImage.FromBitmap(skBitmap);
+        using var data = image.Encode(SKEncodedImageFormat.Png, 100);
+        using var stream = new MemoryStream(data.ToArray());
+
+        return new Bitmap(stream);
+    }
+
+    internal async void SelectAndScrollToRow(int index)
+    {
+        if (index < 0 || index >= OcrSubtitleItems.Count)
+        {
+            return;
+        }
+
+        lock (_scrollLock)
+        {
+            _pendingScrollIndex = index;
+        }
+
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            int indexToScroll;
+            lock (_scrollLock)
+            {
+                indexToScroll = _pendingScrollIndex;
+                _pendingScrollIndex = -1;
+            }
+
+            // Only execute if this is the latest scroll request
+            if (indexToScroll >= 0 && indexToScroll < OcrSubtitleItems.Count)
+            {
+                SelectedOcrSubtitleItem = OcrSubtitleItems[indexToScroll];
+                SubtitleGrid.SelectedIndex = indexToScroll;
+
+                // Post ScrollIntoView as a second background task so it runs after
+                // the grid has processed the selection change and updated its layout.
+                Dispatcher.UIThread.Post(
+                    () => SubtitleGrid.ScrollIntoView(indexToScroll),
+                    DispatcherPriority.Background);
+            }
+        }, DispatcherPriority.Background);
+    }
+
+    private void SetOcrSubtitleItems()
+    {
+        _allOcrSubtitleItems = _ocrSubtitle!.MakeOcrSubtitleItems();
+        HasForcedSubtitles = _allOcrSubtitleItems.Any(p => p.IsForced);
+        OcrSubtitleItems = new ObservableCollection<OcrSubtitleItem>(_allOcrSubtitleItems);
+    }
+
+    partial void OnShowOnlyForcedChanged(bool value)
+    {
+        if (_allOcrSubtitleItems.Count == 0)
+        {
+            return;
+        }
+
+        var selected = SelectedOcrSubtitleItem;
+        OcrSubtitleItems.Clear();
+        OcrSubtitleItems.AddRange(value ? _allOcrSubtitleItems.Where(p => p.IsForced) : _allOcrSubtitleItems);
+
+        var index = selected != null ? OcrSubtitleItems.IndexOf(selected) : -1;
+        SelectAndScrollToRow(index >= 0 ? index : 0);
+    }
+
+    public void Initialize(List<BluRaySupParser.PcsData> subtitles, string fileName)
+    {
+        _sourceFileName = fileName;
+        Title = string.Format(Se.Language.Ocr.OcrX, fileName);
+        _ocrSubtitle = new OcrSubtitleBluRay(subtitles);
+        SetOcrSubtitleItems();
+        AutoDetectSourceLanguage();
+    }
+
+    public void Initialize(List<VobSubMergedPack> vobSubMergedPackList, List<SKColor> palette, string vobSubFileName, string? languageCode = null)
+    {
+        _sourceFileName = vobSubFileName;
+        Title = string.Format(Se.Language.Ocr.OcrX, vobSubFileName);
+        _ocrSubtitle = new OcrSubtitleVobSub(vobSubMergedPackList, palette);
+        SetOcrSubtitleItems();
+        IsVobSubVisible = true;
+        ApplyStoredVobSubColors();
+        AutoDetectSourceLanguage(languageCode);
+    }
+
+    public void Initialize(Trak mp4SubtitleTrack, List<Paragraph> paragraphs, string fileName)
+    {
+        _sourceFileName = fileName;
+        Title = string.Format(Se.Language.Ocr.OcrX, fileName);
+        _ocrSubtitle = new OcrSubtitleMp4VobSub(mp4SubtitleTrack, paragraphs);
+        SetOcrSubtitleItems();
+        AutoDetectSourceLanguage(mp4SubtitleTrack.Mdia?.Mdhd?.Iso639ThreeLetterCode);
+    }
+
+    public void Initialize(List<VobSubMergedPack> mergedVobSubPacks, List<SKColor> palette, MatroskaTrackInfo matroskaSubtitleInfo, string fileName)
+    {
+        _sourceFileName = fileName;
+        Title = string.Format(Se.Language.Ocr.OcrX, fileName);
+        _ocrSubtitle = new OcrSubtitleVobSub(mergedVobSubPacks, palette);
+        SetOcrSubtitleItems();
+        IsVobSubVisible = true;
+        ApplyStoredVobSubColors();
+        AutoDetectSourceLanguage(matroskaSubtitleInfo.Language);
+    }
+
+    public void Initialize(MatroskaTrackInfo matroskaSubtitleInfo, Subtitle subtitle, List<DvbSubPes> subtitleImages, string fileName)
+    {
+        _sourceFileName = fileName;
+        Title = string.Format(Se.Language.Ocr.OcrX, fileName);
+        _ocrSubtitle = new OcrSubtitleMkvDvb(matroskaSubtitleInfo, subtitle, subtitleImages);
+        SetOcrSubtitleItems();
+        AutoDetectSourceLanguage(matroskaSubtitleInfo.Language);
+    }
+
+    public void Initialize(MatroskaTrackInfo matroskaSubtitleInfo, List<BluRaySupParser.PcsData> pcsDataList, string fileName)
+    {
+        _sourceFileName = fileName;
+        Title = string.Format(Se.Language.Ocr.OcrX, fileName);
+        _ocrSubtitle = new OcrSubtitleMkvBluRay(matroskaSubtitleInfo, pcsDataList);
+        SetOcrSubtitleItems();
+        AutoDetectSourceLanguage(matroskaSubtitleInfo.Language);
+    }
+
+    public void Initialize(IList<IBinaryParagraphWithPosition> list, string fileName)
+    {
+        _sourceFileName = fileName;
+        Title = string.Format(Se.Language.Ocr.OcrX, fileName);
+        _ocrSubtitle = new OcrSubtitleIBinaryParagraph(list);
+        SetOcrSubtitleItems();
+        AutoDetectSourceLanguage();
+    }
+
+    public void InitializeBdn(Subtitle subtitle, string fileName, bool isSon)
+    {
+        _sourceFileName = fileName;
+        Title = string.Format(Se.Language.Ocr.OcrX, fileName);
+        _ocrSubtitle = new OcrSubtitleBdn(subtitle, fileName, isSon);
+        SetOcrSubtitleItems();
+        AutoDetectSourceLanguage();
+    }
+
+    public void InitializeWebVtt(Subtitle subtitle, string fileName)
+    {
+        _sourceFileName = fileName;
+        Title = string.Format(Se.Language.Ocr.OcrX, fileName);
+        _ocrSubtitle = new OcrSubtitleWebVttImages(subtitle, fileName);
+        SetOcrSubtitleItems();
+        AutoDetectSourceLanguage();
+    }
+
+    public void InitializeSpDvdSup(string fileName)
+    {
+        _sourceFileName = fileName;
+        Title = string.Format(Se.Language.Ocr.OcrX, fileName);
+        _ocrSubtitle = new OcrSubtitleSpDvdSupImages(fileName);
+        SetOcrSubtitleItems();
+        AutoDetectSourceLanguage();
+    }
+
+    internal void Initialize(TransportStreamParser tsParser, List<TransportStreamSubtitle> subtitles, string fileName)
+    {
+        _sourceFileName = fileName;
+        Title = string.Format(Se.Language.Ocr.OcrX, fileName);
+        _ocrSubtitle = new OcrSubtitleTransportStream(tsParser, subtitles, fileName);
+        SetOcrSubtitleItems();
+        AutoDetectSourceLanguage();
+    }
+
+    internal void Initialize(List<ImportImageItem> images)
+    {
+        _sourceFileName = string.Empty;
+        Title = string.Format(Se.Language.Ocr.OcrX, Se.Language.General.Images);
+        _ocrSubtitle = new OcrImportImage(images);
+        SetOcrSubtitleItems();
+    }
+
+    internal void InitializeDivX(List<XSub> list, string fileName)
+    {
+        _sourceFileName = fileName;
+        Title = string.Format(Se.Language.Ocr.OcrX, "DivX");
+        _ocrSubtitle = new OcrSubtitleDivX(list, fileName);
+        SetOcrSubtitleItems();
+        AutoDetectSourceLanguage();
+    }
+
+    internal void EngineSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        EngineSelectionChanged();
+    }
+
+    private void EngineSelectionChanged()
+    {
+        if (SelectedOcrEngine == null)
+        {
+            SelectedOcrEngine = OcrEngines.FirstOrDefault();
+        }
+
+        var et = SelectedOcrEngine?.EngineType;
+        IsNOcrVisible = et == OcrEngineType.nOcr;
+        IsInspectLineVisible = et == OcrEngineType.nOcr || et == OcrEngineType.BinaryImageCompare;
+        IsOllamaVisible = et == OcrEngineType.Ollama;
+        IsLlamaCppVisible = et == OcrEngineType.LlamaCpp;
+        IsCrispEmbedVisible = et == OcrEngineType.CrispEmbed;
+        IsTesseractVisible = et == OcrEngineType.Tesseract;
+        IsPaddleOcrVisible = et == OcrEngineType.PaddleOcrStandalone || et == OcrEngineType.PaddleOcrPython;
+        IsGoogleVisionVisible = et == OcrEngineType.GoogleVision;
+        IsGoogleLensVisible = et == OcrEngineType.GoogleLens || et == OcrEngineType.GoogleLensSharp;
+        IsMistralOcrVisible = et == OcrEngineType.Mistral;
+        IsBinaryImageCompareVisible = et == OcrEngineType.BinaryImageCompare;
+        IsFallbackDatabaseVisible = IsNOcrVisible || IsBinaryImageCompareVisible;
+        UpdateHasFallbackDatabase();
+
+        if (IsNOcrVisible && NOcrDatabases.Count == 0)
+        {
+            foreach (var s in NOcrDb.GetDatabases(Se.OcrFolder).OrderBy(p => p))
+            {
+                NOcrDatabases.Add(s);
+            }
+
+            if (!string.IsNullOrEmpty(Se.Settings.Ocr.NOcrDatabase) &&
+                NOcrDatabases.Contains(Se.Settings.Ocr.NOcrDatabase))
+            {
+                SelectedNOcrDatabase = Se.Settings.Ocr.NOcrDatabase;
+            }
+
+            if (SelectedNOcrDatabase == null)
+            {
+                SelectedNOcrDatabase = NOcrDb.GetDatabases(Se.OcrFolder).FirstOrDefault();
+            }
+        }
+
+        if (IsTesseractVisible)
+        {
+            LoadActiveTesseractDictionaries();
+            if (SelectedTesseractDictionaryItem == null)
+            {
+                SelectedTesseractDictionaryItem = TesseractDictionaryItems.FirstOrDefault(p => _sourceLanguageIso != null && p.Code == _sourceLanguageIso.ThreeLetterCode) ??
+                                                  TesseractDictionaryItems.FirstOrDefault(p => p.Code == Se.Settings.Ocr.TesseractLastLanguage) ??
+                                                  TesseractDictionaryItems.FirstOrDefault(p => p.Code == "eng") ??
+                                                  TesseractDictionaryItems.FirstOrDefault();
+            }
+        }
+
+        if (IsPaddleOcrVisible)
+        {
+            if (SelectedPaddleOcrLanguage == null)
+            {
+                SelectedPaddleOcrLanguage = PaddleOcrLanguages.FirstOrDefault(p => _sourceLanguageIso != null && p.Code == _sourceLanguageIso.TwoLetterCode) ??
+                                            PaddleOcrLanguages.FirstOrDefault(p => p.Code == "en") ??
+                                            PaddleOcrLanguages.FirstOrDefault();
+            }
+        }
+
+        if (IsGoogleVisionVisible)
+        {
+            if (SelectedGoogleVisionLanguage == null)
+            {
+                SelectedGoogleVisionLanguage = GoogleVisionLanguages.FirstOrDefault(p => p.Code == "eng") ??
+                                               GoogleVisionLanguages.FirstOrDefault();
+            }
+        }
+
+        if (IsLlamaCppVisible && LlamaCppOcrModels.Count == 0)
+        {
+            var savedModelName = Path.GetFileName(Se.Settings.Ocr.LlamaCppOcrModel ?? string.Empty);
+            SelectedLlamaCppOcrModel = LlamaCppDownloadHelper.PopulateModels(LlamaCppOcrModels, LlamaCppServerManager.OcrModels, savedModelName);
+            UpdateLlamaCppOcrServerButtonText();
+        }
+
+        if (IsCrispEmbedVisible)
+        {
+            if (SelectedCrispEmbedBackend == null)
+            {
+                SelectedCrispEmbedBackend = CrispEmbedBackends.FirstOrDefault(p => p.Name == Se.Settings.Ocr.CrispEmbedBackend)
+                                            ?? CrispEmbedBackends.FirstOrDefault();
+            }
+
+            if (!_crispEmbedUpdatePromptShown)
+            {
+                Dispatcher.UIThread.Post(async () => await CheckCrispEmbedForUpdateAsync());
+            }
+        }
+    }
+
+    private bool _crispEmbedUpdatePromptShown;
+
+    /// <summary>
+    /// When the CrispEmbed engine is selected and the installed build is a known-but-older
+    /// release (per the .installed.sha256 sidecar), offer to download the current one - same
+    /// flow as the CrispASR update prompt in the speech-to-text window.
+    /// </summary>
+    private async Task CheckCrispEmbedForUpdateAsync()
+    {
+        if (_crispEmbedUpdatePromptShown || Window == null || !CrispEmbedEngine.IsEngineInstalled())
+        {
+            return;
+        }
+
+        var sidecar = DownloadHashManager.TryReadSidecar(CrispEmbedEngine.GetAndCreateFolder());
+        if (sidecar == null)
+        {
+            return;
+        }
+
+        var (key, hash) = sidecar.Value;
+        if (DownloadHashManager.GetStatus(key, hash) != DownloadHashManager.UpdateStatus.UpdateAvailable)
+        {
+            return;
+        }
+
+        _crispEmbedUpdatePromptShown = true;
+
+        var answer = await MessageBox.Show(
+            Window,
+            "Update CrispEmbed?",
+            $"A newer version of CrispEmbed is available.{Environment.NewLine}{Environment.NewLine}Download it now?",
+            MessageBoxButtons.YesNoCancel,
+            MessageBoxIcon.Question);
+
+        if (answer != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        var variant = DownloadHashManager.GetCrispEmbedVariant(key)
+                      ?? (Configuration.IsRunningOnWindows ? "vulkan" : string.Empty);
+
+        await _windowService.ShowDialogAsync<DownloadCrispEmbedWindow, DownloadCrispEmbedViewModel>(Window,
+            vm => vm.InitializeEngine(variant));
+
+        _isCtrlDown = false;
+        RefreshEngineCombo?.Invoke();
+    }
+
+    private bool _forceClose = false;
+
+    internal async void OnClosing(WindowClosingEventArgs e)
+    {
+        if (_forceClose || e.IsProgrammatic)
+        {
+            SaveSettings();
+            UiUtil.SaveWindowPosition(Window);
+            return;
+        }
+
+        if (OcrSubtitleItems.Any(p => !string.IsNullOrEmpty(p.Text)))
+        {
+            e.Cancel = true;
+
+            try
+            {
+                var result = await MessageBox.Show(
+                    Window!,
+                    "Discard OCR result?",
+                    "Some items have OCR text. Close and discard the OCR result?",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question);
+
+                if (result != MessageBoxResult.Yes)
+                {
+                    return;
+                }
+            }
+            catch (Exception exception)
+            {
+                // async void closing handler: a throw after e.Cancel = true would
+                // otherwise leave a window that can never be closed. Log and fall
+                // through to force close.
+                Se.LogError(exception, "OCR close prompt failed");
+            }
+
+            _forceClose = true;
+            SaveSettings();
+            UiUtil.SaveWindowPosition(Window);
+            Window?.Close();
+            return;
+        }
+
+        SaveSettings();
+        UiUtil.SaveWindowPosition(Window);
+    }
+
+    internal void SubtitleGridContextOpening(object? sender, EventArgs e)
+    {
+        ShowContextMenu = OcrSubtitleItems.Count > 0;
+        HasMultipleLinesSelected = SubtitleGrid?.SelectedItems?.Count > 1;
+    }
+
+    internal void SubtitleGridSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        var selectedCount = SubtitleGrid?.SelectedItems?.Count ?? 0;
+        if (selectedCount == 0)
+        {
+            SelectionStatus = string.Empty;
+        }
+        else if (selectedCount == 1)
+        {
+            var index = SubtitleGrid?.SelectedIndex ?? -1;
+            SelectionStatus = index >= 0 ? $"{index + 1}/{OcrSubtitleItems.Count}" : $"1/{OcrSubtitleItems.Count}";
+        }
+        else
+        {
+            SelectionStatus = string.Format(Se.Language.Main.XLinesSelectedOfY, selectedCount, OcrSubtitleItems.Count);
+        }
+    }
+
+    [RelayCommand]
+    private async Task FillSelectedLinesWithClipboard()
+    {
+        if (Window == null || SubtitleGrid == null)
+        {
+            return;
+        }
+
+        var selectedItems = SubtitleGrid.SelectedItems?.Cast<OcrSubtitleItem>().ToList() ?? new List<OcrSubtitleItem>();
+        if (selectedItems.Count < 2)
+        {
+            return;
+        }
+
+        var text = await ClipboardHelper.GetTextAsync(Window);
+        if (string.IsNullOrEmpty(text))
+        {
+            return;
+        }
+
+        foreach (var item in selectedItems)
+        {
+            item.Text = text;
+            var idx = OcrSubtitleItems.IndexOf(item);
+            if (idx >= 0)
+            {
+                item.FixResult = new OcrFixLineResult(idx, text);
+            }
+        }
+    }
+
+    public void DictionaryChanged()
+    {
+        // Must stay safe when Dictionaries is empty: this runs from the combo's SelectionChanged, which
+        // fires mid-repopulate when LoadDictionaries clears the list (SelectedDictionary is null then).
+        // Calling Dictionaries.First() there threw and aborted LoadDictionaries before it re-added any
+        // items, leaving the Dictionary combo permanently empty after a download.
+        IsDictionaryLoaded = SelectedDictionary != null && Dictionaries.IndexOf(SelectedDictionary) > 0;
+    }
+
+    internal void OnLoaded()
+    {
+        UiUtil.RestoreWindowPosition(Window);
+        DictionaryChanged();
+        Dispatcher.UIThread.Post(() =>
+        {
+            SubtitleGrid.Focus();
+            if (OcrSubtitleItems.Count > 0)
+            {
+                SelectedOcrSubtitleItem = OcrSubtitleItems[0];
+                SubtitleGrid.SelectedIndex = 0;
+                SubtitleGrid.ScrollIntoView(0);
+                TrackChanged();
+            }
+        });
+    }
+
+    internal void TextBoxTextChanged(object? sender, TextChangedEventArgs e)
+    {
+        var selected = SelectedOcrSubtitleItem;
+        if (selected == null)
+        {
+            return;
+        }
+
+        if (selected.FixResult == null)
+        {
+            return;
+        }
+
+        if (selected.FixResult.GetText() == selected.Text)
+        {
+            return;
+        }
+
+        var idx = OcrSubtitleItems.IndexOf(selected);
+        selected.FixResult = new OcrFixLineResult(idx, selected.Text);
+        //TODO: spell check?
+    }
+
+    private async Task ShowGoToLine()
+    {
+        if (OcrSubtitleItems.Count == 0)
+        {
+            return;
+        }
+
+        var viewModel = await _windowService.ShowDialogAsync<GoToLineNumberWindow, GoToLineNumberViewModel>(Window!, vm =>
+        {
+            var idx = 1;
+            if (SelectedOcrSubtitleItem != null)
+            {
+                idx = OcrSubtitleItems.IndexOf(SelectedOcrSubtitleItem) + 1;
+            }
+
+            vm.Initialize(idx, OcrSubtitleItems.Count);
+        });
+
+        if (viewModel is { OkPressed: true, LineNumber: >= 0 } && viewModel.LineNumber <= OcrSubtitleItems.Count)
+        {
+            var no = (int)viewModel.LineNumber;
+            SelectAndScrollToRow(Math.Min(OcrSubtitleItems.Count - 1, no + 1));
+            SelectAndScrollToRow(no - 1);
+        }
+    }
+
+    internal void UnknownWordSelectionChanged()
+    {
+        IsUnknownWordSelected = SelectedUnknownWord != null;
+        if (IsUnknownWordSelected)
+        {
+            UnknownWordsRemoveCurrentText = string.Format(
+                Se.Language.Ocr.RemoveXFromUnknownWordsList,
+                SelectedUnknownWord?.Word.FixedWord);
+            UnknownWordSelectionTapped();
+        }
+        else
+        {
+            UnknownWordsRemoveCurrentText = string.Empty;
+        }
+    }
+
+    internal void UnknownWordSelectionTapped()
+    {
+        if (SelectedUnknownWord == null)
+        {
+            return;
+        }
+
+        SelectAndScrollToRow(OcrSubtitleItems.IndexOf(SelectedUnknownWord.Item));
+    }
+
+    internal void AllFixesTapped()
+    {
+        var selection = SelectedAllFix;
+        if (selection == null)
+        {
+            return;
+        }
+
+        SelectAndScrollToRow(selection.LineIndex);
+    }
+
+    internal void GuessUsedTapped()
+    {
+        var selection = SelectedAllGuess;
+        if (selection == null)
+        {
+            return;
+        }
+
+        SelectAndScrollToRow(selection.LineIndex);
+    }
+
+    public void TextBoxPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (OperatingSystem.IsMacOS() &&
+            e.KeyModifiers.HasFlag(KeyModifiers.Control) &&
+            sender is Control control)
+        {
+            var args = new ContextRequestedEventArgs(e);
+            control.RaiseEvent(args);
+            e.Handled = args.Handled;
+        }
+    }
+
+    internal void UnknownWordListKeyDown(KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            e.Handled = true; // prevent further handling if needed
+            UnknownWordSelectionTapped();
+        }
+    }
+
+    public void OnWindowKeyUp(KeyEventArgs e)
+    {
+        _isCtrlDown = e.KeyModifiers.HasFlag(KeyModifiers.Control);
+    }
+
+    private bool _subtitleGridIsLeftClick = false;
+    private bool _subtitleGridIsControlPressed = false;
+
+    internal void DataGridSubtitleMacPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        _subtitleGridIsLeftClick = false;
+        _subtitleGridIsControlPressed = false;
+
+        if (!OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        if (sender is Control control)
+        {
+            var props = e.GetCurrentPoint(control).Properties;
+            _subtitleGridIsLeftClick = props.IsLeftButtonPressed;
+            _subtitleGridIsControlPressed = e.KeyModifiers.HasFlag(KeyModifiers.Control);
+
+            // Block the DataGrid's default Ctrl+Click deselect behavior on Mac
+            if (_subtitleGridIsLeftClick && _subtitleGridIsControlPressed)
+            {
+                e.Handled = true;
+            }
+        }
+    }
+
+    internal void DataGridSubtitleMacPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            return;
+        }
+
+        if (_subtitleGridIsLeftClick && _subtitleGridIsControlPressed &&
+            sender is Control { ContextFlyout: MenuFlyout menuFlyout } ctrl)
+        {
+            menuFlyout.ShowAt(ctrl, true);
+            e.Handled = true;
+        }
+    }
+
+    private (string Text, bool AlignmentAdded) GetAlignment(OcrSubtitleItem item, string? correctedText = null)
+    {
+        if (!HasCaptureAlignment) // Repurposed for ASSA position capture
+        {
+            return (item.Text, false);
+        }
+
+        var textToUse = correctedText ?? item.Text;
+
+        try
+        {
+            // Get image position and screen dimensions
+            var position = item.GetPosition();
+            var screenSize = item.GetScreenSize();
+            using var bitmap = item.GetSkBitmapClean(); // fresh bitmap each call; dispose to avoid a native leak
+
+            if (bitmap == null || screenSize.Width == 0 || screenSize.Height == 0)
+            {
+                return (item.Text, false);
+            }
+
+            // Check if image height is larger than approximately 1/3 of screen height
+            var imageHeightRatio = (double)bitmap.Height / screenSize.Height;
+            if (imageHeightRatio > 0.33)
+            {
+                // Try to split lines and set alignment for each line
+                var lines = textToUse.Trim().SplitToLines();
+                if (lines.Count > 1 && textToUse.Length < 40)
+                {
+                    // Similar logic to RunGoogleLensOcr method
+                    var nbmp = new NikseBitmap2(bitmap);
+                    nbmp.MakeOneColor(SKColors.White);
+                    var lineImages = NikseBitmapImageSplitter2.SplitToLinesTransparentOrBlack(nbmp);
+                    var lineImages2 = NikseBitmapImageSplitter2.SplitToLines(nbmp, 20);
+
+                    if (lineImages.Count > 1 || lineImages2.Count > 1)
+                    {
+                        // Multiple lines detected - apply alignment to each line
+                        var lineAlignments = new List<string>();
+                        var multiLineCenterX = position.X + bitmap.Width / 2.0;
+                        var multiLineRelativeX = multiLineCenterX / screenSize.Width;
+
+                        for (int i = 0; i < lines.Count; i++)
+                        {
+                            // Calculate relative Y position for each line
+                            var lineHeight = bitmap.Height / (double)lines.Count;
+                            var lineY = position.Y + (i * lineHeight) + (lineHeight / 2.0);
+                            var lineRelativeY = lineY / screenSize.Height;
+
+                            // Get alignment for this specific line position
+                            lineAlignments.Add(GetAssaPositionFromScreen(multiLineRelativeX, lineRelativeY));
+                        }
+
+                        return ApplyLineAlignmentTags(lines, lineAlignments, textToUse, Se.Settings.General.WriteAn2Tag);
+                    }
+                }
+            }
+
+            // Calculate center point of the image on screen
+            var centerX = position.X + bitmap.Width / 2.0;
+            var centerY = position.Y + bitmap.Height / 2.0;
+
+            // Convert to relative position (0.0 = left/top, 1.0 = right/bottom)
+            var relativeX = centerX / screenSize.Width;
+            var relativeY = centerY / screenSize.Height;
+
+            // Map to ASSA alignment positions (An1-An9)
+            var assaPosition = GetAssaPositionFromScreen(relativeX, relativeY);
+            return ApplyAlignmentTag(textToUse, assaPosition, Se.Settings.General.WriteAn2Tag);
+        }
+        catch
+        {
+            return (item.Text, false);
+        }
+    }
+
+    // "an2" is the default bottom-center alignment, so no tag is needed for it (#12393)
+    internal static (string Text, bool AlignmentAdded) ApplyAlignmentTag(string text, string assaPosition, bool writeAn2Tag)
+    {
+        if (assaPosition == "an2" && !writeAn2Tag)
+        {
+            return (text, false);
+        }
+
+        return ($"{{\\{assaPosition}}}{text}", true);
+    }
+
+    internal static (string Text, bool AlignmentAdded) ApplyLineAlignmentTags(List<string> lines, List<string> lineAlignments, string originalText, bool writeAn2Tag)
+    {
+        if (!writeAn2Tag && lineAlignments.All(p => p == "an2"))
+        {
+            return (originalText, false);
+        }
+
+        var perLine = new List<string>();
+        for (var i = 0; i < lines.Count; i++)
+        {
+            perLine.Add($"{{\\{lineAlignments[i]}}}{lines[i].Trim()}");
+        }
+
+        return (string.Join("\n", perLine), true);
+    }
+
+    internal static string GetAssaPositionFromScreen(double relativeX, double relativeY)
+    {
+        // Map screen coordinates to 3x3 grid for ASSA positions
+        // relativeX: 0.0 = left, 1.0 = right
+        // relativeY: 0.0 = top, 1.0 = bottom
+
+        string horizontal;
+        if (relativeX < 0.33)
+        {
+            horizontal = "left";   // An1, An4, An7
+        }
+        else if (relativeX > 0.67)
+        {
+            horizontal = "right";  // An3, An6, An9
+        }
+        else
+        {
+            horizontal = "center"; // An2, An5, An8
+        }
+
+        string vertical;
+        if (relativeY < 0.33)
+        {
+            vertical = "bottom";   // An7, An8, An9 (in ASSA, these are at top)
+        }
+        else if (relativeY > 0.67)
+        {
+            vertical = "top";      // An1, An2, An3 (in ASSA, these are at bottom)
+        }
+        else
+        {
+            vertical = "middle";   // An4, An5, An6
+        }
+
+        // Map to ASSA position numbers
+        // Note: ASSA coordinate system has origin at bottom-left
+        return (vertical, horizontal) switch
+        {
+            ("top", "left") => "an1",     // bottom-left
+            ("top", "center") => "an2",   // bottom-center
+            ("top", "right") => "an3",    // bottom-right
+            ("middle", "left") => "an4",  // middle-left
+            ("middle", "center") => "an5", // middle-center
+            ("middle", "right") => "an6", // middle-right
+            ("bottom", "left") => "an7",  // top-left
+            ("bottom", "center") => "an8", // top-center
+            ("bottom", "right") => "an9", // top-right
+            _ => "an5" // default to center
+        };
+    }
+
+    private List<OcrSubtitleItem> SplitImageToLines(OcrSubtitleItem item)
+    {
+        // (GetSkBitmapClean never returns null - it substitutes a 1x1 - so the old "== null"
+        //  check only allocated and leaked a native bitmap.)
+        if (!HasCaptureAlignment)
+        {
+            return new List<OcrSubtitleItem> { item };
+        }
+
+        try
+        {
+            using var bitmap = item.GetSkBitmapClean(); // fresh bitmap each call; dispose to avoid a native leak
+            var lines = new List<OcrSubtitleItem>();
+
+            // Simple line detection: split image horizontally based on text regions
+            // This is a basic implementation - could be enhanced with more sophisticated line detection
+
+            var height = bitmap.Height;
+            var width = bitmap.Width;
+            var lineHeight = height / 3; // Assume max 3 lines for now
+
+            for (int i = 0; i < 3; i++)
+            {
+                var startY = i * lineHeight;
+                var endY = Math.Min(startY + lineHeight, height);
+
+                if (startY >= height)
+                {
+                    break;
+                }
+
+                // Check if this region has text content (simplified detection)
+                if (HasTextInRegion(bitmap, 0, startY, width, endY - startY))
+                {
+                    // For now, just return the original item since creating new items
+                    // requires complex constructor parameters. The multi-line logic
+                    // should be handled in ProcessMultiLineText instead.
+                    lines.Add(item);
+                    break; // Just detect if there are multiple regions, return original for now
+                }
+            }
+
+            return lines.Count > 0 ? lines : new List<OcrSubtitleItem> { item };
+        }
+        catch
+        {
+            return new List<OcrSubtitleItem> { item };
+        }
+    }
+
+    private bool HasTextInRegion(SKBitmap bitmap, int x, int y, int width, int height)
+    {
+        // Simple heuristic: check for non-white pixels that might indicate text
+        // This is a basic implementation
+        var samplePoints = 10;
+        var nonWhitePixels = 0;
+
+        for (int i = 0; i < samplePoints; i++)
+        {
+            for (int j = 0; j < samplePoints; j++)
+            {
+                var sampleX = x + (i * width / samplePoints);
+                var sampleY = y + (j * height / samplePoints);
+
+                if (sampleX < bitmap.Width && sampleY < bitmap.Height)
+                {
+                    var pixel = bitmap.GetPixel(sampleX, sampleY);
+                    if (pixel.Red < 200 || pixel.Green < 200 || pixel.Blue < 200) // Not white-ish
+                    {
+                        nonWhitePixels++;
+                    }
+                }
+            }
+        }
+
+        // If we find enough non-white pixels, assume there's text
+        return nonWhitePixels > (samplePoints * samplePoints * 0.1); // 10% threshold
+    }
+}

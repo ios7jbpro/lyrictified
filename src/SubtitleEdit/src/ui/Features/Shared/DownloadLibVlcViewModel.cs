@@ -1,0 +1,244 @@
+using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Threading;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using Nikse.SubtitleEdit.Logic;
+using Nikse.SubtitleEdit.Logic.Config;
+using Nikse.SubtitleEdit.Logic.Download;
+using Nikse.SubtitleEdit.Logic.SevenZipExtractor;
+using Nikse.SubtitleEdit.Logic.VideoPlayers.LibMpvDynamic;
+using System;
+using System.Globalization;
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Timers;
+using Timer = System.Timers.Timer;
+
+namespace Nikse.SubtitleEdit.Features.Shared;
+
+public partial class DownloadLibVlcViewModel : ObservableObject, IClosingCleanup
+{
+    [ObservableProperty] private double _progressValue;
+    [ObservableProperty] private string _progressText;
+    [ObservableProperty] private double _progressOpacity;
+    [ObservableProperty] private string _statusText;
+    [ObservableProperty] private string _error;
+
+    public Window? Window { get; set; }
+    public bool OkPressed { get; internal set; }
+
+    private string _tempFileName;
+    private readonly ILibVlcDownloadService _libVlcDownloadService;
+    private Task? _downloadTask;
+    private readonly Timer _timer;
+    private bool _done;
+    private readonly CancellationTokenSource _cancellationTokenSource;
+    private IndeterminateProgressHelper? _indeterminateProgressHelper;
+
+    public DownloadLibVlcViewModel(ILibVlcDownloadService libVlcDownloadService)
+    {
+        _libVlcDownloadService = libVlcDownloadService;
+
+        _cancellationTokenSource = new CancellationTokenSource();
+
+        StatusText = string.Format(Se.Language.General.DownloadingX, "libVLC");
+        ProgressText = string.Empty;
+        ProgressOpacity = 1.0;
+        Error = string.Empty;
+        _tempFileName = string.Empty;
+
+        _timer = new Timer(500);
+        _timer.Elapsed += OnTimerOnElapsed;
+        _timer.Start();
+    }
+
+    private readonly Lock _lockObj = new();
+
+    private void OnTimerOnElapsed(object? sender, ElapsedEventArgs args)
+    {
+        lock (_lockObj)
+        {
+            if (_done)
+            {
+                return;
+            }
+
+            // IsCompletedSuccessfully, not the broader IsCompleted (also true for
+            // Faulted/Canceled), so a failed download falls through to the IsFaulted
+            // branch below instead of proceeding as if it had succeeded.
+            if (_downloadTask is { IsCompletedSuccessfully: true })
+            {
+                _timer.Stop();
+                _done = true;
+
+                if (!File.Exists(_tempFileName))
+                {
+                    ProgressText = Se.Language.General.DownloadFailed;
+                    Error = Se.Language.General.NoDataReceived;
+                    return;
+                }
+
+                var fileInfo = new FileInfo(_tempFileName);
+                if (fileInfo.Length == 0)
+                {
+                    ProgressText = Se.Language.General.DownloadFailed;
+                    Error = Se.Language.General.NoDataReceived;
+                    return;
+                }
+
+                if (!Directory.Exists(Se.VlcFolder))
+                {
+                    Directory.CreateDirectory(Se.VlcFolder);
+                }
+
+                StartIndeterminateProgress();
+
+                try
+                {
+                    Unpacker.Extract7Zip(_tempFileName, Se.VlcFolder, "vlc-3.0.23", _cancellationTokenSource, text => ProgressText = text);
+                }
+                catch (Exception exception)
+                {
+                    // Timer callbacks swallow exceptions, so an unpack failure would
+                    // otherwise hang the dialog with no error shown (#12127).
+                    Se.LogError(exception, "libVLC unpack failed");
+                    StopIndeterminateProgress();
+                    ProgressText = Se.Language.General.UnpackingFailed;
+                    Error = exception.Message;
+                    return;
+                }
+
+                StopIndeterminateProgress();
+
+                OkPressed = true;
+                Close();
+            }
+            else if (_downloadTask is { IsFaulted: true })
+            {
+                _timer.Stop();
+                _done = true;
+                var ex = _downloadTask.Exception?.InnerException ?? _downloadTask.Exception;
+                if (ex is OperationCanceledException)
+                {
+                    ProgressText = Se.Language.General.DownloadCanceled;
+                    Close();
+                }
+                else
+                {
+                    ProgressText = Se.Language.General.DownloadFailed;
+                    Error = ex?.Message ?? Se.Language.General.UnknownError;
+                }
+            }
+        }
+    }
+
+    private void StartIndeterminateProgress()
+    {
+        _indeterminateProgressHelper?.Dispose();
+        _indeterminateProgressHelper = new IndeterminateProgressHelper(
+            value => ProgressValue = value,
+            opacity => ProgressOpacity = opacity,
+            () => _cancellationTokenSource.IsCancellationRequested);
+        _indeterminateProgressHelper.Start();
+    }
+
+    private void StopIndeterminateProgress()
+    {
+        _indeterminateProgressHelper?.Stop();
+    }
+
+    private void Close()
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            Window?.Close();
+        });
+    }
+
+    [RelayCommand]
+    private void CommandCancel()
+    {
+        _cancellationTokenSource?.Cancel();
+        _done = true;
+        Close();
+    }
+
+    public void OnClosingCleanup()
+    {
+        _timer.StopAndDispose(OnTimerOnElapsed);
+    }
+
+    public void StartDownload()
+    {
+        // Probing/loading libVLC takes a moment - keep the UI thread responsive, like
+        // SettingsViewModel.SetLibVlcStatus does (#13222, review follow-up).
+        Task.Run(() =>
+        {
+            using var player = new LibVlcDynamicPlayer();
+            return player.CanLoad();
+        }).ContinueWith(t =>
+        {
+            if (t.Exception != null)
+            {
+                Se.LogError(t.Exception);
+            }
+
+            Dispatcher.UIThread.Post(() =>
+            {
+                // The user can cancel while the probe is still running (it walks the VLC
+                // install directory and can take seconds). Close() is itself posted, so this
+                // continuation can be queued behind it - bail out rather than reporting
+                // success or kicking off a download on a dialog that is already gone.
+                if (_done || _cancellationTokenSource == null || _cancellationTokenSource.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                // Only skip the download on a clean, positive probe - a faulted probe (broken
+                // libVLC install) must fall through to the download, not leave the dialog
+                // stuck with an unobserved exception (review follow-up).
+                if (t.Status == TaskStatus.RanToCompletion && t.Result)
+                {
+                    // libVLC is already available (bundled with the app, a previous
+                    // download, or a VLC installation) - complete right away instead of
+                    // downloading the full VLC package again (#13222).
+                    OkPressed = true;
+                    Close();
+                    return;
+                }
+
+                StartDownloadCore();
+            });
+        });
+    }
+
+    private void StartDownloadCore()
+    {
+        var downloadProgress = new Progress<float>(number =>
+        {
+            var percentage = (int)Math.Round(number * 100.0, MidpointRounding.AwayFromZero);
+            var pctString = percentage.ToString(CultureInfo.InvariantCulture);
+            ProgressValue = percentage;
+            ProgressText = string.Format(Se.Language.General.DownloadingXPercent, pctString);
+        });
+
+        var folder = Se.DataFolder;
+        if (!Directory.Exists(folder))
+        {
+            Directory.CreateDirectory(folder);
+        }
+
+        _tempFileName = Path.Combine(folder, $"{Guid.NewGuid()}.7z");
+        _downloadTask = _libVlcDownloadService.DownloadLibVlc(_tempFileName, downloadProgress, _cancellationTokenSource.Token);
+    }
+
+    internal void OnKeyDown(KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            CommandCancel();
+        }
+    }
+}

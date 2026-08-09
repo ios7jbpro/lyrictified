@@ -1,0 +1,441 @@
+﻿using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Interactivity;
+using Avalonia.Layout;
+using Avalonia.Media;
+using Avalonia.Media.Imaging;
+using CommunityToolkit.Mvvm.Input;
+using Nikse.SubtitleEdit.Logic;
+using Nikse.SubtitleEdit.Logic.Config;
+using System;
+using System.Diagnostics;
+using System.IO;
+using System.Threading.Tasks;
+
+namespace Nikse.SubtitleEdit.Features.Shared;
+
+public enum MessageBoxResult
+{
+    None,
+    OK,
+    Cancel,
+    Yes,
+    No,
+    Custom1,
+    Custom2,
+    Custom3,
+    Custom4,
+}
+
+public enum MessageBoxButtons
+{
+    OK,
+    OKCancel,
+    YesNo,
+    YesNoCancel,
+    Cancel,
+    Custom1,
+    Custom2,
+}
+
+public enum MessageBoxIcon
+{
+    None,
+    Information,
+    Warning,
+    Error,
+    Question
+}
+
+public class MessageBox : Window
+{
+    private static string CustomButton1Text { get; set; } = string.Empty;
+    private static string CustomButton2Text { get; set; } = string.Empty;
+    private MessageBoxResult _result = MessageBoxResult.None;
+    private readonly bool _hasCancel;
+    private readonly bool _hasOnlyOk;
+    private readonly bool _hasNo;
+    private readonly StackPanel _buttonPanel;
+    private readonly KeyPressTracker _enterTracker = new();
+    private readonly KeyPressTracker _spaceTracker = new();
+    private bool _initialFocusDone;
+    private long _openedTimestamp;
+
+    private bool IsInStartupGuardPeriod()
+    {
+        return _openedTimestamp == 0 || Stopwatch.GetElapsedTime(_openedTimestamp) < TimeSpan.FromMilliseconds(200);
+    }
+
+    // Decides whether a Space/Enter release may activate the focused button. OS key auto-repeat
+    // delivers ordinary KeyDowns, so a single event can't tell a key still held from before this
+    // window opened apart from a fresh press - but the pattern can: repeats of a pre-held key
+    // arrive at the repeat interval (~30-90 ms), while a fresh press that starts repeating waits
+    // the initial repeat delay (>= ~225 ms even at the fastest common OS setting) between its
+    // first and second KeyDown. A lone KeyDown released within 50 ms is a repeat-then-release
+    // slip, not a human tap. A swallowed release costs one extra key press; a leaked one answers
+    // a question the user never saw.
+    private sealed class KeyPressTracker
+    {
+        private int _keyDownCount;
+        private long _firstKeyDownTimestamp;
+        private bool _heldFromBeforeOpen;
+
+        public void OnKeyDown()
+        {
+            _keyDownCount++;
+            if (_keyDownCount == 1)
+            {
+                _firstKeyDownTimestamp = Stopwatch.GetTimestamp();
+            }
+            else if (_keyDownCount == 2 &&
+                     Stopwatch.GetElapsedTime(_firstKeyDownTimestamp) < TimeSpan.FromMilliseconds(225))
+            {
+                _heldFromBeforeOpen = true;
+            }
+        }
+
+        public bool IsFreshTapOnKeyUp()
+        {
+            var isFreshTap = _keyDownCount > 0 && !_heldFromBeforeOpen &&
+                             (_keyDownCount > 1 ||
+                              Stopwatch.GetElapsedTime(_firstKeyDownTimestamp) >= TimeSpan.FromMilliseconds(50));
+            Reset();
+            return isFreshTap;
+        }
+
+        public void Reset()
+        {
+            _keyDownCount = 0;
+            _heldFromBeforeOpen = false;
+        }
+    }
+
+    private MessageBox(string title, string message, MessageBoxButtons buttons, MessageBoxIcon icon, string? custom1 = null, string? custom2 = null, string? custom3 = null, string? custom4 = null)
+    {
+        UiUtil.InitializeWindow(this, GetType().Name);
+        Title = title;
+        WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        CanResize = false;
+        SizeToContent = SizeToContent.WidthAndHeight;
+        MinWidth = 400;
+        MinHeight = 180;
+        MaxWidth = 900;
+        MaxHeight = 700;
+
+        var message1 = message;
+
+        var grid = new Grid
+        {
+            Margin = new Thickness(10),
+            RowDefinitions =
+            {
+                new RowDefinition { Height = GridLength.Star },
+                new RowDefinition { Height = GridLength.Auto },
+            },
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = GridLength.Auto },
+                new ColumnDefinition { Width = GridLength.Star },
+            }
+        };
+
+        // Icon (optional)
+        var iconImage = new Image
+        {
+            Width = 48,
+            Height = 48,
+            Margin = new Thickness(10)
+        };
+
+        if (icon != MessageBoxIcon.None)
+        {
+            // Theme images are unpacked from Themes.zip into Se.ThemesFolder at start-up; a path
+            // relative to the working directory never resolved, so no icon was ever shown here.
+            var iconPath = Path.Combine(UiTheme.ImageFolder, $"{icon}.png");
+            try
+            {
+                iconImage.Source = new Bitmap(iconPath);
+            }
+            catch
+            {
+                Se.LogError($"Could not load message box icon \"{iconPath}\".");
+            }
+
+            grid.Children.Add(iconImage);
+            Grid.SetRow(iconImage, 0);
+            Grid.SetColumn(iconImage, 0);
+        }
+
+        var textBlock = new TextBlock
+        {
+            Text = message,
+            Margin = new Thickness(10),
+            VerticalAlignment = VerticalAlignment.Center,
+            TextWrapping = TextWrapping.Wrap,
+            Height = double.NaN,
+            Width = double.NaN,
+            MaxWidth = 700, // wrap long messages instead of growing the window unbounded
+        };
+
+        if (message.Length > 1000)
+        {
+            var scrollView = new ScrollViewer
+            {
+                Width = double.NaN,
+                Height = double.NaN,
+                MaxHeight = 400,
+                Margin = new Thickness(10),
+                Content = textBlock
+            };
+
+            grid.Children.Add(scrollView);
+            Grid.SetRow(scrollView, 0);
+            Grid.SetColumn(scrollView, 1);
+        }
+        else
+        {
+            grid.Children.Add(textBlock);
+            Grid.SetRow(textBlock, 0);
+            Grid.SetColumn(textBlock, 1);
+        }
+
+        var buttonPanel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Margin = new Thickness(10)
+        };
+        _buttonPanel = buttonPanel;
+
+        void AddButton(string text, MessageBoxResult result)
+        {
+            var btn = UiUtil.MakeButton(text);
+            btn.Click += (_, _) => { _result = result; Close(_result); };
+            buttonPanel.Children.Add(btn);
+        }
+
+        if (!string.IsNullOrEmpty(custom1))
+        {
+            AddButton(custom1, MessageBoxResult.Custom1);
+        }
+
+        if (!string.IsNullOrEmpty(custom2))
+        {
+            AddButton(custom2, MessageBoxResult.Custom2);
+        }
+
+        if (!string.IsNullOrEmpty(custom3))
+        {
+            AddButton(custom3, MessageBoxResult.Custom3);
+        }
+
+        if (!string.IsNullOrEmpty(custom4))
+        {
+            AddButton(custom4, MessageBoxResult.Custom4);
+        }
+
+        // Add buttons based on MessageBoxButtons
+        switch (buttons)
+        {
+            case MessageBoxButtons.OK:
+                AddButton(Se.Language.General.Ok, MessageBoxResult.OK);
+                _hasOnlyOk = true;
+                break;
+            case MessageBoxButtons.OKCancel:
+                AddButton(Se.Language.General.Ok, MessageBoxResult.OK);
+                AddButton(Se.Language.General.Cancel, MessageBoxResult.Cancel);
+                _hasCancel = true;
+                break;
+            case MessageBoxButtons.YesNo:
+                AddButton(Se.Language.General.Yes, MessageBoxResult.Yes);
+                AddButton(Se.Language.General.No, MessageBoxResult.No);
+                _hasNo = true;
+                break;
+            case MessageBoxButtons.YesNoCancel:
+                AddButton(Se.Language.General.Yes, MessageBoxResult.Yes);
+                AddButton(Se.Language.General.No, MessageBoxResult.No);
+                AddButton(Se.Language.General.Cancel, MessageBoxResult.Cancel);
+                _hasCancel = true;
+                break;
+            case MessageBoxButtons.Cancel:
+                AddButton(Se.Language.General.Cancel, MessageBoxResult.Cancel);
+                _hasCancel = true;
+                break;
+        }
+
+        grid.Children.Add(buttonPanel);
+        Grid.SetRow(buttonPanel, 2);
+        Grid.SetColumn(buttonPanel, 0);
+        Grid.SetColumnSpan(buttonPanel, 2);
+
+        if (!string.IsNullOrEmpty(custom1) ||  !string.IsNullOrEmpty(custom2))
+        {
+            _hasOnlyOk = false;
+        }
+
+        Content = grid;
+
+        var contextMenu = new MenuFlyout
+        {
+            Items =
+            {
+                new MenuItem
+                {
+                    Header = Se.Language.General.CopyTextToClipboard,
+                    Command = new RelayCommand(async() =>
+                    {
+                        await ClipboardHelper.SetTextAsync(this, message1);
+                    })
+                }
+            }
+        };
+        grid.ContextFlyout = contextMenu;
+        UiUtil.AttachMacContextFlyoutHandler(this, grid);
+
+        // Focus the first button (the positive/default choice - Yes or OK), like classic Win32
+        // message boxes: Space/Enter accepts, Escape cancels, arrow keys move focus. That makes
+        // the key that opened this dialog a hazard: Avalonia's Button clicks on Space KeyUp
+        // without checking it also saw the KeyDown, and a key still held from the previous
+        // dialog starts OS auto-repeating into this window after the initial repeat delay -
+        // either would answer Yes/OK by accident. Guard three ways: swallow Space/Enter for the
+        // first 200 ms after opening, click Enter on KeyUp ourselves (instead of Avalonia's
+        // KeyDown click, which an auto-repeat would fire directly), and only accept a release
+        // whose press pattern looks like a fresh tap made inside this window (KeyPressTracker).
+        Opened += (_, _) => _openedTimestamp = Stopwatch.GetTimestamp();
+        AddHandler(KeyDownEvent, (_, e) =>
+        {
+            if (e.Key is Key.Space or Key.Enter && IsInStartupGuardPeriod())
+            {
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Enter)
+            {
+                _enterTracker.OnKeyDown();
+                e.Handled = true; // no KeyDown click - the KeyUp handler below clicks instead
+            }
+            else if (e.Key == Key.Space)
+            {
+                _spaceTracker.OnKeyDown();
+            }
+        }, RoutingStrategies.Tunnel);
+        AddHandler(KeyUpEvent, (_, e) =>
+        {
+            if (e.Key is Key.Space or Key.Enter && IsInStartupGuardPeriod())
+            {
+                e.Handled = true;
+                _enterTracker.Reset();
+                _spaceTracker.Reset();
+            }
+            else if (e.Key == Key.Enter)
+            {
+                e.Handled = true;
+                if (_enterTracker.IsFreshTapOnKeyUp() && FocusManager?.GetFocusedElement() is Button focusedButton)
+                {
+                    focusedButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                }
+            }
+            else if (e.Key == Key.Space && !_spaceTracker.IsFreshTapOnKeyUp())
+            {
+                e.Handled = true; // Button clicks Space on KeyUp; block releases that fail the gate
+            }
+        }, RoutingStrategies.Tunnel);
+        Activated += delegate
+        {
+            // Re-arm the guard on every activation (alt-tabbing back can bring a held key's
+            // auto-repeat along), but move focus only the first time so arrow-key navigation
+            // survives a focus round-trip to another window.
+            _openedTimestamp = Stopwatch.GetTimestamp();
+            if (!_initialFocusDone)
+            {
+                _initialFocusDone = true;
+                buttonPanel.Children[0].Focus();
+            }
+        };
+        Deactivated += delegate
+        {
+            // Key releases go to the newly focused window, so presses counted here would
+            // otherwise linger and mis-classify the next press after refocus.
+            _enterTracker.Reset();
+            _spaceTracker.Reset();
+        };
+
+        UiTheme.ApplyScaleToWindow(this);
+    }
+
+    public static async Task<MessageBoxResult> Show(
+        Window owner,
+        string title,
+        string message,
+        MessageBoxButtons buttons = MessageBoxButtons.OK,
+        MessageBoxIcon icon = MessageBoxIcon.None,
+        string? custom1 = null,
+        string? custom2 = null,
+        string? custom3 = null,
+        string? custom4 = null)
+    {
+        var msgBox = new MessageBox(title, message, buttons, icon, custom1, custom2, custom3, custom4);
+
+        // The shared modal plumbing: kept above the undocked tool windows (#12268), undocked
+        // topmost suspended, and OS activation enforced while open - without the latter the box
+        // was drawn on top but never activated on Windows in undocked mode: gray buttons, no
+        // keyboard focus (#13325/#13405).
+        return await WindowService.ShowModalAsync<MessageBoxResult>(owner, msgBox);
+    }
+
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+
+        if (e.Key == Key.Escape && _hasCancel)
+        {
+            _result = MessageBoxResult.Cancel;
+            Close(_result);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape && _hasNo)
+        {
+            _result = MessageBoxResult.No;
+            Close(_result);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape && _hasOnlyOk)
+        {
+            _result = MessageBoxResult.OK;
+            Close(_result);
+            e.Handled = true;
+        }
+        else if (e.Key is Key.Left or Key.Up or Key.Right or Key.Down)
+        {
+            MoveButtonFocus(e.Key is Key.Right or Key.Down ? 1 : -1);
+            e.Handled = true;
+        }
+    }
+
+    private void MoveButtonFocus(int direction)
+    {
+        var buttons = _buttonPanel.Children;
+        if (buttons.Count == 0)
+        {
+            return;
+        }
+
+        var focused = FocusManager?.GetFocusedElement();
+        var index = -1;
+        for (var i = 0; i < buttons.Count; i++)
+        {
+            if (ReferenceEquals(buttons[i], focused))
+            {
+                index = i;
+                break;
+            }
+        }
+
+        index = index < 0
+            ? (direction > 0 ? 0 : buttons.Count - 1)
+            : (index + direction + buttons.Count) % buttons.Count;
+
+        // NavigationMethod.Directional makes the focus adorner visible, like tabbing does
+        buttons[index].Focus(NavigationMethod.Directional);
+    }
+}

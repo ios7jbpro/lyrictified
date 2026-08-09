@@ -1,0 +1,88 @@
+﻿namespace Nikse.SubtitleEdit.Logic.Config.Language.Edit;
+
+public class LanguageModifySelection
+{
+
+    public string Title { get; set; }
+
+
+    public string Contains { get; set; }
+    public string StartsWith { get; set; }
+    public string EndsWith { get; set; }
+    public string NotContains { get; set; }
+    public string AllUppercase { get; set; }
+    public string Odd { get; set; }
+    public string Even { get; set; }
+    public string DurationLessThan { get; set; }
+    public string DurationGreaterThan { get; set; }
+    public string CpsLessThan { get; set; }
+    public string CpsGreaterThan { get; set; }
+    public string LengthLessThan { get; set; }
+    public string LengthGreaterThan { get; set; }
+    public string PixelLengthGreaterThan { get; set; }
+    public string GapLessThan { get; set; }
+    public string GapGreaterThan { get; set; }
+    public string ExactlyOneLine { get; set; }
+    public string ExactlyTwoLines { get; set; }
+    public string MoreThanTwoLines { get; set; }
+    public string Bookmarked { get; set; }
+    public string BookmarkContains { get; set; }
+    public string BlankLines { get; set; }
+    public string HearingImpaired { get; set; }
+    public string HearingImpairedBrackets { get; set; }
+    public string HearingImpairedCurlyBrackets { get; set; }
+    public string HearingImpairedParentheses { get; set; }
+    public string HearingImpairedCustom { get; set; }
+    public string HearingImpairedTextBeforeColon { get; set; }
+    public string HearingImpairedUppercaseLine { get; set; }
+    public string HearingImpairedLineContains { get; set; }
+    public string HearingImpairedMusicSymbols { get; set; }
+    public string HearingImpairedInterjections { get; set; }
+    public string HearingImpairedSettingsHint { get; set; }
+    public string SelectionNew { get; set; }
+    public string SelectionAdd { get; set; }
+    public string SelectionSubtract { get; set; }
+    public string SelectionIntersect { get; set; }
+
+    public LanguageModifySelection()
+    {
+        Title = "Modify selection";
+        Contains = "Contains";
+        StartsWith = "Starts with";
+        EndsWith = "Ends with";
+        NotContains = "Not contains";
+        AllUppercase = "All uppercase";
+        Odd = "Odd number";
+        Even = "Even number";
+        DurationLessThan = "Duration in ms <";
+        DurationGreaterThan = "Duration in ms >";
+        CpsLessThan = "CPS <";
+        CpsGreaterThan = "CPS >";
+        LengthLessThan = "Single line max length <";
+        LengthGreaterThan = "Single line max length >";
+        PixelLengthGreaterThan = "Pixel length >";
+        GapGreaterThan = "Gap in ms >";
+        GapLessThan = "Gap in ms <";
+        ExactlyOneLine = "Exactly one line";
+        ExactlyTwoLines = "Exactly two lines";
+        MoreThanTwoLines = "More than two lines";
+        Bookmarked = "Bookmarked";
+        BookmarkContains = "Bookmark contains";
+        BlankLines = "Blank lines";
+        HearingImpaired = "Hearing impaired (SDH)";
+        HearingImpairedBrackets = "Brackets [...]";
+        HearingImpairedCurlyBrackets = "Curly brackets {...}";
+        HearingImpairedParentheses = "Parentheses (...)";
+        HearingImpairedCustom = "Custom";
+        HearingImpairedTextBeforeColon = "Text before colon";
+        HearingImpairedUppercaseLine = "Uppercase line";
+        HearingImpairedLineContains = "Line contains";
+        HearingImpairedMusicSymbols = "Only music symbols";
+        HearingImpairedInterjections = "Interjections";
+        HearingImpairedSettingsHint = "Details come from Tools > Remove text for hearing impaired";
+        SelectionNew = "New selection";
+        SelectionAdd = "Add to selection";
+        SelectionSubtract = "Subtract from selection";
+        SelectionIntersect = "Intersect with selection";
+    }
+}

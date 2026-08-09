@@ -1,0 +1,6 @@
+
+🗿 Granite Speech (IBM)
+
+Type: Encoder-Decoder ASR
+Focus: 🎯 English and multilingual speech recognition
+

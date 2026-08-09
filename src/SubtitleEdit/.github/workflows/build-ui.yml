@@ -1,0 +1,922 @@
+name: Build and release UI
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_configuration:
+        description: 'Build configuration'
+        required: true
+        default: 'Release'
+        type: choice
+        options:
+          - Release
+          - Debug
+      create_release:
+        description: 'Create GitHub release'
+        required: true
+        default: true
+        type: boolean
+      is_prerelease:
+        description: 'Mark as pre-release'
+        required: true
+        default: true
+        type: boolean
+      release_tag:
+        description: 'Release tag (e.g., v1.0.0-beta)'
+        required: false
+        default: ''
+        type: string
+
+
+env:
+  # Pin the IINA release we harvest libmpv + deps from. To bump:
+  #   1. Update IINA_VERSION below.
+  #   2. Download https://github.com/iina/iina/releases/download/<ver>/IINA.<ver>.dmg
+  #   3. Run `shasum -a 256` on it and update IINA_SHA256.
+  #   4. Verify the new release still ships a universal Contents/Frameworks/ payload.
+  IINA_VERSION: v1.4.4
+  IINA_SHA256: dd0fc0bd4b37fb57a1c8d30d6e3201b3a64bafd29959fe56953964613237beb1
+
+
+jobs:
+  # The flatpak chain (regenerate-flatpak-nuget-sources → build-linux-flatpak)
+  # is defined first so GitHub's job-graph view lays it out in its own visual
+  # lane on the left, rather than routing arrows from build-macos / build-linux
+  # through build-linux-flatpak on their way to create-release. There is no
+  # real dependency between the platform builds and the flatpak job — only
+  # create-release fans them back together.
+  regenerate-flatpak-nuget-sources:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install flatpak
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak
+
+      # Cache the Freedesktop SDK + dotnet extension so we don't re-download
+      # ~6 GB of runtimes on every CI run. Bump the key suffix (-vN) to invalidate.
+      # We restore by prefix and then always run install/update so the cached
+      # dotnet10 extension picks up Microsoft's monthly patch releases — the
+      # flatpak-builder image used by build-linux-flatpak pulls the latest
+      # extension on every run, and the nuget-sources.json generated here
+      # must reference the same patch version or restore fails (NU1102).
+      - name: Cache flatpak runtimes
+        id: flatpak-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/flatpak
+          key: flatpak-fd24.08-dotnet10-v2
+          restore-keys: |
+            flatpak-fd24.08-dotnet10-
+
+      - name: Install/update Freedesktop SDK + dotnet extension
+        run: |
+          flatpak --user remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak --user install -y --noninteractive flathub \
+            org.freedesktop.Platform//24.08 \
+            org.freedesktop.Sdk//24.08 \
+            org.freedesktop.Sdk.Extension.dotnet10//24.08
+          flatpak --user update -y --noninteractive
+
+      - name: Regenerate nuget-sources.json
+        run: bash installer/flatpak/generate-nuget-sources.sh
+
+      - name: Verify nuget-sources.json is consistent with UI.csproj
+        run: |
+          if ! git diff --quiet -- installer/flatpak/nuget-sources.json; then
+            echo "::notice::nuget-sources.json was stale and has been regenerated for this build."
+            git --no-pager diff --stat -- installer/flatpak/nuget-sources.json
+          else
+            echo "nuget-sources.json is already up to date."
+          fi
+
+      - name: Upload regenerated nuget-sources.json
+        uses: actions/upload-artifact@v5
+        with:
+          name: flatpak-nuget-sources
+          path: installer/flatpak/nuget-sources.json
+          if-no-files-found: error
+          overwrite: true
+
+  build-linux-flatpak:
+    needs: regenerate-flatpak-nuget-sources
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-24.08
+      options: --privileged
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download regenerated nuget-sources.json
+        uses: actions/download-artifact@v5
+        with:
+          name: flatpak-nuget-sources
+          path: installer/flatpak/
+
+      - name: Update metainfo version/date from Se.cs
+        run: bash installer/flatpak/update-metainfo-version.sh
+
+      - name: Build flatpak bundle
+        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: SubtitleEdit-linux-x64.flatpak
+          manifest-path: installer/flatpak/dk.nikse.subtitleedit.yaml
+          cache-key: flatpak-builder-${{ hashFiles('installer/flatpak/dk.nikse.subtitleedit.yaml', 'installer/flatpak/nuget-sources.json') }}
+          arch: x86_64
+
+      - name: Upload flatpak bundle artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: flatpak-bundle
+          path: SubtitleEdit-linux-x64.flatpak
+          overwrite: true
+
+  # Same chain as above, but for installer/flatpak/flathub/dk.nikse.subtitleedit.yaml,
+  # the manifest actually submitted to Flathub, which builds from a pinned git tag +
+  # commit instead of this checkout's working tree. Building it here, in CI, on a real
+  # Linux runner is the practical way to validate that exact variant per #11800; it
+  # does not need a contributor's own Linux machine or Flatpak install.
+  regenerate-flathub-nuget-sources:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Full history so the commit pinned in the flathub manifest (which can be
+          # older than this checkout's HEAD) is guaranteed fetchable by the checkout
+          # step below.
+          fetch-depth: 0
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install flatpak
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak
+
+      - name: Cache flatpak runtimes
+        id: flatpak-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/flatpak
+          key: flatpak-fd24.08-dotnet10-v2
+          restore-keys: |
+            flatpak-fd24.08-dotnet10-
+
+      - name: Install/update Freedesktop SDK + dotnet extension
+        run: |
+          flatpak --user remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak --user install -y --noninteractive flathub \
+            org.freedesktop.Platform//24.08 \
+            org.freedesktop.Sdk//24.08 \
+            org.freedesktop.Sdk.Extension.dotnet10//24.08
+          flatpak --user update -y --noninteractive
+
+      # Checks out the pinned commit directly in this checkout (safe: this job's
+      # workspace is disposable, unlike a developer's local branch) rather than via
+      # prepare-flathub-release.sh's git-worktree approach. The worktree path lives
+      # under a fresh mktemp directory, and the preferred restore path in
+      # generate-nuget-sources.sh shells out to flatpak-dotnet-generator.py, which
+      # itself runs "dotnet restore" inside a second, nested "flatpak run
+      # --filesystem=host" sandbox; that nested sandbox failed to resolve the
+      # project file at the worktree's path when this job already runs inside its
+      # own container (MSB1009: "Project file does not exist", for a file that
+      # genuinely exists at that commit). Operating directly on the primary
+      # checkout matches the already-proven regenerate-flatpak-nuget-sources job
+      # exactly, so it isn't exposed to that nested-sandbox path resolution at all.
+      - name: Check out the commit pinned in the flathub manifest
+        run: |
+          MANIFEST=installer/flatpak/flathub/dk.nikse.subtitleedit.yaml
+          COMMIT=$(grep -A2 "url: https://github.com/SubtitleEdit/subtitleedit.git" "$MANIFEST" | sed -n '3p' | sed -E 's/.*commit:[[:space:]]*//')
+          if [ -z "$COMMIT" ]; then
+            echo "::error::Could not find the pinned commit in $MANIFEST"
+            exit 1
+          fi
+          echo "Pinned commit: $COMMIT"
+          git checkout --quiet --detach "$COMMIT"
+
+      - name: Regenerate nuget-sources.json for the pinned commit
+        run: |
+          # installer/flatpak/flathub/ is newer than the pinned commit (that folder
+          # is this PR's own addition), so checking that commit out in place just
+          # removed it along with everything else only present on the branch tip.
+          # generate-nuget-sources.sh itself exists at the pin (it predates this
+          # folder), so only the output destination needs restoring.
+          mkdir -p installer/flatpak/flathub
+          bash installer/flatpak/generate-nuget-sources.sh \
+            src/ui/UI.csproj \
+            installer/flatpak/flathub/nuget-sources.json
+
+      - name: Verify nuget-sources.json is consistent with the pinned commit
+        run: |
+          if git status --porcelain -- installer/flatpak/flathub/nuget-sources.json | grep -q .; then
+            echo "::notice::nuget-sources.json is new or was stale and has been regenerated for this build."
+          else
+            echo "nuget-sources.json is already up to date."
+          fi
+
+      - name: Upload regenerated nuget-sources.json
+        uses: actions/upload-artifact@v5
+        with:
+          name: flathub-nuget-sources
+          path: installer/flatpak/flathub/nuget-sources.json
+          if-no-files-found: error
+          overwrite: true
+
+  build-linux-flathub:
+    needs: regenerate-flathub-nuget-sources
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ubuntu-24.04-arm is GitHub's free-tier hosted ARM64 runner (public repos).
+          # A native leg matters here specifically because contributors testing this
+          # manifest ahead of the actual Flathub submission (#11800) may well be on
+          # aarch64 hardware themselves (e.g. Apple Silicon under a Linux VM); an
+          # x86_64-only bundle would force them into qemu emulation to even try it.
+          - arch: x86_64
+            runner: ubuntu-latest
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-24.08
+      options: --privileged
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download regenerated nuget-sources.json
+        uses: actions/download-artifact@v5
+        with:
+          name: flathub-nuget-sources
+          path: installer/flatpak/flathub/
+
+      - name: Build flathub flatpak bundle
+        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: SubtitleEdit-flathub-${{ matrix.arch }}.flatpak
+          manifest-path: installer/flatpak/flathub/dk.nikse.subtitleedit.yaml
+          cache-key: flathub-builder-${{ matrix.arch }}-${{ hashFiles('installer/flatpak/flathub/dk.nikse.subtitleedit.yaml', 'installer/flatpak/flathub/nuget-sources.json') }}
+          arch: ${{ matrix.arch }}
+
+      - name: Upload flathub bundle artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: flathub-bundle-${{ matrix.arch }}
+          path: SubtitleEdit-flathub-${{ matrix.arch }}.flatpak
+          overwrite: true
+
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Extract version from Se.cs
+        shell: pwsh
+        run: |
+          $seContent = Get-Content "src/ui/Logic/Config/Se.cs" -Raw
+          $m = [regex]::Match($seContent, 'public\s+static\s+string\s+Version\s*\{[^}]+\}\s*=\s*"v([^"]+)"')
+          if (-not $m.Success) { throw "Could not find Version in Se.cs" }
+          $versionString = $m.Groups[1].Value
+          $parts = $versionString -split '-', 2
+          $numericFields = $parts[0].Split('.')
+          $major = [int]$numericFields[0]
+          $minor = if ($numericFields.Length -gt 1) { [int]$numericFields[1] } else { 0 }
+          $build = if ($numericFields.Length -gt 2) { [int]$numericFields[2] } else { 0 }
+          $revision = 0
+          if ($parts.Length -gt 1) {
+            $rm = [regex]::Match($parts[1], '\d+$')
+            if ($rm.Success) { $revision = [int]$rm.Value }
+          }
+          $appVerFull = "$major.$minor.$build.$revision"
+          "APP_VER_DISPLAY=$versionString" >> $env:GITHUB_ENV
+          "APP_VER_FULL=$appVerFull"       >> $env:GITHUB_ENV
+          Write-Host "APP_VER_DISPLAY=$versionString"
+          Write-Host "APP_VER_FULL=$appVerFull"
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration ${{ inputs.build_configuration }} --no-restore
+
+      # - name: Test
+      #   run: dotnet test --no-build --verbosity normal
+
+      - name: Download libmpv for Windows
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/SubtitleEdit/support-files/releases/download/libmpv-2026-04-21/libmpv2-win64.zip" -OutFile "libmpv2-64.zip"
+          Expand-Archive -Path "libmpv2-64.zip" -DestinationPath "libmpv-temp"
+          Invoke-WebRequest -Uri "https://github.com/SubtitleEdit/support-files/releases/download/libmpv-2026-04-21/libmpv2-win-arm64.zip" -OutFile "libmpv2-arm64.zip"
+          Expand-Archive -Path "libmpv2-arm64.zip" -DestinationPath "libmpv-arm64-temp"
+
+      - name: Publish Windows x64 app
+        run: |
+          dotnet publish src/ui/UI.csproj -c ${{ inputs.build_configuration }} -r win-x64 --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:DebugSymbols=false `
+            -p:DebugType=none `
+            -p:Version=$env:APP_VER_FULL `
+            -p:FileVersion=$env:APP_VER_FULL `
+            -p:InformationalVersion=$env:APP_VER_DISPLAY `
+            -o ./publish/windows-x64
+          Copy-Item "libmpv-temp/libmpv-2.dll" "./publish/windows-x64/"
+          # Native PDBs (libSkiaSharp.pdb, libHarfBuzzSharp.pdb, ...) come from the SkiaSharp
+          # runtime NuGet packages and aren't suppressed by -p:DebugType=none.
+          Get-ChildItem -Path "./publish/windows-x64" -Filter "*.pdb" -Recurse -File | Remove-Item -Force
+
+      - name: Publish Windows ARM64 app
+        run: |
+          dotnet publish src/ui/UI.csproj -c ${{ inputs.build_configuration }} -r win-arm64 --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:DebugSymbols=false `
+            -p:DebugType=none `
+            -p:Version=$env:APP_VER_FULL `
+            -p:FileVersion=$env:APP_VER_FULL `
+            -p:InformationalVersion=$env:APP_VER_DISPLAY `
+            -o ./publish/windows-arm64
+          # Must be the native ARM64 libmpv build — an ARM64 process cannot load the x64 DLL (issue #12087).
+          Copy-Item "libmpv-arm64-temp/libmpv-2.dll" "./publish/windows-arm64/"
+          Get-ChildItem -Path "./publish/windows-arm64" -Filter "*.pdb" -Recurse -File | Remove-Item -Force
+
+      # - name: Setup WiX
+      #   run: |
+      #     dotnet tool install --global wix --version 5.0.1
+      #     wix extension add -g WixToolset.UI.wixext/5.0.1
+
+      # - name: Build MSI Installer for x64
+      #   run: |
+      #     wix build ./installer/Product.wxs `
+      #       -arch x64 `
+      #       -ext WixToolset.UI.wixext `
+      #       -d SourceDir="./publish/windows-x64/" `
+      #       -d ProjectDir="./" `
+      #       -d ProductVersion="1.0.0" `
+      #       -o ./SubtitleEdit-Windows-x64.msi
+
+      # - name: Build MSI Installer for ARM64
+      #   run: |
+      #     wix build ./installer/Product.wxs `
+      #       -arch arm64 `
+      #       -ext WixToolset.UI.wixext `
+      #       -d SourceDir="./publish/windows-arm64/" `
+      #       -d ProjectDir="./" `
+      #       -d ProductVersion="1.0.0" `
+      #       -o ./SubtitleEdit-Windows-ARM64.msi
+
+      - name: Update Inno Setup installer version from Se.cs
+        run: ./installer/WindowsInno/update-version.ps1
+
+      - name: Publish Windows x64 app (framework-dependent, for Inno Setup)
+        run: |
+          dotnet publish src/ui/UI.csproj -c ${{ inputs.build_configuration }} -r win-x64 --self-contained false `
+            -p:PublishSingleFile=true `
+            -p:DebugSymbols=false `
+            -p:DebugType=none `
+            -p:Version=$env:APP_VER_FULL `
+            -p:FileVersion=$env:APP_VER_FULL `
+            -p:InformationalVersion=$env:APP_VER_DISPLAY `
+            -o ./src/ui/bin/Release/net10.0/publish
+          Copy-Item "libmpv-temp/libmpv-2.dll" "./src/ui/bin/Release/net10.0/publish/"
+          Get-ChildItem -Path "./src/ui/bin/Release/net10.0/publish" -Filter "*.pdb" -Recurse -File | Remove-Item -Force
+
+      - name: Install Inno Setup 6.7.3
+        # Pin an exact version: the .iss script requires 6.7.3+, but Chocolatey still ships 6.7.1.
+        run: |
+          $url = "https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe"
+          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\innosetup.exe"
+          Start-Process -FilePath "$env:RUNNER_TEMP\innosetup.exe" `
+            -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/SP-" -Wait
+
+      - name: Build Inno Setup installer
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "installer\WindowsInno\Subtitle_Edit_Installer.iss"
+          $setup = Get-ChildItem "installer\WindowsInno\SubtitleEdit-*-Setup.exe" | Select-Object -First 1
+          Copy-Item $setup.FullName "./SubtitleEdit-Windows-x64-Setup.exe"
+          Write-Host "Built Inno Setup installer: $($setup.Name)"
+
+      - name: Create Windows ZIP packages
+        run: |
+          # Stage the repo LICENSE alongside the binaries so distributors and end users
+          # have the MIT terms readily available in the zip (issue #11278).
+          Copy-Item "./LICENSE" "./publish/windows-x64/LICENSE"
+          Copy-Item "./LICENSE" "./publish/windows-arm64/LICENSE"
+          Compress-Archive -Path "./publish/windows-x64/*" -DestinationPath "./SubtitleEdit-Windows-x64.zip"
+          Compress-Archive -Path "./publish/windows-arm64/*" -DestinationPath "./SubtitleEdit-Windows-ARM64.zip"
+
+      - name: Upload Windows x64 artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: se-windows-x64
+          path: ./publish/windows-x64/
+
+      - name: Upload Windows ARM64 artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: se-windows-arm64
+          path: ./publish/windows-arm64/
+
+      - name: Upload Windows ZIP packages
+        uses: actions/upload-artifact@v5
+        with:
+          name: windows-zip-packages
+          path: |
+            ./SubtitleEdit-Windows-x64.zip
+            ./SubtitleEdit-Windows-ARM64.zip
+
+      # - name: Upload Windows MSI Installers
+      #   uses: actions/upload-artifact@v5
+      #   with:
+      #     name: windows-msi-installers
+      #     path: |
+      #       ./SubtitleEdit-Windows-x64.msi
+      #       ./SubtitleEdit-Windows-ARM64.msi
+
+      - name: Upload Inno Setup installer
+        uses: actions/upload-artifact@v5
+        with:
+          name: windows-inno-installer
+          path: ./SubtitleEdit-Windows-x64-Setup.exe
+
+
+  # Bundled macOS DMGs (ARM64 + x64). One matrix job — both legs run on
+  # macos-latest; the x64 leg cross-publishes osx-x64 from the ARM runner.
+  # ffmpeg: osxexperts.net per-arch static binaries (SHA-256 verified).
+  # libmpv + dep tree: extracted from IINA's universal DMG (SHA-256 verified).
+  build-macos:
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            arch_label: ARM64
+            runtime: osx-arm64
+            ffmpeg_url: https://www.osxexperts.net/ffmpeg81arm.zip
+            ffmpeg_sha256: ebb82529562b71170807bbc6b0e7eb4f0b13af8cbb0e085bb9e8f6fe709598ad
+            dmg_format: UDBZ
+            expected_arch: arm64
+          - arch: x64
+            arch_label: x64
+            runtime: osx-x64
+            ffmpeg_url: https://www.osxexperts.net/ffmpeg80intel.zip
+            ffmpeg_sha256: 2d24d22db78c87f394a5822867acd5c5dc5e762cd261a44bd26923f3a5af3e07
+            dmg_format: UDZO
+            expected_arch: x86_64
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Extract version from Se.cs
+        run: |
+          set -e
+          line=$(grep -E 'public[[:space:]]+static[[:space:]]+string[[:space:]]+Version[[:space:]]*\{' src/ui/Logic/Config/Se.cs)
+          version_string=$(printf '%s' "$line" | sed -E 's/.*"v([^"]+)".*/\1/')
+          numeric_part="${version_string%%-*}"
+          suffix=""
+          case "$version_string" in
+            *-*) suffix="${version_string#*-}" ;;
+          esac
+          dot_count=$(printf '%s' "$numeric_part" | tr -cd '.' | wc -c | tr -d ' ')
+          case "$dot_count" in
+            0) numeric_part="${numeric_part}.0.0" ;;
+            1) numeric_part="${numeric_part}.0" ;;
+          esac
+          revision=$(printf '%s' "$suffix" | grep -oE '[0-9]+$' || true)
+          revision=${revision:-0}
+          app_ver_full="${numeric_part}.${revision}"
+          echo "APP_VER_DISPLAY=$version_string" >> "$GITHUB_ENV"
+          echo "APP_VER_FULL=$app_ver_full" >> "$GITHUB_ENV"
+          echo "APP_VER_DISPLAY=$version_string"
+          echo "APP_VER_FULL=$app_ver_full"
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration ${{ inputs.build_configuration }} --no-restore
+
+      - name: Download + verify static ffmpeg (${{ matrix.arch }})
+        run: |
+          set -e
+          curl -fL -o ffmpeg.zip "${{ matrix.ffmpeg_url }}"
+          echo "${{ matrix.ffmpeg_sha256 }}  ffmpeg.zip" | shasum -a 256 -c -
+          mkdir -p ffmpeg-temp
+          unzip -o ffmpeg.zip -d ffmpeg-temp
+          rm ffmpeg.zip
+          if [ ! -f ffmpeg-temp/ffmpeg ]; then
+            found=$(find ffmpeg-temp -maxdepth 3 -type f -name ffmpeg | head -1)
+            [ -n "$found" ] && mv "$found" ffmpeg-temp/ffmpeg
+          fi
+          chmod +x ffmpeg-temp/ffmpeg
+          file ffmpeg-temp/ffmpeg
+          # Arch sanity: fail loudly if osxexperts ever serves a wrong-arch or
+          # universal binary. `lipo -archs` returns space-separated arch names;
+          # we require an exact single-arch match (a universal "x86_64 arm64"
+          # would not equal "x86_64" and would correctly fail).
+          archs=$(lipo -archs ffmpeg-temp/ffmpeg)
+          if [ "$archs" != "${{ matrix.expected_arch }}" ]; then
+            echo "ERROR: ffmpeg binary archs are '$archs', expected exactly '${{ matrix.expected_arch }}'"
+            exit 1
+          fi
+
+      - name: Download + verify + extract libmpv from IINA
+        run: |
+          set -e
+          curl -fL -o iina.dmg "https://github.com/iina/iina/releases/download/${IINA_VERSION}/IINA.${IINA_VERSION}.dmg"
+          echo "${IINA_SHA256}  iina.dmg" | shasum -a 256 -c -
+          hdiutil attach iina.dmg -nobrowse -readonly -mountpoint ./iina-mnt
+          mkdir -p libmpv-temp
+          # Copy every bundled dylib except Swift runtime libs (IINA itself is
+          # Swift; libmpv + its C deps don't link Swift, so these are dead weight).
+          for dylib in ./iina-mnt/IINA.app/Contents/Frameworks/*.dylib; do
+            name=$(basename "$dylib")
+            case "$name" in
+              libswift_*) continue ;;
+            esac
+            cp -L "$dylib" "./libmpv-temp/$name"
+          done
+          hdiutil detach ./iina-mnt
+          rm -f iina.dmg
+          # Sanity: assert libmpv landed. Catches a future IINA layout change
+          # that would otherwise produce an empty Frameworks/ + broken DMG.
+          [ -f libmpv-temp/libmpv.2.dylib ] || {
+            echo "ERROR: libmpv.2.dylib not extracted from IINA - did the bundle layout change?"; exit 1;
+          }
+          echo "Extracted $(ls libmpv-temp | wc -l) dylibs ($(du -sh libmpv-temp | cut -f1))"
+
+      - name: Setup code signing (if certificates available)
+        run: |
+          if [ -n "${{ secrets.MACOS_CERTIFICATE }}" ] && [ -n "${{ secrets.APPLE_ID_USER }}" ]; then
+            echo "Setting up code signing..."
+            echo "${{ secrets.MACOS_CERTIFICATE }}" | base64 --decode > certificate.p12
+            security create-keychain -p "${{ secrets.MACOS_CERTIFICATE_PASSWORD }}" build.keychain
+            security default-keychain -s build.keychain
+            security unlock-keychain -p "${{ secrets.MACOS_CERTIFICATE_PASSWORD }}" build.keychain
+            security import certificate.p12 -k build.keychain -P "${{ secrets.MACOS_CERTIFICATE_PASSWORD }}" -T /usr/bin/codesign
+            security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "${{ secrets.MACOS_CERTIFICATE_PASSWORD }}" build.keychain
+            rm certificate.p12
+            echo "SIGNING_AVAILABLE=true" >> $GITHUB_ENV
+          else
+            echo "No signing certificates found, apps will be unsigned"
+            echo "SIGNING_AVAILABLE=false" >> $GITHUB_ENV
+          fi
+
+      - name: Publish macOS app (${{ matrix.arch }})
+        run: |
+          set -e
+          dotnet publish src/ui/UI.csproj -c ${{ inputs.build_configuration }} -r ${{ matrix.runtime }} --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:DebugSymbols=false \
+            -p:DebugType=none \
+            -p:Version="$APP_VER_FULL" \
+            -p:FileVersion="$APP_VER_FULL" \
+            -p:InformationalVersion="$APP_VER_DISPLAY" \
+            -o ./publish/macos-${{ matrix.arch }}
+          find ./publish/macos-${{ matrix.arch }} -name "*.pdb" -delete
+          # Arch sanity on the cross-published SE executable (lipo: exact match).
+          file ./publish/macos-${{ matrix.arch }}/SubtitleEdit
+          archs=$(lipo -archs ./publish/macos-${{ matrix.arch }}/SubtitleEdit)
+          if [ "$archs" != "${{ matrix.expected_arch }}" ]; then
+            echo "ERROR: SubtitleEdit binary archs are '$archs', expected exactly '${{ matrix.expected_arch }}'"
+            exit 1
+          fi
+
+      - name: Update Info.plist with version from Se.cs
+        run: |
+          chmod +x ./installer/macBundle/update-plist-version.sh
+          ./installer/macBundle/update-plist-version.sh
+
+      - name: Assemble, sign, and package DMG (${{ matrix.arch }})
+        run: |
+          set -e
+          app="./SubtitleEdit-${{ matrix.arch_label }}.app"
+          cp -R "./installer/macBundle/SubtitleEdit.app" "$app"
+
+          # .gitkeep only exists so git tracks the empty Contents/MacOS folder.
+          # codesign treats every file in MacOS/ as code, so leaving it in place
+          # makes `codesign --verify --deep --strict` fail the whole bundle with
+          # "code object is not signed at all". Unsigned builds never hit this,
+          # because they strip the signature instead of verifying it.
+          # .DS_Store can arrive the same way and is unsignable for the same reason.
+          find "$app" \( -name ".gitkeep" -o -name ".DS_Store" \) -delete
+
+          cp "./publish/macos-${{ matrix.arch }}/SubtitleEdit" "$app/Contents/MacOS/"
+          cp "./publish/macos-${{ matrix.arch }}/"*.dylib "$app/Contents/MacOS/" 2>/dev/null || true
+          chmod +x "$app/Contents/MacOS/SubtitleEdit"
+          rm -rf "./publish/macos-${{ matrix.arch }}"
+
+          cp "./ffmpeg-temp/ffmpeg" "$app/Contents/MacOS/"
+          chmod +x "$app/Contents/MacOS/ffmpeg"
+          rm -rf "./ffmpeg-temp"
+
+          mkdir -p "$app/Contents/Frameworks"
+          cp "./libmpv-temp/"*.dylib "$app/Contents/Frameworks/"
+          chmod -R 755 "$app/Contents/Frameworks/"
+          rm -rf "./libmpv-temp"
+
+          # Point the SE executable at the bundled Frameworks for @rpath resolution.
+          # The dylibs themselves already use @rpath/* internally (IINA's CI fixed
+          # them), so no further install_name_tool work is needed on the libs.
+          executable="$app/Contents/MacOS/SubtitleEdit"
+          if ! otool -l "$executable" | grep -q "@executable_path/../Frameworks"; then
+            install_name_tool -add_rpath "@executable_path/../Frameworks" "$executable" || true
+          fi
+
+          if [ "$SIGNING_AVAILABLE" = "true" ]; then
+            cert="${{ secrets.MACOS_CERTIFICATE_NAME }}"
+            # Sign inside-out: nested binaries first, then the outer .app.
+            # Apple deprecated --deep for signing; explicit per-binary signing
+            # is the recommended notarization-robust pattern.
+            echo "Signing nested binaries (dylibs + bundled ffmpeg)..."
+            for f in "$app/Contents/Frameworks/"*.dylib "$app/Contents/MacOS/"*.dylib "$app/Contents/MacOS/ffmpeg"; do
+              [ -f "$f" ] || continue
+              codesign --force --options runtime --timestamp --sign "$cert" "$f"
+            done
+            echo "Signing app bundle..."
+            codesign --force --options runtime --timestamp --entitlements "./installer/macBundle/Entitlements.plist" --sign "$cert" "$app"
+            # --deep --strict on verify is still recommended (it walks the
+            # bundle and complains about any unsigned nested code).
+            codesign --verify --verbose --deep --strict "$app"
+          else
+            codesign --remove-signature "$app" 2>/dev/null || true
+          fi
+
+          dmg_dir="./dmg-temp-${{ matrix.arch }}"
+          dmg_out="./SubtitleEdit-macOS-${{ matrix.arch_label }}.dmg"
+          mkdir -p "$dmg_dir"
+          cp -R "$app" "$dmg_dir/Subtitle Edit.app"
+          rm -rf "$app"
+
+          # Ship the project's own MIT terms next to the existing third-party bundle so
+          # the DMG carries both (issue #11278).
+          cp "./LICENSE" "$dmg_dir/LICENSE"
+          cp "./installer/macBundle/THIRD_PARTY_LICENSES.txt" "$dmg_dir/THIRD_PARTY_LICENSES.txt"
+
+          if [ "$SIGNING_AVAILABLE" != "true" ]; then
+            cp "./installer/macBundle/README-macOS.txt" "$dmg_dir/README-macOS.txt"
+            cp "./installer/macBundle/fix-unsigned-app.sh" "$dmg_dir/fix-unsigned-app.sh"
+            chmod +x "$dmg_dir/fix-unsigned-app.sh"
+          fi
+
+          ln -s /Applications "$dmg_dir/Applications"
+
+          # `hdiutil create` is flaky on hosted macOS runners: a freshly written
+          # source folder can briefly read as "Resource busy" while mds/Spotlight
+          # is still touching it. Sync, then retry a few times before giving up.
+          sync
+          attempts=0
+          until hdiutil create -volname "SubtitleEdit ${{ matrix.arch_label }}" -srcfolder "$dmg_dir" -ov -format ${{ matrix.dmg_format }} "$dmg_out"; do
+            attempts=$((attempts + 1))
+            if [ "$attempts" -ge 3 ]; then
+              echo "::error::hdiutil create failed after $attempts attempts"
+              exit 1
+            fi
+            echo "hdiutil create failed (attempt $attempts), retrying in 5s..."
+            sleep 5
+          done
+
+          if [ "$SIGNING_AVAILABLE" = "true" ]; then
+            echo "Signing DMG..."
+            codesign --timestamp --sign "${{ secrets.MACOS_CERTIFICATE_NAME }}" "$dmg_out"
+            codesign --verify --verbose "$dmg_out"
+
+            echo "Notarizing DMG..."
+            xcrun notarytool submit "$dmg_out" --apple-id "${{ secrets.APPLE_ID_USER }}" --password "${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}" --team-id "${{ secrets.APPLE_TEAM_ID }}" --wait
+            xcrun stapler staple "$dmg_out"
+            xcrun stapler validate "$dmg_out"
+          fi
+
+          rm -rf "$dmg_dir"
+
+      - name: Cleanup signing keychain
+        if: env.SIGNING_AVAILABLE == 'true'
+        run: |
+          security delete-keychain build.keychain || true
+
+      - name: Upload macOS DMG
+        uses: actions/upload-artifact@v5
+        with:
+          name: macos-dmg-${{ matrix.arch }}
+          path: ./SubtitleEdit-macOS-${{ matrix.arch_label }}.dmg
+          overwrite: true
+  build-linux:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Extract version from Se.cs
+        run: |
+          set -e
+          line=$(grep -E 'public[[:space:]]+static[[:space:]]+string[[:space:]]+Version[[:space:]]*\{' src/ui/Logic/Config/Se.cs)
+          version_string=$(printf '%s' "$line" | sed -E 's/.*"v([^"]+)".*/\1/')
+          numeric_part="${version_string%%-*}"
+          suffix=""
+          case "$version_string" in
+            *-*) suffix="${version_string#*-}" ;;
+          esac
+          dot_count=$(printf '%s' "$numeric_part" | tr -cd '.' | wc -c | tr -d ' ')
+          case "$dot_count" in
+            0) numeric_part="${numeric_part}.0.0" ;;
+            1) numeric_part="${numeric_part}.0" ;;
+          esac
+          revision=$(printf '%s' "$suffix" | grep -oE '[0-9]+$' || true)
+          revision=${revision:-0}
+          app_ver_full="${numeric_part}.${revision}"
+          echo "APP_VER_DISPLAY=$version_string" >> "$GITHUB_ENV"
+          echo "APP_VER_FULL=$app_ver_full" >> "$GITHUB_ENV"
+          echo "APP_VER_DISPLAY=$version_string"
+          echo "APP_VER_FULL=$app_ver_full"
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration ${{ inputs.build_configuration }} --no-restore
+
+      # - name: Test
+      #   run: dotnet test --no-build --verbosity normal
+
+      - name: Publish Linux x64 app
+        run: |
+          dotnet publish src/ui/UI.csproj -c ${{ inputs.build_configuration }} -r linux-x64 --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:DebugSymbols=false \
+            -p:DebugType=none \
+            -p:Version="$APP_VER_FULL" \
+            -p:FileVersion="$APP_VER_FULL" \
+            -p:InformationalVersion="$APP_VER_DISPLAY" \
+            -o ./publish/linux-x64
+
+          # Native PDBs from the SkiaSharp runtime NuGet aren't suppressed by -p:DebugType=none.
+          find ./publish/linux-x64 -name "*.pdb" -delete
+
+      - name: Publish Linux ARM64 app
+        run: |
+          dotnet publish src/ui/UI.csproj -c ${{ inputs.build_configuration }} -r linux-arm64 --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:DebugSymbols=false \
+            -p:DebugType=none \
+            -p:Version="$APP_VER_FULL" \
+            -p:FileVersion="$APP_VER_FULL" \
+            -p:InformationalVersion="$APP_VER_DISPLAY" \
+            -o ./publish/linux-arm64
+
+          find ./publish/linux-arm64 -name "*.pdb" -delete
+
+      - name: Create Linux TAR packages
+        run: |
+          # Stage the repo LICENSE alongside the binaries so the tarball carries the MIT
+          # terms — important for downstream Linux distributors (issue #11278).
+          cp ./LICENSE ./publish/linux-x64/LICENSE
+          cp ./LICENSE ./publish/linux-arm64/LICENSE
+          cd ./publish/linux-x64 && tar -czf ../../SubtitleEdit-Linux-x64.tar.gz . && cd ../..
+          cd ./publish/linux-arm64 && tar -czf ../../SubtitleEdit-Linux-ARM64.tar.gz . && cd ../..
+
+      - name: Upload Linux x64 artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: se-linux-x64
+          path: ./publish/linux-x64/
+
+      - name: Upload Linux ARM64 artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: se-linux-arm64
+          path: ./publish/linux-arm64/
+
+      - name: Upload Linux TAR packages
+        uses: actions/upload-artifact@v5
+        with:
+          name: linux-tar-package
+          path: |
+            ./SubtitleEdit-Linux-x64.tar.gz
+            ./SubtitleEdit-Linux-ARM64.tar.gz
+
+  create-release:
+    if: ${{ inputs.create_release }}
+    needs: [build-windows, build-macos, build-linux, build-linux-flatpak]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      release_tag: ${{ steps.tag.outputs.tag }}
+    
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Generate release tag
+        id: tag
+        run: |
+          if [ -n "${{ inputs.release_tag }}" ]; then
+            echo "tag=$(echo '${{ inputs.release_tag }}' | xargs)" >> $GITHUB_OUTPUT
+          else
+            timestamp=$(date +"%Y%m%d-%H%M%S")
+            echo "tag=pre-release-${timestamp}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v5
+        with:
+          path: ./artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p ./release-assets
+          
+          # Copy ZIP/TAR packages to release assets
+          cp ./artifacts/windows-inno-installer/SubtitleEdit-Windows-x64-Setup.exe ./release-assets/
+          cp ./artifacts/windows-zip-packages/*.zip ./release-assets/
+          cp ./artifacts/macos-dmg-arm64/*.dmg ./release-assets/
+          cp ./artifacts/macos-dmg-x64/*.dmg ./release-assets/
+          cp ./artifacts/linux-tar-package/*.tar.gz ./release-assets/
+          cp ./artifacts/flatpak-bundle/*.flatpak ./release-assets/
+
+          # List all files that will be uploaded
+          echo "Release assets:"
+          ls -la ./release-assets/
+
+      - name: Get current date
+        id: date
+        run: echo "date=$(date +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        id: create_release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: Subtitle Edit ${{ steps.tag.outputs.tag }}
+          body: |
+            **Build Configuration:** ${{ inputs.build_configuration }}
+            **Build Date:** ${{ steps.date.outputs.date }}
+      
+            ### Downloads
+            - **Windows x64 installer (Inno Setup):** [SubtitleEdit-Windows-x64-Setup.exe](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/SubtitleEdit-Windows-x64-Setup.exe)
+            - **Windows x64:** [SubtitleEdit-Windows-x64.zip](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/SubtitleEdit-Windows-x64.zip)
+            - **Windows ARM64:** [SubtitleEdit-Windows-ARM64.zip](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/SubtitleEdit-Windows-ARM64.zip)
+            - **macOS ARM64 (Apple Silicon - M1/M2/M3/M4/M5 architecture):** [SubtitleEdit-macOS-ARM64.dmg](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/SubtitleEdit-macOS-ARM64.dmg)
+            - **macOS x64 (Intel 64-bit):** [SubtitleEdit-macOS-x64.dmg](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/SubtitleEdit-macOS-x64.dmg)
+            - **Linux x64 (tarball):** [SubtitleEdit-Linux-x64.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/SubtitleEdit-Linux-x64.tar.gz)
+            - **Linux ARM64 (tarball, aarch64):** [SubtitleEdit-Linux-ARM64.tar.gz](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/SubtitleEdit-Linux-ARM64.tar.gz)
+            - **Linux x64 (Flatpak):** [SubtitleEdit-linux-x64.flatpak](https://github.com/${{ github.repository }}/releases/download/${{ steps.tag.outputs.tag }}/SubtitleEdit-linux-x64.flatpak)
+      
+            ### Installation
+            1. Read and fix requirements, please see [System Requirements](https://github.com/SubtitleEdit/subtitleedit#-system-requirements)
+            2. Download the appropriate package for your platform
+            3. Extract the archive (or use installer if available)
+            4. Run the executable (on macOS, the app is signed and notarized by Apple - just drag it to Applications and open it).
+      
+            ### Change Log
+            See the full [Change Log](https://raw.githubusercontent.com/SubtitleEdit/subtitleedit/refs/heads/main/change-log.txt) for details.
+
+            *This is an automated build from the GitHub Actions workflow.*
+          draft: false
+          prerelease: ${{ inputs.is_prerelease }}
+          files: |
+            ./release-assets/SubtitleEdit-Windows-x64-Setup.exe
+            ./release-assets/SubtitleEdit-Windows-x64.zip
+            ./release-assets/SubtitleEdit-Windows-ARM64.zip
+            ./release-assets/SubtitleEdit-macOS-ARM64.dmg
+            ./release-assets/SubtitleEdit-macOS-x64.dmg
+            ./release-assets/SubtitleEdit-Linux-x64.tar.gz
+            ./release-assets/SubtitleEdit-Linux-ARM64.tar.gz
+            ./release-assets/SubtitleEdit-linux-x64.flatpak
+
+  call-seconv:
+    needs: [create-release]
+    uses: ./.github/workflows/build-seconv.yml
+    with:
+      build_configuration: ${{ inputs.build_configuration }}
+      create_release: true
+      is_prerelease: ${{ inputs.is_prerelease }}
+      release_tag: ${{ needs.create-release.outputs.release_tag }}
+    secrets: inherit

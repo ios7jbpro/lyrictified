@@ -1,0 +1,238 @@
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Data;
+using Avalonia.Interactivity;
+using Avalonia.Layout;
+using Avalonia.VisualTree;
+using Nikse.SubtitleEdit.Features.Edit.Find;
+using Nikse.SubtitleEdit.Logic;
+using Nikse.SubtitleEdit.Logic.Config;
+using System.Linq;
+
+namespace Nikse.SubtitleEdit.Features.Edit.Replace;
+
+public class ReplaceWindow : Window
+{
+    public ReplaceWindow(ReplaceViewModel vm)
+    {
+        UiUtil.InitializeWindow(this, GetType().Name);
+        Title = Se.Language.General.Replace;
+        SizeToContent = SizeToContent.WidthAndHeight;
+        CanResize = false;
+        vm.Window = this;
+        DataContext = vm;
+
+        var textBoxFind = new AutoCompleteBox
+        {
+            DataContext = vm,
+            VerticalAlignment = VerticalAlignment.Center,
+            MinWidth = 200,
+            Margin = new Thickness(0, 0, 0, 3),
+            PlaceholderText = Se.Language.Edit.Find.SearchTextWatermark,
+            ItemsSource = vm.SearchHistory,
+            [!AutoCompleteBox.TextProperty] = new Binding(nameof(vm.SearchText)),
+            MinimumPrefixLength = 0,
+        };
+        textBoxFind.KeyDown += vm.FindTextBoxKeyDown;
+
+        var checkBoxWholeWord = new CheckBox
+        {
+            Content = Se.Language.Edit.Find.WholeWord,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 0, 3),
+            [!CheckBox.IsCheckedProperty] = new Binding(nameof(vm.WholeWord)) { Mode = BindingMode.TwoWay }
+        };
+
+        var panelFind = new StackPanel
+        {
+            Orientation = Orientation.Vertical,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 0, 3),
+            Children =
+            {
+                textBoxFind,
+                checkBoxWholeWord
+            }
+        };
+
+        var labelReplaceWith = new TextBlock
+        {
+            Text = Se.Language.General.ReplaceWith,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 0, 3)
+        };
+
+        var textBoxReplace = new TextBox
+        {
+            VerticalAlignment = VerticalAlignment.Center,
+            MinWidth = 180,
+            Margin = new Thickness(0, 0, 0, 3),
+            PlaceholderText = Se.Language.Edit.Find.ReplaceTextWatermark,
+            [!TextBox.TextProperty] = new Binding(nameof(vm.ReplaceText)) { Mode = BindingMode.TwoWay }
+        };
+        textBoxReplace.KeyDown += vm.ReplaceTextBoxKeyDown;
+
+        var panelReplace = new StackPanel
+        {
+            Orientation = Orientation.Vertical,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 0, 10),
+            Children =
+            {
+                labelReplaceWith,
+                textBoxReplace
+            }
+        };
+
+        var valueConverter = new FindModeValueConverter();
+        var radioButtonNormal = new RadioButton
+        {
+            Content = Se.Language.General.CaseSensitive,
+            VerticalAlignment = VerticalAlignment.Center,
+            [!RadioButton.IsCheckedProperty] = new Binding(nameof(vm.FindMode))
+            {
+                Converter = valueConverter,
+                ConverterParameter = FindService.FindMode.CaseSensitive,
+                Mode = BindingMode.TwoWay
+            }
+        };
+
+        var radioButtonCaseInsensitive = new RadioButton
+        {
+            Content = Se.Language.General.CaseInsensitive,
+            VerticalAlignment = VerticalAlignment.Center,
+            [!RadioButton.IsCheckedProperty] = new Binding(nameof(vm.FindMode))
+            {
+                Converter = valueConverter,
+                ConverterParameter = FindService.FindMode.CaseInsensitive,
+                Mode = BindingMode.TwoWay
+            }
+        };
+
+        var radioButtonRegularExpression = new RadioButton
+        {
+            Content = Se.Language.General.RegularExpression,
+            VerticalAlignment = VerticalAlignment.Center,
+            [!RadioButton.IsCheckedProperty] = new Binding(nameof(vm.FindMode))
+            {
+                Converter = valueConverter,
+                ConverterParameter = FindService.FindMode.RegularExpression,
+                Mode = BindingMode.TwoWay
+            }
+        };
+
+        var panelFindTypes = new StackPanel
+        {
+            Orientation = Orientation.Vertical,
+            VerticalAlignment = VerticalAlignment.Center,
+            Spacing = 0,
+            Children =
+            {
+                radioButtonNormal,
+                radioButtonCaseInsensitive,
+                radioButtonRegularExpression
+            }
+        };
+
+        var buttonFindNext = UiUtil.MakeButton(Se.Language.Edit.Find.FindNext, vm.FindNextCommand)
+            .WithLeftAlignment()
+            .WithMinWidth(150)
+            .WithMargin(0, 0, 0, 10);
+        var buttonReplace = UiUtil.MakeButton(Se.Language.Edit.Find.ReplaceAndFindNext, vm.ReplaceCommand)
+            .WithLeftAlignment()
+            .WithMinWidth(150)
+            .WithMargin(0, 0, 0, 10);
+        var buttonReplaceAll = UiUtil.MakeButton(Se.Language.Edit.Find.ReplaceAll, vm.ReplaceAllCommand)
+            .WithLeftAlignment()
+            .WithMinWidth(150)
+            .WithMargin(0, 0, 0, 10);
+        var buttonCount = UiUtil.MakeButton(Se.Language.General.Count, vm.CountCommand)
+            .WithLeftAlignment()
+            .WithMinWidth(150)
+            .WithMargin(0, 0, 0, 10);
+        var textBlockCountResult = new TextBlock
+        {
+            [!TextBlock.TextProperty] = new Binding(nameof(vm.CountResult)) { Mode = BindingMode.OneWay },
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(10, 0, 0, 0)
+        };
+
+        var panelButtons = new StackPanel
+        {
+            Orientation = Orientation.Vertical,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+            Children =
+            {
+                buttonFindNext,
+                buttonReplace,
+                buttonReplaceAll,
+                buttonCount,
+                textBlockCountResult,
+            }
+        };
+
+        var grid = new Grid
+        {
+            RowDefinitions =
+            {
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+            },
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) },
+            },
+            Margin = UiUtil.MakeWindowMargin(),
+            ColumnSpacing = 10,
+            Width = double.NaN,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+
+        grid.Add(panelFind, 0, 0);
+        grid.Add(panelReplace, 1, 0);
+        grid.Add(panelFindTypes, 2, 0);
+        grid.Add(panelButtons, 0, 1, 3, 1);
+
+        Content = grid;
+
+        vm.FocusSearchBox = () => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            textBoxFind.GetVisualDescendants()
+                       .OfType<TextBox>()
+                       .FirstOrDefault()?
+                       .Focus();
+        });
+
+        RegexContextFlyout.Attach(textBoxReplace, vm, () => vm.FindMode == FindService.FindMode.RegularExpression, isReplaceBox: true);
+
+        Opened += delegate
+        {
+            // The AutoCompleteBox's inner TextBox only exists after the template is applied.
+            var innerTextBox = textBoxFind.GetVisualDescendants().OfType<TextBox>().FirstOrDefault();
+            if (innerTextBox != null)
+            {
+                RegexContextFlyout.Attach(innerTextBox, vm, () => vm.FindMode == FindService.FindMode.RegularExpression);
+            }
+
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                if (vm.FocusReplaceOnOpen)
+                {
+                    textBoxReplace.Focus();
+                }
+                else
+                {
+                    textBoxFind.GetVisualDescendants()
+                               .OfType<TextBox>()
+                               .FirstOrDefault()?
+                               .Focus();
+                }
+            });
+        };
+        AddHandler(KeyDownEvent, vm.OnKeyDown, RoutingStrategies.Tunnel);
+        Closing += (_, _) => vm.SaveSettings();
+    }
+}
