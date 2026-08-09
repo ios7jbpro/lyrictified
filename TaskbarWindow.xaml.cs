@@ -1,4 +1,5 @@
 using Microsoft.Win32;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.ComponentModel;
 using System.IO;
@@ -780,6 +781,7 @@ public partial class TaskbarWindow : Window, ITrayIconHost
             _settingsWindow.LrcFileLoadRequested += (_, content) => _viewModel.LoadOverrideLyrics(content);
             _settingsWindow.ShowInWindowedRequested += (_, _) => OpenAdditionalWindowedWindow();
             _settingsWindow.EditFromScratchRequested += (_, _) => OpenLrcEditor();
+            _settingsWindow.OpenInSubtitleEditRequested += (_, _) => OpenSubtitleEdit();
             _settingsWindow.Closed += (_, _) =>
             {
                 _settingsWindow = null;
@@ -1122,6 +1124,22 @@ public partial class TaskbarWindow : Window, ITrayIconHost
             EnsureTopmostOrder();
         };
         editor.Show();
+    }
+
+    private static void OpenSubtitleEdit()
+    {
+        try
+        {
+            var sePath = Path.Combine(AppContext.BaseDirectory, "SubtitleEdit", "SubtitleEdit.exe");
+            if (File.Exists(sePath))
+            {
+                Process.Start(new ProcessStartInfo(sePath, "--smtc") { UseShellExecute = true });
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to open SubtitleEdit: {ex.Message}");
+        }
     }
 
     public void SwitchDisplayMode(DisplayMode mode)

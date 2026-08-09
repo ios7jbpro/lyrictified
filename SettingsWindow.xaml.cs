@@ -89,6 +89,7 @@ public partial class SettingsWindow : Window
     public event EventHandler<string>? LrcFileLoadRequested;
     public event EventHandler? ShowInWindowedRequested;
     public event EventHandler? EditFromScratchRequested;
+    public event EventHandler? OpenInSubtitleEditRequested;
 
     private static HttpClient CreateGitHubClient()
     {
@@ -1452,6 +1453,11 @@ public partial class SettingsWindow : Window
     private void EditFromScratchButton_OnClick(object sender, RoutedEventArgs e)
     {
         EditFromScratchRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OpenInSubtitleEditButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        OpenInSubtitleEditRequested?.Invoke(this, EventArgs.Empty);
     }
 
     private void RefreshVmDetectionButton_OnClick(object sender, RoutedEventArgs e)

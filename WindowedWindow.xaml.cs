@@ -1,5 +1,6 @@
 using Microsoft.Win32;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -2105,6 +2106,7 @@ public partial class WindowedWindow : Window, ITrayIconHost
             _settingsWindow.LrcFileLoadRequested += (_, content) => _viewModel.LoadOverrideLyrics(content);
             _settingsWindow.ShowInWindowedRequested += (_, _) => OpenAdditionalWindowedWindow();
             _settingsWindow.EditFromScratchRequested += (_, _) => OpenLrcEditor();
+            _settingsWindow.OpenInSubtitleEditRequested += (_, _) => OpenSubtitleEdit();
             _settingsWindow.Closed += (_, _) => _settingsWindow = null;
             RefreshSettingsWindowOptions();
             _settingsWindow.Show();
@@ -2137,6 +2139,22 @@ public partial class WindowedWindow : Window, ITrayIconHost
         editor.Owner = this;
         editor.Closed += (_, _) => { };
         editor.Show();
+    }
+
+    private static void OpenSubtitleEdit()
+    {
+        try
+        {
+            var sePath = Path.Combine(AppContext.BaseDirectory, "SubtitleEdit", "SubtitleEdit.exe");
+            if (File.Exists(sePath))
+            {
+                Process.Start(new ProcessStartInfo(sePath, "--smtc") { UseShellExecute = true });
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Failed to open SubtitleEdit: {ex.Message}");
+        }
     }
 
     public void SwitchDisplayMode(DisplayMode mode)
