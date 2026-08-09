@@ -764,7 +764,13 @@ namespace Nikse.SubtitleEdit.Controls.VideoPlayer
             _positionTimer?.Stop();
             _slowPollCounter = 4; // force Duration+icon update on the very first tick
             StartPositionTimer();
-            _videoPlayerInstance.Pause();
+
+            // Don't pause SMTC players — they observe an external session, not a local file.
+            if (_videoPlayerInstance.Name != "SMTC")
+            {
+                _videoPlayerInstance.Pause();
+            }
+
             _textBlockPlayerName.Text = _videoPlayerInstance.Name;
             _videoFileName = videoFileName;
 
