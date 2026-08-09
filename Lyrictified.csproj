@@ -110,20 +110,22 @@
   <PropertyGroup>
     <SubtitleEditProjectDir>$(MSBuildProjectDirectory)\src\SubtitleEdit\src\ui</SubtitleEditProjectDir>
     <SubtitleEditOutputDir>$(TargetDir)\SubtitleEdit</SubtitleEditOutputDir>
+    <SubtitleEditBinDir>$(SubtitleEditProjectDir)\bin\$(Configuration)\net10.0-windows10.0.19041.0</SubtitleEditBinDir>
   </PropertyGroup>
 
   <Target Name="BuildSubtitleEdit" BeforeTargets="Build">
-    <Exec Command="dotnet build &quot;$(SubtitleEditProjectDir)\UI.csproj&quot; -c $(Configuration) /p:LyrictifiedBuild=true /p:SkipInstallerBuild=true"
+    <Exec Command="dotnet build &quot;$(SubtitleEditProjectDir)\UI.csproj&quot; -c $(Configuration) /p:LyrictifiedBuild=true /p:SkipInstallerBuild=true --no-restore"
           IgnoreExitCode="true" />
   </Target>
 
-  <Target Name="CopySubtitleEditOutput" AfterTargets="Build">
-    <ItemGroup>
-      <SubtitleEditFiles Include="$(SubtitleEditProjectDir)\bin\$(Configuration)\net10.0-windows10.0.19041.0\**\*" />
-    </ItemGroup>
+  <Target Name="CopySubtitleEditOutput" AfterTargets="Build" DependsOnTargets="BuildSubtitleEdit">
     <MakeDir Directories="$(SubtitleEditOutputDir)" />
-    <Copy SourceFiles="@(SubtitleEditFiles)"
-          DestinationFolder="$(SubtitleEditOutputDir)\%(RecursiveDir)"
-          SkipUnchangedFiles="true" />
+    <ItemGroup>
+      <SubtitleEditFiles Include="$(SubtitleEditBinDir)\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="%(SubtitleEditFiles.FullPath)"
+          DestinationFiles="@(SubtitleEditFiles->'$(SubtitleEditOutputDir)\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true"
+          Condition="@(SubtitleEditFiles) != ''" />
   </Target>
 </Project>

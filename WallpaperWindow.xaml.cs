@@ -2052,14 +2052,25 @@ public partial class WallpaperWindow : Window, ITrayIconHost
         try
         {
             var sePath = Path.Combine(AppContext.BaseDirectory, "SubtitleEdit", "SubtitleEdit.exe");
-            if (File.Exists(sePath))
+            if (!File.Exists(sePath))
             {
-                Process.Start(new ProcessStartInfo(sePath, "--smtc") { UseShellExecute = true });
+                System.Windows.MessageBox.Show(
+                    $"SubtitleEdit not found at:\n{sePath}\n\nPlease rebuild the project.",
+                    "SubtitleEdit",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
             }
+
+            Process.Start(new ProcessStartInfo(sePath, "--smtc") { UseShellExecute = true });
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"Failed to open SubtitleEdit: {ex.Message}");
+            System.Windows.MessageBox.Show(
+                $"Failed to open SubtitleEdit:\n{ex.Message}",
+                "SubtitleEdit",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
         }
     }
 
