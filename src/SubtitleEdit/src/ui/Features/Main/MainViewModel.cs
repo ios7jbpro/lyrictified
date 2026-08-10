@@ -23205,36 +23205,21 @@ public partial class MainViewModel :
             return;
         }
 
-        SubtitleLineViewModel? firstMatch = null;
-        var matchFound = false;
+        SubtitleLineViewModel? lastBeforeOrAt = null;
         for (var i = 0; i < subtitle.Count; i++)
         {
             var p = subtitle[i];
             if (p.StartTime.TotalSeconds > mediaPlayerSeconds)
             {
-                break; // sorted by start time, no later line can contain the position
+                break;
             }
 
-            if (mediaPlayerSeconds >= p.StartTime.TotalSeconds &&
-                mediaPlayerSeconds <= p.EndTime.TotalSeconds)
-            {
-                if (firstMatch == null)
-                {
-                    firstMatch = p;
-                }
-
-                if (p.Duration.TotalSeconds < 20)
-                {
-                    matchFound = true;
-                    SelectAndScrollToSubtitle(p);
-                    break;
-                }
-            }
+            lastBeforeOrAt = p;
         }
 
-        if (!matchFound && firstMatch != null)
+        if (lastBeforeOrAt != null)
         {
-            SelectAndScrollToSubtitle(firstMatch);
+            SelectAndScrollToSubtitle(lastBeforeOrAt);
         }
     }
 
