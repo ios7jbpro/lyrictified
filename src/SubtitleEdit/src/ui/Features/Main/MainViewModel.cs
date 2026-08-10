@@ -728,7 +728,7 @@ public partial class MainViewModel :
         ShowUpDownEndTime = Se.Settings.Appearance.ShowUpDownEndTime;
         ShowUpDownDuration = Se.Settings.Appearance.ShowUpDownDuration;
         ShowUpDownLabels = Se.Settings.Appearance.ShowUpDownLabels;
-        SelectCurrentSubtitleWhilePlaying = Se.Settings.General.SelectCurrentSubtitleWhilePlaying;
+        SelectCurrentSubtitleWhilePlaying = Program.UseSmtcPlayer || Se.Settings.General.SelectCurrentSubtitleWhilePlaying;
         WaveformCenter = Se.Settings.Waveform.CenterVideoPosition;
         EditTextBoxOriginal = new TextBoxWrapper(new TextBox());
         EditTextCharactersPerSecondOriginal = string.Empty;

@@ -187,6 +187,17 @@ namespace Nikse.SubtitleEdit.Logic.Media
 
         private static List<FilePickerFileType> MakeOpenSubtitleFilter(bool includeVideoFiles)
         {
+            if (Program.UseSmtcPlayer)
+            {
+                return new List<FilePickerFileType>
+                {
+                    new FilePickerFileType("LRC files")
+                    {
+                        Patterns = new List<string> { "*.lrc" },
+                    }
+                };
+            }
+
             var fileTypes = new List<FilePickerFileType>
             {
                 new FilePickerFileType(Se.Language.General.SubtitleFiles)
@@ -562,6 +573,17 @@ namespace Nikse.SubtitleEdit.Logic.Media
 
         private static List<FilePickerFileType> MakeSaveFilePickerFileTypes(SubtitleFormat currentFormat)
         {
+            if (Program.UseSmtcPlayer)
+            {
+                return new List<FilePickerFileType>
+                {
+                    new FilePickerFileType("LRC files")
+                    {
+                        Patterns = new List<string> { "*.lrc" }
+                    }
+                };
+            }
+
             var fileType = new FilePickerFileType(currentFormat.Name)
             {
                 Patterns = new List<string> { "*" + currentFormat.Extension }
@@ -572,6 +594,17 @@ namespace Nikse.SubtitleEdit.Logic.Media
         
         private static List<FilePickerFileType> MakeSaveFilePickerAllFileTypes(SubtitleFormat currentFormat)
         {
+            if (Program.UseSmtcPlayer)
+            {
+                return new List<FilePickerFileType>
+                {
+                    new FilePickerFileType("LRC files")
+                    {
+                        Patterns = new List<string> { "*.lrc" }
+                    }
+                };
+            }
+
             var fileType = new FilePickerFileType(currentFormat.Name)
             {
                 Patterns = new List<string> { "*" + currentFormat.Extension }
@@ -599,6 +632,17 @@ namespace Nikse.SubtitleEdit.Logic.Media
 
         private static List<FilePickerFileType> MakeSaveFilePickerFileTypes(string name, string extension)
         {
+            if (Program.UseSmtcPlayer)
+            {
+                return new List<FilePickerFileType>
+                {
+                    new FilePickerFileType("LRC files")
+                    {
+                        Patterns = new List<string> { "*.lrc" }
+                    }
+                };
+            }
+
             var fileType = new FilePickerFileType(name)
             {
                 Patterns = new List<string> { "*" + extension }
