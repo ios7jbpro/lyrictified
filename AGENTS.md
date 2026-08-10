@@ -91,3 +91,4 @@ dotnet build -c Release
 - `AssemblyInfo.cs` and `app.manifest` hold version/identity info; the app version lives in `Lyrictified.csproj` (`<Version>`) and the installer defaults in `Lyrictified.iss` — bump both together.
 
 - **Always** do a commit upon changes, doesn't have to be detailed, explain it in just a few words on the commit title only.
+- Update AGENTS.md with required detail if the changes we are doing is also big and affects how an agent views the project.
