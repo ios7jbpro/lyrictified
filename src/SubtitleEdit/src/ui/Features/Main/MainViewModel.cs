@@ -715,8 +715,8 @@ public partial class MainViewModel :
         StatusTextLeft = string.Empty;
         StatusTextRight = string.Empty;
         ShowColumnStartTime = Se.Settings.General.ShowColumnStartTime;
-        ShowColumnEndTime = Se.Settings.General.ShowColumnEndTime;
-        ShowColumnDuration = Se.Settings.General.ShowColumnDuration;
+        ShowColumnEndTime = !Program.UseSmtcPlayer && Se.Settings.General.ShowColumnEndTime;
+        ShowColumnDuration = !Program.UseSmtcPlayer && Se.Settings.General.ShowColumnDuration;
         ShowColumnGap = Se.Settings.General.ShowColumnGap;
         ShowColumnActor = Se.Settings.General.ShowColumnActor;
         ShowColumnStyle = Se.Settings.General.ShowColumnStyle;
