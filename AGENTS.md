@@ -35,7 +35,8 @@ dotnet build -c Release
 | --- | --- |
 | `App.xaml(.cs)` | Entry point: single-instance mutex, AppUserModelID, VM warning, autostart, `RestartDisplayWindow()` which creates the window for the configured `DisplayMode` |
 | `AppBarWindow`, `TaskbarWindow`, `IslandWindow`, `WindowedWindow` (`.xaml/.cs`) | The four display modes (full-width top app bar, floating taskbar overlay, click-through island overlay, normal window). Each implements `ITrayIconHost` and owns its own `MainViewModel`, `TrayIcon`, and settings window instance |
-| `SettingsWindow.xaml(.cs)` | Settings UI |
+| `SettingsWindow.xaml(.cs)` | Settings UI with tabs: General, App Bar, Windowed, Taskbar, Island, Wallpaper, Detected Apps, **Song**, About, Debug |
+| `LrcEditorWindow.xaml(.cs)` | Standalone LRC editor window: monospace text editor, timestamp insertion (zero or current playback position), Save (loads into app), Save to disk |
 | `TrayIcon.cs` | WinForms `NotifyIcon` + WPF context menu (Show / Settings / Mode / Exit) |
 | `VmWarningDialog`, `DebugStartupDialog`, `DebugServerDialog`, `DebugCacheDialog` | VM warning and DEBUG-only diagnostics dialogs |
 | `ViewModels/MainViewModel.cs` | Central MVVM state machine: song changes, lyrics loading, adaptive `DispatcherTimer` refresh, playback-position estimation (SMTC timeline anchor + `Stopwatch`), word-by-word karaoke (real TTML words or estimated) |
@@ -56,6 +57,7 @@ dotnet build -c Release
 | `Styling/WindowAppearanceManager.cs` | DWM dark mode + Mica backdrop, accent-color palette |
 | `Assets/` | Icons and images (copied to output via `<Content>` items in the csproj) |
 | `Installer/Lyrictified.iss` | Inno Setup script; parameterized through `LYRICTIFIED_*` environment variables set by the csproj target |
+| `src/SubtitleEdit/` | Inline fork of [SubtitleEdit](https://github.com/SubtitleEdit/subtitleedit) (Avalonia-based subtitle editor). Modified to support SMTC mode via `--smtc` flag. Builds alongside Lyrictified via MSBuild targets in the main csproj. Output is copied to `bin/.../SubtitleEdit/` |
 
 ## Architecture Notes
 
@@ -64,6 +66,10 @@ dotnet build -c Release
 - **TTML vs LRC:** TTML results carry per-word timings (`LyricLine.Words`) and background lines; `CompositeLyricsService.WrapResult` also produces `CleanedLrcLines` (line-level only) used by the Taskbar mode. Word-by-word highlighting falls back to evenly estimated word timings when only LRC is available.
 - **Settings:** every display window loads `AppSettings` through `AppSettingsService`; saving also applies the autostart registry key. `AppSettings.LegacyAppBarAdaptToContent` is a JSON migration shim — keep such shims when renaming persisted settings.
 - **Debug-only code:** the three `Debug*Dialog` files are excluded from non-Debug builds by an `<ItemGroup Condition="'$(Configuration)' != 'Debug'">` in the csproj. `DebugBuildHelper` and `LocalServerDetector` are wrapped in `#if DEBUG`. Do not reference them from release-safe code.
+
+- **Song tab & LRC editor:** the Song tab in Settings provides: Last Lyrics Search info, Load LRC file (file picker → `MainViewModel.LoadOverrideLyrics`), Edit from scratch (opens `LrcEditorWindow`), Open in SubtitleEdit (launches `SubtitleEdit.exe --smtc`), Show in Windowed (opens additional `WindowedWindow` without closing current mode). Events: `LrcFileLoadRequested`, `EditFromScratchRequested`, `OpenInSubtitleEditRequested`, `ShowInWindowedRequested` on `SettingsWindow`, subscribed by all 5 display mode windows.
+
+- **SubtitleEdit integration:** `src/SubtitleEdit/` is an inline copy of the SubtitleEdit Avalonia app. Modified files: `Program.cs` (`--smtc` flag, `UseSmtcPlayer` static), `UI.csproj` (conditional Windows TFM via `LyrictifiedBuild` property), `InitVideoPlayer.cs` (creates `SmtcVideoPlayer` when flag is set), `InitListViewAndEditBox.cs` (hides End/Duration columns in SMTC mode), `InitToolbar.cs` (hides format dropdown in SMTC mode), `FileHelper.cs` (forces .lrc filter in SMTC mode), `MainViewModel.cs` (forces LRC no-end-time format, enables auto-highlight, allows position timer without video file). New file: `Logic/VideoPlayers/SmtcVideoPlayer.cs` — implements `IVideoPlayer` using WinRT `GlobalSystemMediaTransportControlsSessionManager` with `Stopwatch`-based position interpolation for smooth 100ms updates. Build targets in `Lyrictified.csproj`: `BuildSubtitleEdit` (runs `dotnet build` with `LyrictifiedBuild=true`), `CopySubtitleEditOutput` (copies output to `bin/.../SubtitleEdit/`).
 
 ## Coding Conventions
 
