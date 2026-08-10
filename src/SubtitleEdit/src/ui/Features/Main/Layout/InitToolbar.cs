@@ -470,12 +470,12 @@ public static class InitToolbar
         };
 
         // subtitle formats
-        stackPanelRight.Children.Add(new TextBlock
+        var formatLabel = new TextBlock
         {
             Text = Se.Language.General.Format,
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(5, 0, 3, 0),
-        });
+        };
         var comboBoxSubtitleFormat = new ComboBox
         {
             Width = 200,
@@ -498,6 +498,14 @@ public static class InitToolbar
             vm.ComboBoxSubtitleFormatPointerPressed,
             RoutingStrategies.Tunnel,
             handledEventsToo: true);
+
+        if (Program.UseSmtcPlayer)
+        {
+            formatLabel.IsVisible = false;
+            comboBoxSubtitleFormat.IsVisible = false;
+        }
+
+        stackPanelRight.Children.Add(formatLabel);
         stackPanelRight.Children.Add(comboBoxSubtitleFormat);
         isLastSeparator = false;
 

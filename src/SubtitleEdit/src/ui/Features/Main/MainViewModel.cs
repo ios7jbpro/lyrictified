@@ -688,9 +688,17 @@ public partial class MainViewModel :
 
         SubtitleFormats = [.. SubtitleFormatHelper.GetSubtitleFormatsWithFavoritesAtTop()];
         _changingFormatProgrammatically = true;
-        SelectedSubtitleFormat = SubtitleFormats.FirstOrDefault(p =>
-            p.FriendlyName == Se.Settings.General.DefaultSubtitleFormat ||
-            p.Name == Se.Settings.General.DefaultSubtitleFormat) ?? SubtitleFormats[0];
+        if (Program.UseSmtcPlayer)
+        {
+            SelectedSubtitleFormat = SubtitleFormats.FirstOrDefault(p =>
+                p.Name == "LRC Lyrics, no end time") ?? SubtitleFormats[0];
+        }
+        else
+        {
+            SelectedSubtitleFormat = SubtitleFormats.FirstOrDefault(p =>
+                p.FriendlyName == Se.Settings.General.DefaultSubtitleFormat ||
+                p.Name == Se.Settings.General.DefaultSubtitleFormat) ?? SubtitleFormats[0];
+        }
         _changingFormatProgrammatically = false;
 
         Encodings = new ObservableCollection<TextEncoding>(EncodingHelper.GetEncodings());
