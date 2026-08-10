@@ -23448,7 +23448,7 @@ public partial class MainViewModel :
             // update audio visualizer position if available
             var av = AudioVisualizer;
             var vp = GetVideoPlayerControl();
-            if (vp != null && !string.IsNullOrEmpty(_videoFileName))
+            if (vp != null && (!string.IsNullOrEmpty(_videoFileName) || Program.UseSmtcPlayer))
             {
                 var isAvScrolloing = av?.IsScrolling ?? false;
 
